@@ -1,29 +1,29 @@
-# T0-05. Рендер-пакети 2×2×2 меш-чанки
+# T0-05. Render batches of 2×2×2 mesh chunks
 
-- **Статус:** todo
-- **Залежить від:** T0-04
-- **Виконавець:** агент
+- **Status:** todo
+- **Depends on:** T0-04
+- **Owner:** agent
 
-## Мета
+## Goal
 
-Складати квади 8 меш-чанків 32³ у пакет 64³ (зсув 0/32 по осях), 6 діапазонів за напрямом грані. Порівняти два варіанти оновлення після правки: перекопіювання пакета цілком проти 8 піддіапазонів (відкрите питання №8).
+Assemble quads of 8 mesh chunks of 32³ into a 64³ batch (offset 0/32 along each axis), with 6 ranges by face direction. Compare two update variants after an edit: re-copying the whole batch vs. 8 sub-ranges (open question No. 8).
 
-## Специфікації
+## Specs
 
 - [docs/architecture/meshing-and-rendering.md](../../docs/architecture/meshing-and-rendering.md)
 - [docs/open-questions.md](../../docs/open-questions.md)
 
-## Результат
+## Deliverables
 
-- `mesh::RenderBatch` з тестами пакування (декодування квада дає правильну світову позицію).
-- Бенчмарк обох варіантів; рекомендація в описі PR.
-- Оновлення open-questions.md (№8) з результатом.
+- `mesh::RenderBatch` with packing tests (decoding a quad gives the correct world position).
+- Benchmark of both variants; recommendation in the PR description.
+- Update to open-questions.md (No. 8) with the result.
 
-## Критерії приймання
+## Acceptance criteria
 
-- [ ] Декодована позиція кожного квада в пакеті = позиція в меш-чанку + зсув (проптест).
-- [ ] Перекопіювання пакета ≤ 50 мкс або обраний варіант має обґрунтування цифрами.
+- [ ] Decoded position of each quad in the batch = position in the mesh chunk + offset (proptest).
+- [ ] Re-copying the batch ≤ 50 µs, or the chosen variant is justified with numbers.
 
-## Поза межами задачі
+## Out of scope
 
-Без завантаження в GPU.
+No upload to the GPU.

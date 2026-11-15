@@ -1,203 +1,203 @@
-# PRD: воксельний рушій на Rust з нативними модами
+# PRD: Rust voxel engine with native mods
 
 Nov 15, 2026 · @hi
 
-## 1. Огляд
+## 1. Overview
 
-Ми будуємо власний воксельний рушій на Rust, а не порт Minecraft на іншу мову. Рушій сумісний з асетами Minecraft (текстури, звуки, моделі), але має свою архітектуру: ECS, багатопотоковість за замовчуванням, нативні моди і сервер, що масштабується горизонтально. Сам «Minecraft-геймплей» — це лише перший мод на нашому API.
+We are building our own voxel engine in Rust, not a port of Minecraft to another language. The engine is compatible with Minecraft assets (textures, sounds, models) but has its own architecture: ECS, multithreading by default, native mods, and a horizontally scalable server. The "Minecraft gameplay" itself is just the first mod on our API.
 
-### Бачення
+### Vision
 
-Воксельна гра, яку можна повністю переробити модами, що стабільно тримає 60 FPS на слабкому ПК і тисячі гравців в одному світі.
+A voxel game that can be fully reworked through mods, holds a steady 60 FPS on a weak PC, and supports thousands of players in one world.
 
-### Цілі
+### Targets
 
-- **Продуктивність на слабкому залізі.** 60 FPS на інтегрованій графіці або GTX 1050-класі при 12 чанках прорисовки; ще 64+ чанки через LOD.
-- **Моди — громадяни першого класу.** Увесь вміст гри (блоки, предмети, мобі, крафт, генерація світу) описується через той самий API, що й сторонні моди.
-- **Масштаб сервера.** 500+ гравців на одну ноду (16+ ядер), 5 000+ на шардований світ.
-- **Лаунчер «одним кліком».** Вхід через Microsoft, завантаження асетів з офіційних серверів, автоматичне встановлення модів, які вимагає сервер.
+- **Performance on weak hardware.** 60 FPS on integrated graphics or a GTX 1050-class GPU at a 12-chunk render distance; another 64+ chunks via LOD.
+- **Mods are first-class citizens.** All game content (blocks, items, mobs, crafting, world generation) is described through the same API as third-party mods.
+- **Server scale.** 500+ players per node (16+ cores), 5,000+ per sharded world.
+- **One-click launcher.** Login via Microsoft, asset download from official servers, automatic installation of the mods the server requires.
 
-### Не-цілі
+### Non-goals
 
-- Сумісність з протоколом ванільних серверів Minecraft і з Java-модами (Fabric/Forge). Це окремий світ, і тягнути його означає тягнути старі архітектурні рішення.
-- Копіювання коду чи логіки з декомпільованого клієнта Mojang. Механіки реалізуються заново за власним дизайном.
-- Підтримка Bedrock.
+- Compatibility with the vanilla Minecraft server protocol and with Java mods (Fabric/Forge). This is a separate world, and dragging it along means dragging along old architectural decisions.
+- Copying code or logic from the decompiled Mojang client. Mechanics are implemented from scratch with our own design.
+- Bedrock support.
 
-### Метрики успіху
+### Success metrics
 
-| Метрика | Ціль |
+| Metric | Target |
 | --- | --- |
-| FPS на iGPU / GTX 1050, 12 чанків | ≥ 60 стабільно, 1% low ≥ 45 |
-| RAM клієнта, 12 чанків + LOD | ≤ 2 ГБ |
-| Меш одного меш-чанку 32³ (CPU, fast\_mesh, 1 потік) | ≤ 0,2 мс (десктопний CPU, маски інкрементно; не підтверджено — на VM 62³ дав 0,27 мс) |
-| Тік сервера при 500 гравцях на ноду | ≤ 25 мс (запас до 50 мс) |
-| Час входу на сервер з кешем асетів (до керування персонажем) | ≤ 5 с |
-| Overhead WASM-мода на виклик хука | ≤ 1 мкс |
+| FPS on iGPU / GTX 1050, 12 chunks | ≥ 60 stable, 1% low ≥ 45 |
+| Client RAM, 12 chunks + LOD | ≤ 2 GB |
+| Meshing one 32³ mesh chunk (CPU, fast\_mesh, 1 thread) | ≤ 0.2 ms (desktop CPU, masks incremental; not confirmed — on a VM 62³ took 0.27 ms) |
+| Server tick at 500 players per node | ≤ 25 ms (headroom up to 50 ms) |
+| Time to join a server with a warm asset cache (until the character is controllable) | ≤ 5 s |
+| WASM mod overhead per hook call | ≤ 1 µs |
 
-## 2. Ключові рішення і стек
+## 2. Key decisions and stack
 
-Головне рішення: рушій — це порожній «воксельний СК», а весь геймплей приходить з модів. Так оптимізації рушія автоматично працюють для всіх модів, а модовий API перевіряється на власному контенті щодня.
+Main decision: the engine is an empty "voxel construction kit", and all gameplay comes from mods. This way the engine's optimizations automatically work for all mods, and the mod API is tested on our own content every day.
 
-### Принципи
+### Principles
 
-1. **Дані окремо від логіки (ECS).** Жодних глибоких ієрархій класів Entity → Mob → Zombie, як у Minecraft. Сутність — набір компонентів, поведінка — системи.
-2. **Багатопотоковість через володіння, а не локи.** Регіон світу належить одному потоку в момент тіку; між регіонами — повідомлення.
-3. **Нуль алокацій у гарячому циклі.** Пули, арени, перевикористання буферів — жодного GC і стрибків кадру.
-4. **GPU робить те, що вміє краще.** Кулінг і формування draw calls — в compute-шейдерах.
-5. **Вимірювання з першого дня.** Профілювання і бенчмарки в CI, регресія швидкості ламає білд.
-6. **Сервер авторитетний.** Клієнт передбачає рух і дії, сервер підтверджує.
-7. **Одна кодова база для клієнта і сервера.** Одиночна гра = вбудований сервер в тому ж процесі.
+1. **Data separate from logic (ECS).** No deep class hierarchies like Entity → Mob → Zombie, as in Minecraft. An entity is a set of components, behavior is systems.
+2. **Multithreading through ownership, not locks.** A world region belongs to one thread during a tick; between regions — messages.
+3. **Zero allocations in the hot loop.** Pools, arenas, buffer reuse — no GC and no frame spikes.
+4. **The GPU does what it does best.** Culling and draw call generation — in compute shaders.
+5. **Measurement from day one.** Profiling and benchmarks in CI; a speed regression breaks the build.
+6. **The server is authoritative.** The client predicts movement and actions, the server confirms.
+7. **One codebase for client and server.** Single player = an embedded server in the same process.
 
-### Стек
+### Stack
 
-| Шар | Технологія | Чому |
+| Layer | Technology | Why |
 | --- | --- | --- |
-| ECS і розклад систем | `bevy_ecs` (без решти Bevy) | Автоматично запускає системи паралельно за декларованим доступом; на ньому вже стоять Valence і Azalea |
-| Графіка | `wgpu` (Vulkan / DX12 / Metal, fallback GL) | Кросплатформеність, compute-шейдери, indirect draw |
-| Вікно, ввід | `winit`, `gilrs` (геймпади) | Стандарт екосистеми |
-| Пул задач | `rayon` + власний job-планувальник з пріоритетами | Меші, світло, генерація світу |
-| Мережа | QUIC (`quinn`) + власний протокол | Кілька потоків без head-of-line блокування, ненадійні датаграми для руху |
-| Серіалізація | `bitcode` / `rkyv`, стиснення `zstd` | Швидко і компактно; rkyv дає zero-copy читання з диска |
-| Моди (логіка) | `wasmtime` + Component Model (WIT) | Пісочниця, будь-яка мова, гаряче перезавантаження, ліміти пам'яті і часу |
-| Моди (контент) | TOML/JSON датапаки + асети | Блоки, предмети, рецепти без коду |
-| Збереження світу | Регіон-файли з zstd + LMDB/`redb` для індексу | Швидкий випадковий доступ |
-| Дані гравців і шардів | PostgreSQL + Redis/NATS | Облікові записи і шина подій між нодами |
-| Лаунчер | Меню всередині гри (egui на wgpu) + окремий апдейтер на Rust | Малий бінарник, спільний код з рушієм |
-| Профілювання | `tracing` + Tracy, `criterion` для бенчів | Покадровий та потіковий аналіз |
+| ECS and system scheduling | `bevy_ecs` (without the rest of Bevy) | Automatically runs systems in parallel based on declared access; Valence and Azalea are already built on it |
+| Graphics | `wgpu` (Vulkan / DX12 / Metal, GL fallback) | Cross-platform, compute shaders, indirect draw |
+| Window, input | `winit`, `gilrs` (gamepads) | Ecosystem standard |
+| Task pool | `rayon` + custom job scheduler with priorities | Meshes, lighting, world generation |
+| Network | QUIC (`quinn`) + custom protocol | Multiple streams without head-of-line blocking, unreliable datagrams for movement |
+| Serialization | `bitcode` / `rkyv`, `zstd` compression | Fast and compact; rkyv gives zero-copy reads from disk |
+| Mods (logic) | `wasmtime` + Component Model (WIT) | Sandbox, any language, hot reload, memory and time limits |
+| Mods (content) | TOML/JSON datapacks + assets | Blocks, items, recipes without code |
+| World storage | Region files with zstd + LMDB/`redb` for the index | Fast random access |
+| Player and shard data | PostgreSQL + Redis/NATS | Accounts and event bus between nodes |
+| Launcher | In-game menu (egui on wgpu) + separate updater in Rust | Small binary, code shared with the engine |
+| Profiling | `tracing` + Tracy, `criterion` for benchmarks | Per-frame and per-tick analysis |
 
-**Чому не повний Bevy.** Рендер Bevy універсальний і не оптимізований під мільйони вокселів, а API ламається кожні 3–4 місяці. Беремо лише `bevy_ecs` і відкріплюємо версію; рендер пишемо свій на wgpu.
+**Why not full Bevy.** Bevy's renderer is general-purpose and not optimized for millions of voxels, and its API breaks every 3–4 months. We take only `bevy_ecs` and pin the version; we write our own renderer on wgpu.
 
-**Чому власний протокол, а не протокол Minecraft.** Протокол Minecraft міняється з кожною версією, працює поверх TCP і не знає про наші моди, LOD чи шарди. Valence і Azalea корисні як референс коду, але не як фундамент.
+**Why a custom protocol rather than the Minecraft protocol.** The Minecraft protocol changes with every version, runs over TCP, and knows nothing about our mods, LOD, or shards. Valence and Azalea are useful as a code reference, but not as a foundation.
 
-## 3. Ядро рушія: потоки, тік, пам'ять
+## 3. Engine core: threads, tick, memory
 
-Ядро розділяє роботу за типом навантаження: симуляція — по регіонах, важкі обчислення — в пулі задач, рендер — в окремому потоці на кадр позаду.
+The core splits work by load type: simulation — by regions, heavy computation — in the task pool, rendering — in a separate thread one frame behind.
 
-### Карта потоків клієнта
+### Client thread map
 
-| Потік | Що робить | Частота |
+| Thread | What it does | Frequency |
 | --- | --- | --- |
-| Головний (вікно) | Події winit, ввід, розсилка намірів гравця | кожен кадр |
-| Симуляція | ECS-розклад: передбачення руху, фізика, анімації, моди | 20 тіків/с + інтерполяція |
-| Рендер | Знімок стану → команди GPU; відстає на 1 кадр | до частоти монітора |
-| Мережа (tokio) | QUIC, стиснення, десеріалізація пакетів | асинхронно |
-| Пул задач (N−2 ядер) | Меші, світло, декодування чанків, LOD, патфайндінг | за чергою з пріоритетами |
-| Аудіо / IO | Звук, читання асетів і кешу | асинхронно |
+| Main (window) | winit events, input, dispatching player intents | every frame |
+| Simulation | ECS schedule: movement prediction, physics, animations, mods | 20 ticks/s + interpolation |
+| Render | State snapshot → GPU commands; lags by 1 frame | up to the monitor refresh rate |
+| Network (tokio) | QUIC, compression, packet deserialization | async |
+| Task pool (N−2 cores) | Meshes, lighting, chunk decoding, LOD, pathfinding | by priority queue |
+| Audio / IO | Sound, reading assets and cache | async |
 
-### Тік і детермінізм
+### Tick and determinism
 
-- Фіксований крок симуляції (базово 20 Гц, налаштовується), рендер інтерполює між двома останніми станами. Інтерполяція додає до 50 мс затримки, тому поворот камери береться з останнього вводу на частоті кадрів, а не інтерполюється.
-- Тік розбитий на фази: `PreTick` (мережа, ввід) → `Simulate` (паралельно по регіонах) → `Exchange` (повідомлення між регіонами) → `PostTick` (збереження, відправка дельт). Повідомлення, надіслане в Simulate тіку N, отримувач обробляє в Simulate тіку N+1; відповідь повертається не раніше N+2 (100 мс при 20 Гц).
-- Усередині регіону порядок оновлень стабільний (сортування за ID), тому редстоун-подібні механіки повторювані. Повідомлення між регіонами в Exchange теж сортуються (тік, позиція відправника, лічильник), а не беруться в порядку приходу з черги. Повторюваність гарантуємо лише для того самого входу і того самого розбиття на регіони: злиття і розділення залежать від таймінгів IO, тож побітового детермінізму між запусками сервера не обіцяємо.
-- Бюджет часу: системи та моди мають ліміт на тік; відкладена робота (ріст рослин, випадкові тіки) розмазується по кількох тіках.
+- Fixed simulation step (20 Hz by default, configurable); rendering interpolates between the last two states. Interpolation adds up to 50 ms of latency, so camera rotation is taken from the latest input at frame rate rather than interpolated.
+- The tick is split into phases: `PreTick` (network, input) → `Simulate` (parallel by region) → `Exchange` (messages between regions) → `PostTick` (saving, sending deltas). A message sent in Simulate of tick N is processed by the receiver in Simulate of tick N+1; the reply returns no earlier than N+2 (100 ms at 20 Hz).
+- Within a region, update order is stable (sorted by ID), so redstone-like mechanics are repeatable. Messages between regions in Exchange are also sorted (tick, sender position, counter) rather than taken in queue arrival order. We guarantee repeatability only for the same input and the same region partitioning: merges and splits depend on IO timing, so we do not promise bit-for-bit determinism between server runs.
+- Time budget: systems and mods have a per-tick limit; deferred work (plant growth, random ticks) is spread over several ticks.
 
-### Регіони як одиниця паралелізму
+### Regions as the unit of parallelism
 
-Беремо ідею Folia і закладаємо її в рушій з першого дня. В Folia сусідні завантажені чанки об'єднуються в незалежні регіони, кожен зі своїм тік-циклом, а цикли виконуються паралельно в пулі потоків ([Folia](https://github.com/PaperMC/Folia), [region logic](https://docs.papermc.io/folia/reference/region-logic)). Слабке місце Folia — майже жоден наявний плагін не сумісний без переписування. У нас цього боргу немає: модовий API за дизайном дає доступ лише до свого регіону.
+We take the idea from Folia and build it into the engine from day one. In Folia, neighboring loaded chunks are merged into independent regions, each with its own tick loop, and the loops run in parallel in a thread pool ([Folia](https://github.com/PaperMC/Folia), [region logic](https://docs.papermc.io/folia/reference/region-logic)). Folia's weak point is that almost no existing plugin is compatible without a rewrite. We have no such debt: the mod API by design gives access only to its own region.
 
-- Регіон = динамічна група секцій, де є гравці чи активні сутності. Регіони зливаються, коли гравці зближуються, і розділяються, коли розходяться. Як у Folia, злиття з регіоном, що зараз тікає, відкладається до кінця його тіку, а розділення перевіряється наприкінці тіку. Інваріант: навколо зайнятих секцій регіон тримає буфер порожніх секцій (радіус злиття ≥ 1 секції), тому два регіони ніколи не межують упритул.
-- Код регіону не читає і не пише чужі дані. Завдяки буферу локальні взаємодії (сусідній блок, світло до 15 блоків, моб поруч) не виходять за регіон. Повідомлення в lock-free чергу потрібні лише для далеких дій (телепорт, снаряд за межею буфера, глобальні сервіси); вони доставляються у фазі `Exchange`.
-- Глобальний стан (час доби, погода, таблиця лідерів) живе в окремому «глобальному регіоні» і оновлюється через команди. Регіони і моди читають його знімок з попереднього тіку.
+- Region = a dynamic group of sections containing players or active entities. Regions merge when players come closer and split when they move apart. As in Folia, a merge with a region that is currently ticking is deferred until the end of its tick, and splits are checked at the end of the tick. Invariant: around occupied sections the region keeps a buffer of empty sections (merge radius ≥ 1 section), so two regions never directly touch.
+- Region code neither reads nor writes other regions' data. Thanks to the buffer, local interactions (a neighboring block, light up to 15 blocks, a mob nearby) do not leave the region. Messages into a lock-free queue are needed only for distant actions (teleport, a projectile beyond the buffer, global services); they are delivered in the `Exchange` phase.
+- Global state (time of day, weather, leaderboard) lives in a separate "global region" and is updated via commands. Regions and mods read its snapshot from the previous tick.
 
-### Пам'ять
+### Memory
 
-- **Секції 16³ з палітрою.** Секція зберігає список унікальних станів блоків і упаковані індекси (1–8 біт на блок; понад 256 станів у секції — пряме u16). Секція з одним типом блоку (повітря, камінь) займає кілька байтів. Світло (небо + блоки по 4 біти) — ще до 4 КБ на неоднорідну секцію. Тест для 12 чанків (625 колон × 24 секції = 15 000): блоки \~17 МіБ з палітрою (117 МіБ без неї) + світло \~59 МіБ без стиснення, тобто дані чанків — дрібна частка бюджету 2 ГБ. Запис у 8-бітну секцію з лінійним пошуком у палітрі коштує \~67 нс проти 6–7 нс, тому великі палітри мають зворотний індекс (хеш). Оцінка для 64 чанків без LOD — 0,9–1,4 ГБ. Тому далі 12–16 чанків повних даних на клієнті не тримаємо, лише LOD.
-- **Компоненти в форматі SoA** (архетипи ECS): система фізики проходить суцільним масивом, кеш-промахів значно менше (довільний доступ за Entity їх не прибирає).
-- **Пули і арени** для тимчасових буферів мешів, пакетів і задач; скидання арени раз на кадр/тік.
-- **Бюджети пам'яті** для чанків, мешів, текстур і кожного мода. При перевищенні рушій вивантажує найдальше (LRU) або знижує LOD.
-- **Статичні дані через mmap** (`rkyv`): реєстри блоків, моделі, атласи читаються без десеріалізації.
-- **Профілі якості** Low / Medium / High / Ultra, вибір за бенчмарком на першому запуску.
+- **16³ sections with a palette.** A section stores a list of unique block states and packed indices (1–8 bits per block; above 256 states in a section — a direct u16). A section with one block type (air, stone) takes a few bytes. Light (sky + block, 4 bits each) — up to 4 KB more per non-uniform section. Test for 12 chunks (625 columns × 24 sections = 15,000): blocks \~17 MiB with a palette (117 MiB without) + light \~59 MiB uncompressed, so chunk data is a small fraction of the 2 GB budget. A write into an 8-bit section with a linear palette lookup costs \~67 ns versus 6–7 ns, so large palettes have a reverse index (hash). Estimate for 64 chunks without LOD — 0.9–1.4 GB. Therefore beyond 12–16 chunks we do not keep full data on the client, only LOD.
+- **Components in SoA format** (ECS archetypes): the physics system walks a contiguous array, far fewer cache misses (random access by Entity does not eliminate them).
+- **Pools and arenas** for temporary mesh, packet, and task buffers; the arena is reset once per frame/tick.
+- **Memory budgets** for chunks, meshes, textures, and each mod. On overrun the engine unloads the farthest (LRU) or lowers LOD.
+- **Static data via mmap** (`rkyv`): block registries, models, atlases are read without deserialization.
+- **Quality profiles** Low / Medium / High / Ultra, chosen by a benchmark on first launch.
 
-## 4. Світ, рендер, LOD
+## 4. World, rendering, LOD
 
-Найбільший виграш на слабких ПК дають три речі: швидкий мешинг, GPU-driven рендер і LOD. Усе це має бути в рушії з першої версії, а не додаватися модами, як Sodium чи Distant Horizons у Minecraft.
+The biggest win on weak PCs comes from three things: fast meshing, GPU-driven rendering, and LOD. All of this must be in the engine from the first version, not added by mods like Sodium or Distant Horizons in Minecraft.
 
-### Мешинг
+### Meshing
 
-- **Binary greedy meshing.** Обличчя чанку рахуються бітовими масками, сусідні однакові грані зливаються в один прямокутник. Rust-крейт `binary-greedy-meshing` на чанку 62³ дає 65 мкс (лише непрозорі) і 90 мкс (з прозорими) на Ryzen 5 5500. Це метод fast\_mesh, який вимагає підтримувати маски непрозорості при кожній зміні блоку; звичайний mesh — 300–340 мкс там само, а README версії 0.6.4 дає \~100 і \~700 мкс. Наш тест (0.6.4, 62³, 8% прозорих, повільний VM 2,1 ГГц): fast\_mesh 0,27 мс, mesh 1,1 мс, \~5 000 квадив (39 КБ) на чанк; побудова масок з нуля — ще 0,35 мс, тож маски треба оновлювати інкрементно ([джерело](https://docs.rs/crate/binary-greedy-meshing/0.4.2)).
-- **Розмір меш-чанку. 62³ (64³ з паддінгом)** не ділиться на секції 16³, тож межі мешів і секцій не збігалися б. Беремо меш-чанк 32³ (2×2×2 секції, 34³ з паддінгом): версія 0.6 крейта має параметр розміру (до 62), рішення прийнято, малює рендер пакетами 2×2×2 меш-чанки (див. розд. 14). Рядок вокселів усе одно вміщається в `u64`. Для симуляції лишаємо секції 16³, для рендера групуємо їх цілими секціями.
-- **Квад = 8 байт.** У крейті u64 містить позицію (3×6 біт), розмір (2×6 біт) і тип блоку; напрямок грані задає один з 6 списків, світла там немає. Вільних бітів вистачає на 16-бітний тип і пласке світло грані, але не на згладжене світло й AO по 4 кутах: їх шейдер читає з 3D-текстури світла секції, інакше жадібне злиття рве квади на кожній зміні світла. Разом це один `u64`; вершини відновлює вершинний шейдер (vertex pulling). Проти класичних вершин з float (4 × 24–32 Б + індекси = 120–152 Б на квад) це в 12–19 разів менше VRAM (розрахунок, не вимір).
-- Некубічні моделі (сходи, паркани) — окремий шлях з передобчисленими шаблонами моделей.
-- Перемешування при зміні блоку — тільки зачепленого меш-чанку 32³ і сусіда, якщо блок на межі, з вищим пріоритетом, ніж нові чанки.
+- **Binary greedy meshing.** Chunk faces are computed with bit masks, adjacent identical faces merge into one rectangle. The Rust crate `binary-greedy-meshing` on a 62³ chunk gives 65 µs (opaque only) and 90 µs (with transparent) on a Ryzen 5 5500. This is the fast\_mesh method, which requires maintaining opacity masks on every block change; plain mesh is 300–340 µs on the same machine, and the version 0.6.4 README gives \~100 and \~700 µs. Our test (0.6.4, 62³, 8% transparent, slow 2.1 GHz VM): fast\_mesh 0.27 ms, mesh 1.1 ms, \~5,000 quads (39 KB) per chunk; building masks from scratch — another 0.35 ms, so masks must be updated incrementally ([source](https://docs.rs/crate/binary-greedy-meshing/0.4.2)).
+- **Mesh chunk size. 62³ (64³ with padding)** does not divide into 16³ sections, so mesh and section boundaries would not coincide. We take a 32³ mesh chunk (2×2×2 sections, 34³ with padding): version 0.6 of the crate has a size parameter (up to 62), the decision is made, and rendering draws in batches of 2×2×2 mesh chunks (see section 14). A row of voxels still fits in a `u64`. For simulation we keep 16³ sections, and for rendering we group them as whole sections.
+- **Quad = 8 bytes.** In the crate a u64 holds position (3×6 bits), size (2×6 bits), and block type; the face direction is given by one of 6 lists, and there is no light there. The free bits are enough for a 16-bit type and flat per-face light, but not for smooth light and AO at 4 corners: the shader reads those from the section's 3D light texture, otherwise greedy merging breaks quads on every light change. In total this is one `u64`; vertices are reconstructed by the vertex shader (vertex pulling). Compared to classic float vertices (4 × 24–32 B + indices = 120–152 B per quad) this is 12–19 times less VRAM (calculation, not measurement).
+- Non-cube models (stairs, fences) — a separate path with precomputed model templates.
+- Remeshing on a block change — only the affected 32³ mesh chunk and its neighbor if the block is on the border, with higher priority than new chunks.
 
-### GPU-driven рендер
+### GPU-driven rendering
 
-1. Усі меші живуть у кількох великих GPU-буферах з власним алокатором (suballocation), а не по буферу на чанк. Ліміти wgpu за замовчуванням: одна storage-прив'язка ≤ 128 МіБ, буфер ≤ 256 МіБ; більші ліміти запитуємо, лише якщо адаптер їх дає.
-2. Compute-шейдер робить frustum-кулінг, відкидає грані, що дивляться від камери, і робить occlusion-кулінг по Hi-Z буферу минулого кадру. Відкинуте за минулим кадром перевіряється вдруге з глибиною поточного, інакше при різкому повороті камери з'являються дірки (так робить Aokana).
-3. Результат — буфер команд `multi_draw_indirect`: весь світ за 1–3 виклики малювання. Це так лише з MULTI\_DRAW\_INDIRECT\_COUNT (тільки нативно: DX12 і Vulkan 1.2+). Без нього wgpu може емулювати multi\_draw\_indirect серією draw\_indirect, а кількість команд фіксована: відкинуті чанки пишуться з instance\_count = 0. INDIRECT\_FIRST\_INSTANCE немає на GL ES/WebGL, тож індекс чанку там передаємо інакше.
-4. Для GPU без compute чи indirect (GL ES, WebGL2: там 0 storage-буферів і 0 compute) — CPU-кулінг і звичайні draw calls. Той самий 8-байтний квад подаємо як per-instance вершинний атрибут (Uint32x2), а не storage-буфер, тож формат даних не змінюється.
-5. Текстури — масиви текстур (texture arrays) замість атласу: без кровотечі на міпмапах. Ліміт wgpu за замовчуванням — 256 шарів на масив, а блокових текстур Minecraft більше, тому кілька масивів (по одному на розмір текстури) або вищий ліміт, якщо адаптер дозволяє.
-6. Рендер-граф з опційними проходами (тіні, SSAO, вода, облака), які вимикаються на профілі Low. Моди можуть додавати свої проходи через WGSL.
+1. All meshes live in a few large GPU buffers with a custom allocator (suballocation), not one buffer per chunk. Default wgpu limits: one storage binding ≤ 128 MiB, buffer ≤ 256 MiB; we request higher limits only if the adapter provides them.
+2. A compute shader does frustum culling, discards faces pointing away from the camera, and does occlusion culling against the previous frame's Hi-Z buffer. What was culled based on the previous frame is checked a second time against the current depth, otherwise holes appear on a sharp camera turn (Aokana does it this way).
+3. The result is a `multi_draw_indirect` command buffer: the whole world in 1–3 draw calls. This holds only with MULTI\_DRAW\_INDIRECT\_COUNT (native only: DX12 and Vulkan 1.2+). Without it wgpu can emulate multi\_draw\_indirect with a series of draw\_indirect calls, and the command count is fixed: culled chunks are written with instance\_count = 0. INDIRECT\_FIRST\_INSTANCE is absent on GL ES/WebGL, so the chunk index is passed differently there.
+4. For GPUs without compute or indirect (GL ES, WebGL2: 0 storage buffers and 0 compute there) — CPU culling and regular draw calls. We feed the same 8-byte quad as a per-instance vertex attribute (Uint32x2) instead of a storage buffer, so the data format does not change.
+5. Textures — texture arrays instead of an atlas: no bleeding on mipmaps. The default wgpu limit is 256 layers per array, and Minecraft has more block textures than that, so several arrays (one per texture size) or a higher limit if the adapter allows.
+6. A render graph with optional passes (shadows, SSAO, water, clouds) that are turned off on the Low profile. Mods can add their own passes via WGSL.
 
 ### LOD
 
-Distant Horizons довів, що це працює: далекий рельєф рендериться спрощеними LOD-чанками, підготовленими на фонових потоках ([DH](https://distant-horizons-guide.pages.dev/about)). Він бере знімок чанку, коли той виходить з дальності прорисовки, тому далекі зміни не видно ([обговорення](https://www.vintagestory.at/forums/topic/12204-distant-horizons-minecraft-mod-for-vintage-story/)). Наш рушій робить LOD нативним і керованим сервером:
+Distant Horizons proved this works: distant terrain is rendered as simplified LOD chunks prepared on background threads ([DH](https://distant-horizons-guide.pages.dev/about)). It takes a snapshot of a chunk when it leaves the render distance, so distant changes are not visible ([discussion](https://www.vintagestory.at/forums/topic/12204-distant-horizons-minecraft-mod-for-vintage-story/)). Our engine makes LOD native and server-driven:
 
-- **Кільця LOD (clipmap).** LOD0 = повні секції. LOD n — та сама сітка 16³ вокселів, але воксель = 2ⁿ блоків, тож LOD-секція покриває (16·2ⁿ)³ блоків (LOD5 — 512³). Кожне наступне кільце вдвічі ширше: від 12 чанків LOD0 кільця сягають 24, 48, 96, 192, 384 чанків, для цілі 64 чанки досить LOD0–LOD3. На межах кілець — «спідниці» або перекриття, інакше між рівнями видно щілини.
-- **Сервер рахує LOD і тримає його актуальним.** Після зміни блоку батьківські LOD-вузли позначаються «брудними» і перераховуються пакетно. Клієнт отримує LOD-секції в тому ж палітровому форматі (домінантний тип блоку на воксель), а не повні чанки, тож мешер і рендер ті самі. Формат «висота + колір» дешевший, але губить печери і навіси та не сумісний з 3D-кільцями. Усі рівні разом додають до \~14% до обсягу світу на сервері (1/8 + 1/64 + …).
-- **Динамічні зміни** (сезони, сніг) доставляються як параметри шейдера, а не як нова геометрія.
-- **Дисковий кеш LOD** на клієнті: повторний вхід у світ не качає його заново.
-- **R&D-трек:** рендер далекого LOD через SVDAG і реймарчинг. Наприклад, Aokana тримає сцени з десятками мільярдів вокселів і вантажить у VRAM лише близько 5% сцени ([Aokana](https://arxiv.org/html/2505.02017v1)). Але це не для першої версії.
+- **LOD rings (clipmap).** LOD0 = full sections. LOD n — the same 16³ voxel grid, but a voxel = 2ⁿ blocks, so a LOD section covers (16·2ⁿ)³ blocks (LOD5 — 512³). Each next ring is twice as wide: from 12 chunks, the LOD0 rings reach 24, 48, 96, 192, 384 chunks; for a 64-chunk target LOD0–LOD3 is enough. At ring boundaries — "skirts" or overlap, otherwise gaps are visible between levels.
+- **The server computes LOD and keeps it up to date.** After a block change, parent LOD nodes are marked "dirty" and recomputed in batches. The client receives LOD sections in the same palette format (the dominant block type per voxel), not full chunks, so the mesher and renderer are the same. The "height + color" format is cheaper but loses caves and overhangs and is incompatible with 3D rings. All levels together add up to \~14% to the world volume on the server (1/8 + 1/64 + …).
+- **Dynamic changes** (seasons, snow) are delivered as shader parameters, not as new geometry.
+- **Disk LOD cache** on the client: re-entering the world does not download it again.
+- **R&D track:** rendering distant LOD via SVDAG and raymarching. For example, Aokana holds scenes with tens of billions of voxels and loads only about 5% of the scene into VRAM ([Aokana](https://arxiv.org/html/2505.02017v1)). But this is not for the first version.
 
-### Світло і генерація
+### Lighting and generation
 
-- Світло — хвильовий BFS (flood fill) по секціях у пулі задач; понад межами секцій — черги на кордонах. Видалення світла (зламаний факел) — окремий зворотний BFS, потім повторне заповнення. Задачі світла працюють на знімку секцій, а результат застосовує регіон у наступному тіку, щоб не було гонки з тіком. Світло сягає максимум 15 блоків, тож за буфера регіону ≥ 1 секції воно не виходить за регіон. Небесне світло: карта висот дає старт, далі той самий BFS під навіси і в печери. Тест: повний перерахунок однієї секції — 25–45 мкс, 3×3×3 секцій — 1,4–2,2 мс, тому при зміні блоку — лише інкрементне оновлення, не повний перерахунок.
-- Генерація світу — пайплайн стадій (рельєф → біоми → печери → структури → декорації), кожна стадія — задача у пулі, шум через SIMD. Моди додають стадії або замінюють їх.
-- Карта висот і біомів генерується дешевим проходом раніше за повні чанки, тож далекий LOD видно ще до того, як світ згенерований всередині.
+- Lighting — wave BFS (flood fill) over sections in the task pool; beyond section boundaries — queues at the borders. Light removal (a broken torch) — a separate reverse BFS, then refill. Lighting tasks work on a snapshot of sections, and the region applies the result in the next tick, so there is no race with the tick. Light reaches 15 blocks at most, so with a region buffer ≥ 1 section it does not leave the region. Sky light: the heightmap gives the start, then the same BFS under overhangs and into caves. Test: a full recompute of one section — 25–45 µs, of 3×3×3 sections — 1.4–2.2 ms, so on a block change only an incremental update, not a full recompute.
+- World generation — a pipeline of stages (terrain → biomes → caves → structures → decorations), each stage is a task in the pool, noise via SIMD. Mods add stages or replace them.
+- The heightmap and biome map are generated by a cheap pass ahead of full chunks, so distant LOD is visible even before the world is generated inside.
 
-## 5. Модова система
+## 5. Mod system
 
-Моди мають три рівні: дані (без коду), скрипти в WASM (пісочниця) і нативні розширення рушія (лише для команди проєкту). Рушій сам паралелізує моди, бо вони декларують, до чого мають доступ.
+Mods have three levels: data (no code), scripts in WASM (sandbox), and native engine extensions (only for the project team). The engine parallelizes mods itself, because they declare what they access.
 
-### Три рівні модів
+### Three mod levels
 
-| Рівень | Що можна зробити | Вартість для продуктивності | Хто пише |
+| Level | What you can do | Performance cost | Who writes it |
 | --- | --- | --- | --- |
-| 1. Датапак (TOML/JSON + асети) | Блоки, предмети, рецепти, лут, біоми, структури, моделі, звуки, локалізація | Нульова: компілюється в реєстри при завантаженні | дизайнери, художники |
-| 2. WASM-мод (Rust, C, Zig, AssemblyScript, Go) | Нові системи, компоненти, ШІ мобів, механіки, команди, UI, стадії генерації | Виклик через межу хост/гість: у тесті \~20–35 нс для core-модуля і \~0,4 мкс для компонента; 1 000 окремих викликів компонента — 0,5 мс, одна пачка — \~3 мкс, тож пакетні API обов'язкові | модери |
-| 3. Нативний плагін рушія (Rust crate) | Нові проходи рендера, формати світу, фізика | Як у рушія; збирається разом з рушієм | команда проєкту |
+| 1. Datapack (TOML/JSON + assets) | Blocks, items, recipes, loot, biomes, structures, models, sounds, localization | Zero: compiled into registries at load time | designers, artists |
+| 2. WASM mod (Rust, C, Zig, AssemblyScript, Go) | New systems, components, mob AI, mechanics, commands, UI, generation stages | A call across the host/guest boundary: in a test \~20–35 ns for a core module and \~0.4 µs for a component; 1,000 separate component calls — 0.5 ms, one batch — \~3 µs, so batched APIs are mandatory | modders |
+| 3. Native engine plugin (Rust crate) | New render passes, world formats, physics | Same as the engine; built together with the engine | project team |
 
-Нативні `.dll`/`.so` від сторонніх авторів не підтримуємо: у Rust немає стабільного ABI, а такий мод може зробити з ПК гравця що завгодно. WASM вирішує обидва питання.
+We do not support native `.dll`/`.so` files from third-party authors: Rust has no stable ABI, and such a mod can do anything to the player's PC. WASM solves both issues.
 
-### Чому wasmtime + Component Model
+### Why wasmtime + Component Model
 
-- Зрілий вибір: Veloren (воксельна RPG на Rust) вже завантажує плагіни через `wasmtime::component` і WIT-файл свого API ([код Veloren](https://docs.veloren.net/src/veloren_common_state/plugin/module.rs.html)). Для Bevy існує експериментальний Wasvy з такою самою ідеєю ([Wasvy](https://lib.rs/crates/wasvy)).
-- WIT-контракт задає типи на рівні бінарника, тому несумісність мода з версією API видно ще до запуску ([пояснення](https://maddevs.io/writeups/wasm-component-model-practical-guide-part-one/)).
-- Ліміти fuel, epoch і пам'яті вже є в екосистемі ([wasm-link](https://docs.rs/crate/wasm-link/0.4.1)): завислий мод не зупинить сервер. Ціна за документацією Wasmtime: epoch — близько 10% сповільнення і недетермінована точка зупинки (залежить від годинника); fuel повністю детермінований, але дорожчий. Наш тест (wasmtime 50): epoch 0–9%, fuel +50–90% на коді з багатьма викликами функцій, тож fuel — лише для тестів і реплеїв.
-- Ризик: тулінг Component Model ще швидко змінюється — відкріплюємо версії інструментів у SDK.
+- A mature choice: Veloren (a voxel RPG in Rust) already loads plugins via `wasmtime::component` and a WIT file for its API ([Veloren code](https://docs.veloren.net/src/veloren_common_state/plugin/module.rs.html)). For Bevy there is an experimental Wasvy with the same idea ([Wasvy](https://lib.rs/crates/wasvy)).
+- The WIT contract defines types at the binary level, so a mod's incompatibility with the API version is visible before launch ([explanation](https://maddevs.io/writeups/wasm-component-model-practical-guide-part-one/)).
+- Fuel, epoch, and memory limits already exist in the ecosystem ([wasm-link](https://docs.rs/crate/wasm-link/0.4.1)): a hung mod will not stop the server. The cost per Wasmtime documentation: epoch — about 10% slowdown and a non-deterministic stopping point (depends on the clock); fuel is fully deterministic but more expensive. Our test (wasmtime 50): epoch 0–9%, fuel +50–90% on code with many function calls, so fuel is for tests and replays only.
+- Risk: Component Model tooling is still changing quickly — we pin tool versions in the SDK.
 
-### Як мод вбудовується в рушій
+### How a mod plugs into the engine
 
-1. **Реєстри з просторами імен.** Усе має ID виду `mymod:copper_pipe`. Сервер призначає числові ID і передає таблицю клієнту при вході — конфлікти ID неможливі. Числові ID змінюються разом ізо списком модів, тому світ зберігає таблицю «рядковий ID → число», і додання чи видалення мода не перемішує блоки в збереженнях.
-2. **Системи за фазами.** Мод реєструє систему в фазі тіку і декларує доступ (`read: Position`, `write: Health`). Планувальник запускає незалежні системи паралельно, як системи рушія. Store у wasmtime не можна викликати з кількох потоків одночасно, тому кожен потік пулу має свій екземпляр мода. Стан мода живе в компонентах ECS на боці хоста, а лінійна пам'ять — лише чернетка на один виклик. Екземпляр на кожен регіон коштував би 1–15 ГБ (50–150 регіонів × 20–50 модів × 1–2 МБ, оцінка); пул на потік — в десятки разів менше.
-3. **Контекст регіону.** Система отримує доступ лише до свого регіону; до сусідів — через `send_to(pos, msg)`. Тому мод автоматично безпечний для багатопотоковості. Глобальні запити (найближчий гравець у світі, таблиця лідерів) — асинхронні: читають знімок глобального регіону з попереднього тіку, а не живий стан.
-4. **Події і хуки.** `on_block_break`, `on_entity_damage`, `on_player_join` тощо. Події доставляються пачками раз на тік, а не по одній, щоб не платити за перехід хост/гість сотні разів.
-5. **Пакетні зміни світу.** `set_blocks(&[(pos, state)])` замість тисяч `set_block`; перемешування і розсилка об'єднуються. Хост застосовує пачку лише після успішного завершення виклику; якщо мод перервано (epoch, паніка), уся пачка відкидається і світ не лишається напівзміненим.
-6. **Боки клієнт/сервер.** Маніфест каже, де працює кожна частина: `server`, `client`, `both`. Клієнт ніколи не отримує серверний код мода.
-7. **Синхронізація компонентів.** Компонент з позначкою `#[replicate]` рушій сам відправляє клієнтам дельтами в зоні видимості. Це працює лише для модів з боком both: клієнт має знати тип компонента, тож схема реплікованих компонентів входить у версіонований контракт мода.
+1. **Namespaced registries.** Everything has an ID of the form `mymod:copper_pipe`. The server assigns numeric IDs and passes the table to the client on join — ID conflicts are impossible. Numeric IDs change along with the mod list, so the world stores a "string ID → number" table, and adding or removing a mod does not shuffle blocks in saves.
+2. **Systems by phase.** A mod registers a system in a tick phase and declares access (`read: Position`, `write: Health`). The scheduler runs independent systems in parallel, like engine systems. A wasmtime Store cannot be called from several threads at once, so each pool thread has its own mod instance. Mod state lives in ECS components on the host side, and linear memory is only scratch space for a single call. An instance per region would cost 1–15 GB (50–150 regions × 20–50 mods × 1–2 MB, estimate); a per-thread pool is tens of times less.
+3. **Region context.** A system gets access only to its own region; to neighbors — via `send_to(pos, msg)`. So a mod is automatically multithreading-safe. Global queries (the nearest player in the world, the leaderboard) are asynchronous: they read the global region snapshot from the previous tick, not live state.
+4. **Events and hooks.** `on_block_break`, `on_entity_damage`, `on_player_join`, etc. Events are delivered in batches once per tick, not one by one, so as not to pay for the host/guest transition hundreds of times.
+5. **Batched world changes.** `set_blocks(&[(pos, state)])` instead of thousands of `set_block`; remeshing and broadcasting are merged. The host applies a batch only after the call completes successfully; if the mod is interrupted (epoch, panic), the entire batch is discarded and the world is not left half-modified.
+6. **Client/server sides.** The manifest says where each part runs: `server`, `client`, `both`. The client never receives a mod's server code.
+7. **Component synchronization.** A component marked `#[replicate]` is sent by the engine to clients as deltas within the visibility zone. This works only for mods with side both: the client must know the component type, so the schema of replicated components is part of the mod's versioned contract.
 
-### Безпека і контроль
+### Security and control
 
-- Дозволи в маніфесті (`network`, `filesystem:mod_data`). Клієнтський мод за замовчуванням не має доступу до мережі чи файлів.
-- Бюджети на мод: час на тік (epoch interruption), пам'ять (ліміт лінійної пам'яті). При перевищенні — попередження в профайлері, потім припинення мода. Epoch тут — сторож від зависання, а не точний облік: точність дорівнює періоду таймера epoch (напр. 1 мс), а час на тік рахує профайлер. У сценарних тестах (engine-cli test) замість epoch — fuel, щоб прогони були повторювані.
-- Вбудований профайлер показує час кожного мода на тік (команда `/profile mods`).
-- Моди для публічних серверів підписуються (ed25519); лаунчер перевіряє підпис і хеш.
+- Permissions in the manifest (`network`, `filesystem:mod_data`). A client mod has no access to the network or files by default.
+- Per-mod budgets: time per tick (epoch interruption), memory (linear memory limit). On overrun — a warning in the profiler, then the mod is terminated. Epoch here is a watchdog against hangs, not precise accounting: accuracy equals the epoch timer period (e.g. 1 ms), and time per tick is counted by the profiler. In scenario tests (engine-cli test) fuel is used instead of epoch, so runs are repeatable.
+- The built-in profiler shows each mod's time per tick (the `/profile mods` command).
+- Mods for public servers are signed (ed25519); the launcher verifies the signature and hash.
 
-### Версіонування API
+### API versioning
 
-- WIT-пакет `engine:api@1.x` за semver. Мінорні версії лише додають функції, мажорні можуть ламати.
-- Рушій підтримує поточну і попередню мажорні версії через адаптери, тож старі моди живуть щонайменше один цикл оновлень.
-- Залежності між модами за semver у маніфесті; моди можуть експортувати власні WIT-інтерфейси іншим модам.
+- WIT package `engine:api@1.x` under semver. Minor versions only add functions, major ones may break.
+- The engine supports the current and previous major versions via adapters, so old mods live for at least one update cycle.
+- Dependencies between mods follow semver in the manifest; mods can export their own WIT interfaces to other mods.
 
-## 6. Гайд: як писати моди
+## 6. Guide: how to write mods
 
-Мод — це тека з маніфестом, даними, асетами і (за потреби) скомпільованим `.wasm`. Починайте з даних і пишіть код лише для поведінки, яку даними не описати.
+A mod is a folder with a manifest, data, assets, and (if needed) a compiled `.wasm`. Start with data and write code only for behavior that data cannot describe.
 
-### Структура мода
+### Mod structure
 
 ```text
 copper_pipes/
-├─ mod.toml            # маніфест
+├─ mod.toml            # manifest
 ├─ data/
 │  ├─ blocks/copper_pipe.toml
 │  ├─ items/wrench.toml
@@ -206,32 +206,32 @@ copper_pipes/
 │  ├─ textures/block/copper_pipe.png
 │  ├─ models/copper_pipe.json
 │  └─ lang/uk.json
-├─ wit/                # інтерфейси, якщо мод дає API іншим
-└─ src/lib.rs          # код (збирається в server.wasm / client.wasm)
+├─ wit/                # interfaces, if the mod provides an API to others
+└─ src/lib.rs          # code (builds into server.wasm / client.wasm)
 ```
 
-### Маніфест
+### Manifest
 
 ```toml
 [mod]
 id = "copper_pipes"
 version = "0.3.1"
-api = "^1.2"            # версія engine:api
+api = "^1.2"            # engine:api version
 side = "both"
 authors = ["Hi"]
 
 [dependencies]
-core = "^1.0"           # базовий геймплейний мод
+core = "^1.0"           # base gameplay mod
 fluids = { version = "^0.5", optional = true }
 
 [permissions]
 filesystem = "mod_data"
 
 [budget]
-tick_ms = 0.5           # очікуваний час на тік на регіон
+tick_ms = 0.5           # expected time per tick per region
 ```
 
-### Блок даними (без коду)
+### A block via data (no code)
 
 ```toml
 # data/blocks/copper_pipe.toml
@@ -242,16 +242,16 @@ tool = "pickaxe"
 light_emission = 0
 opaque = false
 states = { facing = ["north", "south", "east", "west", "up", "down"] }
-components = ["copper_pipes:flow"]   # поведінка з WASM
+components = ["copper_pipes:flow"]   # behavior from WASM
 ```
 
-### Поведінка кодом (Rust → WASM)
+### Behavior via code (Rust → WASM)
 
 ```rust
 use engine_sdk::prelude::*;
 
 #[derive(Component, Default)]
-#[replicate]                     // клієнт побачить значення
+#[replicate]                     // the client will see the value
 struct Flow { amount: u16 }
 
 #[mod_init]
@@ -261,516 +261,516 @@ fn init(app: &mut ModApp) {
        .on_event(on_wrench_used);
 }
 
-// Доступ задекларовано в сигнатурі: рушій сам розпаралелить
+// Access is declared in the signature: the engine parallelizes it itself
 fn flow_system(region: &mut Region, mut pipes: Query<(&BlockPos, &mut Flow)>) {
     let mut changes = Vec::new();
     for (pos, mut flow) in pipes.iter_mut() {
         let below = *pos + IVec3::NEG_Y;
         if region.contains(below) {
-            // локальна зміна — напряму
+            // local change — directly
             changes.push((below, flow.amount / 2));
         } else {
-            // рідко: буфер регіону зазвичай містить сусіда;
-            // поза регіоном — лише повідомленням (відповідь через 2 тіки)
+            // rare: the region buffer usually contains the neighbor;
+            // outside the region — only by message (reply after 2 ticks)
             region.send_to(below, FlowTransfer(flow.amount / 2));
         }
         flow.amount /= 2;
     }
-    region.apply_flow_batch(&changes); // один виклик хоста замість сотень
+    region.apply_flow_batch(&changes); // one host call instead of hundreds
 }
 ```
 
-### Робочий цикл модера
+### Modder workflow
 
-1. `engine-cli new my_mod` — шаблон з маніфестом і SDK.
-2. `engine-cli dev` — запускає локальний сервер і клієнт, стежить за файлами; дані, асети і `.wasm` перезавантажуються без перезапуску гри. Стан у компонентах хоста переживає перезавантаження; якщо змінилась схема компонента, потрібна міграція або скидання.
-3. `engine-cli test` — headless-сервер запускає сценарні тести мода (світ з фіксованим seed, N тіків, перевірки стану).
-4. `engine-cli bench` — вимірює час мода на тік і пам'ять; падає, якщо виходить за `budget`.
-5. `engine-cli publish` — підписує і викладає в реєстр модів проєкту.
+1. `engine-cli new my_mod` — a template with a manifest and SDK.
+2. `engine-cli dev` — starts a local server and client, watches files; data, assets, and `.wasm` reload without restarting the game. State in host components survives a reload; if the component schema changed, a migration or reset is needed.
+3. `engine-cli test` — a headless server runs the mod's scenario tests (a world with a fixed seed, N ticks, state checks).
+4. `engine-cli bench` — measures the mod's time per tick and memory; fails if it exceeds `budget`.
+5. `engine-cli publish` — signs and uploads to the project's mod registry.
 
-### Правила швидких модів
+### Rules for fast mods
 
-- Усе, що можна описати даними, описуйте даними.
-- Жодного глобального стану: дані живуть у компонентах або ресурсах регіону.
-- До інших регіонів — лише повідомленнями; відповідь прийде не раніше ніж через 2 тіки.
-- Зміни світу — пакетами; один виклик хоста на систему, а не на блок.
-- Рідкісна робота — через `schedule_every(n_ticks)`, а не перевірку кожен тік.
-- Важкі обчислення (патфайндінг, генерація) — через `spawn_job`, результат повертається подією.
-- Клієнтський код не довіряє собі: рішення, що впливають на геймплей, приймає сервер.
+- Anything that can be described with data, describe with data.
+- No global state: data lives in components or region resources.
+- To other regions — only by messages; the reply arrives no earlier than 2 ticks later.
+- World changes — in batches; one host call per system, not per block.
+- Rare work — via `schedule_every(n_ticks)`, not a check every tick.
+- Heavy computation (pathfinding, generation) — via `spawn_job`, the result returns as an event.
+- Client code does not trust itself: decisions that affect gameplay are made by the server.
 
-## 7. Лаунчер
+## 7. Launcher
 
-Рішення (розд. 14, № 9): окремого лаунчера немає — головне меню гри виконує його роль, а крихітний апдейтер оновлює бінарник. Меню робить чотири речі: вхід через Microsoft, перевірку володіння грою, завантаження асетів і синхронізацію модів під конкретний сервер.
+Decision (section 14, no. 9): there is no separate launcher — the game's main menu plays its role, and a tiny updater updates the binary. The menu does four things: Microsoft login, game ownership verification, asset download, and mod synchronization for a specific server.
 
-### Вхід
+### Login
 
-1. Реєструємо Azure-застосунок і подаємо форму на доступ до Minecraft API. Без схвалення `api.minecraftservices.com` повертає 403 ([wiki.vg](https://www.wiki.vg/MSA)).
-2. Device Code Flow або Auth Code + PKCE: Microsoft → Xbox Live → XSTS → токен Minecraft. Готова Rust-реалізація є в `lighty-auth` ([docs](https://hamadi.gitbook.io/lightylauncher/crates/auth/docs/microsoft)).
-3. Перевірка володіння грою — наша робоча гіпотеза, що цей гравець може завантажувати асети Mojang для нашого рушія. Це не юридичний висновок; її перевіряє юрист на етапі 0.
-4. Лаунчер передає токен Minecraft нашому сервісу входу. Той перевіряє профіль і володіння через api.minecraftservices.com, не зберігає токен і видає власний сесійний токен (JWT з підписом Ed25519, 15–60 хв + оновлення). JWT на 24 год не можна швидко відкликати при бані чи крадіжці. Ігрові сервери перевіряють лише наш токен. Токени Microsoft ніколи не потрапляють на ігрові сервери.
-5. Refresh-токен зберігається в системному сховищі секретів (Keychain, Credential Manager, libsecret).
+1. We register an Azure application and submit the form for Minecraft API access. Without approval `api.minecraftservices.com` returns 403 ([wiki.vg](https://www.wiki.vg/MSA)).
+2. Device Code Flow or Auth Code + PKCE: Microsoft → Xbox Live → XSTS → Minecraft token. A ready Rust implementation exists in `lighty-auth` ([docs](https://hamadi.gitbook.io/lightylauncher/crates/auth/docs/microsoft)).
+3. Game ownership verification is our working hypothesis that this player may download Mojang assets for our engine. This is not a legal conclusion; a lawyer checks it at stage 0.
+4. The launcher passes the Minecraft token to our login service. It verifies the profile and ownership via api.minecraftservices.com, does not store the token, and issues its own session token (a JWT signed with Ed25519, 15–60 min + refresh). A 24-hour JWT cannot be quickly revoked on a ban or theft. Game servers verify only our token. Microsoft tokens never reach game servers.
+5. The refresh token is stored in the system secret store (Keychain, Credential Manager, libsecret).
 
-### Асети
+### Assets
 
-- Асети Minecraft беруться з офіційного маніфесту версій і asset index (текстури й моделі з client.jar, звуки з об'єктного сховища) на машині гравця. Ми їх не роздаємо; конвертація формату (нижче) відбувається лише на машині гравця, і це теж питання для юриста.
-- Після завантаження лаунчер конвертує їх у внутрішні формати рушія (масиви текстур, запечені моделі; стиснення BC7 на ПК — лише для HD-паків, бо текстура 16×16 — 1 КБ і так; ASTC для ПК не потрібен) і кешує локально.
-- Рушій має власний набір запасних асетів. Гра не залежить від Mojang технічно, і це страховка на випадок юридичних проблем (див. Ризики).
+- Minecraft assets are taken from the official version manifest and asset index (textures and models from client.jar, sounds from the object storage) on the player's machine. We do not distribute them; format conversion (below) happens only on the player's machine, and this is also a question for a lawyer.
+- After download the launcher converts them into the engine's internal formats (texture arrays, baked models; BC7 compression on PC — only for HD packs, since a 16×16 texture is 1 KB anyway; ASTC is not needed for PC) and caches them locally.
+- The engine has its own set of fallback assets. The game does not depend on Mojang technically, and this is insurance against legal problems (see Risks).
 
-### Моди і оновлення
+### Mods and updates
 
-- Сервер публікує маніфест: версія рушія, список модів з хешами SHA-256 і підписами. Лаунчер докачує лише те, чого немає.
-- Content-addressed кеш: однаковий файл для кількох серверів зберігається раз.
-- Оновлення рушія — бінарні дельти (zstd --patch-from), атомарна заміна, відкат при помилці.
-- Профілі (сервер + набір клієнтських модів), каталог модів, звіти про краші за згодою гравця.
-- Одна кнопка «Грати»: вхід → перевірка версій → докачування → запуск рушія з токеном і адресою сервера.
+- The server publishes a manifest: engine version, list of mods with SHA-256 hashes and signatures. The launcher downloads only what is missing.
+- Content-addressed cache: an identical file shared by several servers is stored once.
+- Engine updates — binary deltas (zstd --patch-from), atomic replacement, rollback on error.
+- Profiles (server + a set of client mods), a mod catalog, crash reports with the player's consent.
+- One "Play" button: login → version check → download → engine launch with the token and server address.
 
-## 8. Сервер і масштабування
+## 8. Server and scaling
 
-Масштаб досягається на двох рівнях: усередині ноди — регіонами на всіх ядрах, між нодами — просторовими шардами з передачею гравців без екранів завантаження.
+Scale is achieved on two levels: inside a node — by regions on all cores, between nodes — by spatial shards with player handoff without loading screens.
 
-### Усередині ноди
+### Inside a node
 
-- Регіони як у розділі 3. За досвідом Folia, найбільше виграють сервери, де гравці розподілені по світу (SMP, Skyblock).
-- Потоки: мережа, IO чанків, генерація, тіки регіонів. На тесті Folia з \~330 гравцями орієнтир був близько 4 мережевих і 3 IO-потоки на 200–300 гравців, а сама Folia радить щонайменше 16 фізичних ядер ([Folia](https://github.com/PaperMC/Folia)). Тому ціль 500 гравців на ноду рахуємо на 16+ ядер. У нас кількість потоків підбирається автоматично за метриками.
-- Передгенерація світу — штатна команда; генерація на льоту — найдорожча частина навантаження.
+- Regions as in section 3. By Folia's experience, servers where players are spread across the world benefit most (SMP, Skyblock).
+- Threads: network, chunk IO, generation, region ticks. In a Folia test with \~330 players the reference was about 4 network and 3 IO threads per 200–300 players, and Folia itself recommends at least 16 physical cores ([Folia](https://github.com/PaperMC/Folia)). So the 500-players-per-node target is computed for 16+ cores. In our case the thread count is tuned automatically from metrics.
+- World pregeneration is a standard command; on-the-fly generation is the most expensive part of the load.
 
-### Мережа
+### Network
 
-- QUIC: надійні потоки для чанків, інвентарю і чату; ненадійні датаграми для позицій сутностей. Датаграма мусить уміщатися в один пакет (\~1200 Б) і теж підлягає контролю перевантаження, тож під час стрімінгу чанків позиції потрібен явний пріоритет.
-- Interest management: клієнт отримує лише сутності в зоні видимості; далекі оновлюються рідше. Оцінка: при 20 Гц і \~12 Б на дельту 20 рухомих сутностей у полі зору дають \~48 Кбіт/с разом із заголовками QUIC, 50 сутностей — \~105 Кбіт/с. Тож ціль 50 Кбіт/с тримається лише з рідшими оновленнями далеких сутностей (5–10 Гц).
-- Дельта-стиснення стану відносно останнього підтвердженого знімка; чанки — zstd зі словником.
-- Пріоритет стрімінгу чанків: спочатку перед камерою і близько, потім LOD, потім решта. Оцінка входу на 12 чанків: 625 колон × 4–16 КБ стисненої колони (припущення) = 2,4–9,8 МБ, тобто 1–4 с при 20 Мбіт/с. Тому метрика «вхід ≤ 5 с» рахує час до керування (3–4 чанки навколо), а решта докачується фоном.
-- Передбачення на клієнті і узгодження (reconciliation) за номером тіку для руху, копання і встановлення блоків.
+- QUIC: reliable streams for chunks, inventory, and chat; unreliable datagrams for entity positions. A datagram must fit in one packet (\~1200 B) and is also subject to congestion control, so during chunk streaming positions need an explicit priority.
+- Interest management: the client receives only entities within the visibility zone; distant ones are updated less often. Estimate: at 20 Hz and \~12 B per delta, 20 moving entities in view give \~48 kbit/s including QUIC headers, 50 entities — \~105 kbit/s. So the 50 kbit/s target holds only with less frequent updates for distant entities (5–10 Hz).
+- Delta compression of state relative to the last acknowledged snapshot; chunks — zstd with a dictionary.
+- Chunk streaming priority: first in front of the camera and close, then LOD, then the rest. Estimate for joining with 12 chunks: 625 columns × 4–16 KB per compressed column (assumption) = 2.4–9.8 MB, i.e. 1–4 s at 20 Mbit/s. So the "join ≤ 5 s" metric counts time until control (3–4 chunks around), and the rest is downloaded in the background.
+- Client-side prediction and reconciliation by tick number for movement, digging, and block placement.
 
-### Шардування між нодами
+### Sharding between nodes
 
-1. **Шлюз (gateway).** Клієнт тримає одне з'єднання зі шлюзом, а шлюз маршрутизує трафік до ноди, що володіє його позицією. Перехід між нодами для гравця непомітний.
-2. **Просторове розбиття.** Світ поділений на клітини (напр. 512×512 блоків). Координатор призначає клітини нодам і перерозподіляє їх за навантаженням (гаряча клітина ділиться).
-3. **Зони перекриття.** Нода бачить край сусіда в режимі лише читання (тіньові копії сутностей), тому гравці бачать одне одного через кордон. Тіньові копії лише для показу: будь-яка дія через кордон (удар, вибух, зміна блоку в зоні перекриття) йде командою на ноду-власника, і її результат приходить із затримкою мережі між нодами.
-4. **Передача сутності (handoff).** Серіалізація компонентів → передача через шину (NATS) → підтвердження → зміна власника. Кожна сутність має номер власності, що росте з кожною передачею; прийом ідемпотентний, команда зі старим номером відкидається, а джерело правди про власника — журнал подій. Core NATS доставляє «не більше одного разу», тож потрібен JetStream («щонайменше один раз» + ідемпотентність) або пряме з'єднання між нодами з підтвердженням. Класичний 2PC зависає, коли падає координатор, тому не беремо його. Під час передачі сутність заморожена 1–2 тіки; клієнт цього не бачить завдяки інтерполяції.
-5. **Глобальні сервіси** окремо: чат, друзі, економіка, аукціони, профілі гравців (PostgreSQL). Моди доступаються до них через асинхронний API.
-6. **Інстанси** (мініігри, данжі, шоу) — окремі світи, які координатор створює на вільних нодах за запитом.
+1. **Gateway.** The client keeps one connection to the gateway, and the gateway routes traffic to the node that owns its position. The transition between nodes is invisible to the player.
+2. **Spatial partitioning.** The world is divided into cells (e.g. 512×512 blocks). The coordinator assigns cells to nodes and redistributes them by load (a hot cell is split).
+3. **Overlap zones.** A node sees the neighbor's edge in read-only mode (shadow copies of entities), so players see each other across the border. Shadow copies are display-only: any action across the border (a hit, an explosion, a block change in the overlap zone) goes as a command to the owner node, and its result arrives with the inter-node network delay.
+4. **Entity handoff.** Serialize components → transfer via the bus (NATS) → acknowledgement → change of owner. Each entity has an ownership number that grows with every handoff; receiving is idempotent, a command with an old number is discarded, and the source of truth about the owner is the event log. Core NATS delivers "at most once", so JetStream ("at least once" + idempotency) or a direct node-to-node connection with acknowledgement is needed. Classic 2PC hangs when the coordinator fails, so we do not use it. During the handoff the entity is frozen for 1–2 ticks; the client does not see this thanks to interpolation.
+5. **Global services** are separate: chat, friends, economy, auctions, player profiles (PostgreSQL). Mods access them through an asynchronous API.
+6. **Instances** (minigames, dungeons, shows) — separate worlds that the coordinator creates on free nodes on request.
 
-### Збереження і надійність
+### Persistence and reliability
 
-- Регіон-файли на спільному сховищі (або S3-сумісному), запис копією (copy-on-write) без зупинки тіку.
-- Журнал подій для економіки і інвентарю: після падіння ноди стан відновлюється без дюпів.
-- Метрики (Prometheus): час тіку по регіонах, час кожного мода, трафік, черги задач.
-- Бот-тести навантаження: headless-клієнти, що ходять, копають і будують, тисячами в CI.
+- Region files on shared storage (or S3-compatible), written copy-on-write without stopping the tick.
+- Event log for economy and inventory: after a node crash state is restored without dupes.
+- Metrics (Prometheus): tick time per region, each mod's time, traffic, task queues.
+- Bot load tests: headless clients that walk, dig, and build, by the thousands in CI.
 
-## 9. Поетапний план
+## 9. Phased plan
 
-Робота розбита на 8 етапів, разом близько 3–4 роки для команди з 3–5 інженерів (оцінка, без джерела). Сума тривалостей етапів 0–6 — 31–34 міс. (≈2,6–2,8 року); решта — запас на ризики. Кожен етап закінчується робочою збіркою і числовим критерієм виходу; без нього наступний етап не починається.
+The work is split into 8 stages, about 3–4 years in total for a team of 3–5 engineers (estimate, no source). The sum of the durations of stages 0–6 is 31–34 months (≈2.6–2.8 years); the rest is a risk reserve. Each stage ends with a working build and a numeric exit criterion; without it the next stage does not start.
 
-### Етап 0. Дослідження і прототипи (2–3 міс.)
+### Stage 0. Research and prototypes (2–3 months)
 
-- [ ] Бенчмарки: мешинг, палітрове сховище, виклики wasmtime, BFS-світло
-- [ ] Прототип GPU-driven рендера на wgpu + fallback для слабких GPU; дамп Features/Limits на iGPU і GTX 1050 (Vulkan, DX12, GL)
-- [ ] Перша версія WIT-контракту `engine:api@0.1`
-- [ ] Подати форму на доступ до Minecraft API; юридична консультація щодо асетів
+- [ ] Benchmarks: meshing, palette storage, wasmtime calls, BFS lighting
+- [ ] GPU-driven renderer prototype on wgpu + fallback for weak GPUs; Features/Limits dump on iGPU and GTX 1050 (Vulkan, DX12, GL)
+- [ ] First version of the WIT contract `engine:api@0.1`
+- [ ] Submit the Minecraft API access form; legal consultation on assets
 
-**Вихід:** усі числа з «Метрик успіху» підтверджені або скориговані бенчмарками; архітектурні рішення зафіксовані в ADR.
+**Exit:** all numbers from "Success metrics" are confirmed or adjusted by benchmarks; architectural decisions are recorded in ADRs.
 
-### Етап 1. Ядро і одиночний світ (6 міс.)
+### Stage 1. Core and single-player world (6 months)
 
-- [ ] ECS-ядро, фази тіку, пул задач з пріоритетами
-- [ ] Секції з палітрою, генератор рельєфу, світло, збереження
-- [ ] Рендер: мешинг, кулінг, масиви текстур, профілі якості
-- [ ] Фізика гравця, копання і встановлення блоків
-- [ ] Завантаження асетів Minecraft з локального кешу + запасні асети
-- [ ] CI з бенчмарками і трейсингом Tracy
+- [ ] ECS core, tick phases, task pool with priorities
+- [ ] Palette sections, terrain generator, lighting, saving
+- [ ] Rendering: meshing, culling, texture arrays, quality profiles
+- [ ] Player physics, digging and placing blocks
+- [ ] Loading Minecraft assets from a local cache + fallback assets
+- [ ] CI with benchmarks and Tracy tracing
 
-**Вихід:** 60 FPS на iGPU при 12 чанках (1% low ≥ 45), RAM ≤ 1,5 ГБ без LOD (ціль з LOD — 2 ГБ), ходіння світом 30 хв без стрибків кадру > 33 мс.
+**Exit:** 60 FPS on iGPU at 12 chunks (1% low ≥ 45), RAM ≤ 1.5 GB without LOD (target with LOD — 2 GB), walking around the world for 30 min without frame spikes > 33 ms.
 
-### Етап 2. Мережа і виділений сервер (4–5 міс.)
+### Stage 2. Network and dedicated server (4–5 months)
 
-- [ ] QUIC-протокол, реплікація компонентів, interest management
-- [ ] Передбачення і узгодження руху
-- [ ] Регіональна багатопотоковість на сервері
-- [ ] Headless-боти для навантажувальних тестів
+- [ ] QUIC protocol, component replication, interest management
+- [ ] Movement prediction and reconciliation
+- [ ] Regional multithreading on the server
+- [ ] Headless bots for load tests
 
-**Вихід:** 200 ботів на одній ноді (8 ядер), тік ≤ 25 мс у p99, трафік ≤ 50 Кбіт/с на гравця в стабільному стані (без стрімінгу чанків, ≤ 20 рухомих сутностей поруч).
+**Exit:** 200 bots on one node (8 cores), tick ≤ 25 ms at p99, traffic ≤ 50 kbit/s per player in steady state (without chunk streaming, ≤ 20 moving entities nearby).
 
-### Етап 3. Модовий API v1 і лаунчер (4 міс.)
+### Stage 3. Mod API v1 and launcher (4 months)
 
-- [ ] Датапаки, WASM-хост, дозволи, бюджети, гаряче перезавантаження
-- [ ] SDK для Rust + `engine-cli` (new / dev / test / bench / publish)
-- [ ] Меню в грі + апдейтер: вхід Microsoft, асети, маніфести модів, оновлення
-- [ ] Реєстр модів з підписами
+- [ ] Datapacks, WASM host, permissions, budgets, hot reload
+- [ ] SDK for Rust + `engine-cli` (new / dev / test / bench / publish)
+- [ ] In-game menu + updater: Microsoft login, assets, mod manifests, updates
+- [ ] Mod registry with signatures
 
-**Вихід:** один тестовий мод даними + один WASM-мод ставляться через лаунчер автоматично; overhead виклику хука ≤ 1 мкс з увімкненим epoch; завислий мод не зупиняє сервер.
+**Exit:** one test data mod + one WASM mod are installed automatically via the launcher; hook call overhead ≤ 1 µs with epoch enabled; a hung mod does not stop the server.
 
-### Етап 4. Базовий геймплей як мод `core` (6 міс.)
+### Stage 4. Base gameplay as the `core` mod (6 months)
 
-- [ ] Блоки, предмети, інвентар, крафт, моби і ШІ, біоми, структури — усе через публічний API
-- [ ] Механічна логіка (аналог редстоуна) з детермінованим порядком
-- [ ] Перші унікальні моди проєкту
+- [ ] Blocks, items, inventory, crafting, mobs and AI, biomes, structures — all through the public API
+- [ ] Mechanical logic (a redstone analog) with deterministic ordering
+- [ ] The project's first unique mods
 
-**Вихід:** закрита альфа на 50 гравців; жодна функція `core` не вимагала приватного API.
+**Exit:** closed alpha for 50 players; no `core` function required a private API.
 
-### Етап 5. LOD і слабке залізо (3–4 міс.)
+### Stage 5. LOD and weak hardware (3–4 months)
 
-- [ ] Кільця LOD, серверні LOD-секції, дисковий кеш
-- [ ] Автовибір профілю якості, тести на парку слабких ПК
+- [ ] LOD rings, server LOD sections, disk cache
+- [ ] Automatic quality profile selection, tests on a fleet of weak PCs
 
-**Вихід:** 64 чанки видимості (12 повних + LOD1–LOD3) при 60 FPS на GTX 1050; RAM ≤ 2 ГБ.
+**Exit:** 64 chunks of visibility (12 full + LOD1–LOD3) at 60 FPS on a GTX 1050; RAM ≤ 2 GB.
 
-### Етап 6. Масштаб: шарди (6 міс.)
+### Stage 6. Scale: shards (6 months)
 
-- [ ] Шлюз, координатор, зони перекриття, handoff
-- [ ] Глобальні сервіси, інстанси, метрики
+- [ ] Gateway, coordinator, overlap zones, handoff
+- [ ] Global services, instances, metrics
 
-**Вихід:** 5 000 ботів на кластері з 10 нод (≈500 на ноду з 16 ядрами, тік ≤ 25 мс у p99 — це перша перевірка метрики «500 на ноду»); перехід між нодами без дюпів і втрат предметів у 10 000 автотестах.
+**Exit:** 5,000 bots on a 10-node cluster (≈500 per 16-core node, tick ≤ 25 ms at p99 — this is the first check of the "500 per node" metric); transitions between nodes without dupes or item loss in 10,000 automated tests.
 
-### Етап 7. Відкритий бета-тест і відкритий SDK (постійно)
+### Stage 7. Open beta and open SDK (ongoing)
 
-- [ ] Документація API, приклади, SDK для другої мови (AssemblyScript або Zig)
-- [ ] Античит, модерація реєстру модів
+- [ ] API documentation, examples, SDK for a second language (AssemblyScript or Zig)
+- [ ] Anti-cheat, mod registry moderation
 
-**Вихід:** сторонні автори випускають моди без допомоги команди.
+**Exit:** third-party authors release mods without the team's help.
 
-Реалістичний шлях для невеликої команди: поки тривають етапи 0–3, спільнота живе на сервері Fabric + Folia. Там перевіряються ідеї модів, які потім переносяться на новий рушій.
+A realistic path for a small team: while stages 0–3 are underway, the community lives on a Fabric + Folia server. Mod ideas are tested there and later ported to the new engine.
 
-## 10. Ризики
+## 10. Risks
 
-Найбільший ризик не технічний, а юридичний і обсяговий: асети Mojang у сторонньому рушії — сіра зона, а обсяг робіт — роки. Обидва ризики знижуються однаково: рушій має працювати зі своїми асетами і рости етапами.
+The biggest risk is not technical but legal and scope-related: Mojang assets in a third-party engine are a gray area, and the scope of work is years. Both risks are reduced the same way: the engine must work with its own assets and grow in stages.
 
-| Ризик | Ймовірність | Вплив | Що робимо |
+| Risk | Probability | Impact | What we do |
 | --- | --- | --- | --- |
-| Асети Mojang у не-Minecraft рушії порушують EULA або Usage Guidelines | середня | високий | Юридична консультація на етапі 0; асети лише з офіційних серверів для власників гри; власний повний набір асетів до відкритого релізу |
-| Microsoft не схвалить Azure-застосунок або відкличе доступ | середня | високий | Власні акаунти як запасний спосіб входу; сесійний токен не залежить від Microsoft |
-| Назва або бренд звучать як «Minecraft» | низька | середній | Власна назва і логотип; формула «не пов'язано з Mojang» |
-| Обсяг робіт перевищить сили команди | висока | високий | Жорсткі критерії виходу; паралельний сервер на Fabric + Folia для спільноти і доходу |
-| Поломки API `bevy_ecs` і `wgpu` | висока | середній | Відкріплені версії, тонкий шар абстракції, планові оновлення раз на півроку |
-| Тулінг Component Model ще нестабільний | середня | середній | Відкріплені версії в SDK; запасний варіант — core-модулі з власним ABI |
-| Overhead WASM вищий за очікуваний | середня | середній | Пакетні API, бенчмарк на етапі 0; гарячі системи `core` можна перенести в нативний плагін |
-| Старі GPU без compute чи indirect draw | середня | середній | CPU-fallback кулінгу з тим самим форматом даних; квад як per-instance атрибут, бо на GL ES/WebGL2 немає storage-буферів; дамп Features/Limits на цільових GPU на етапі 0 |
-| Дюпи предметів при handoff між шардами | середня | високий | Номер власності + ідемпотентний прийом, журнал подій, автотести на падіння нод |
+| Mojang assets in a non-Minecraft engine violate the EULA or Usage Guidelines | medium | high | Legal consultation at stage 0; assets only from official servers for game owners; our own full asset set before the open release |
+| Microsoft does not approve the Azure application or revokes access | medium | high | Own accounts as a fallback login method; the session token does not depend on Microsoft |
+| The name or brand sounds like "Minecraft" | low | medium | Own name and logo; the "not affiliated with Mojang" formula |
+| Scope of work exceeds the team's capacity | high | high | Strict exit criteria; a parallel Fabric + Folia server for the community and revenue |
+| Breaking changes in the `bevy_ecs` and `wgpu` APIs | high | medium | Pinned versions, a thin abstraction layer, scheduled updates twice a year |
+| Component Model tooling is still unstable | medium | medium | Pinned versions in the SDK; fallback — core modules with a custom ABI |
+| WASM overhead higher than expected | medium | medium | Batched APIs, a benchmark at stage 0; hot `core` systems can be moved into a native plugin |
+| Old GPUs without compute or indirect draw | medium | medium | CPU culling fallback with the same data format; quad as a per-instance attribute, since GL ES/WebGL2 has no storage buffers; Features/Limits dump on target GPUs at stage 0 |
+| Item dupes during handoff between shards | medium | high | Ownership number + idempotent receiving, event log, automated tests for node crashes |
 
-Я не юрист; юридичні рядки таблиці — відкриті питання для консультації, а не висновки.
+I am not a lawyer; the legal rows of the table are open questions for consultation, not conclusions.
 
-## 11. Джерела
+## 11. Sources
 
-- [binary-greedy-meshing 0.4.2 — бенчмарки мешингу](https://docs.rs/crate/binary-greedy-meshing/0.4.2)
-- [Folia — регіональна багатопотоковість (офіційний репозиторій PaperMC)](https://github.com/PaperMC/Folia)
-- [Valence — Rust-фреймворк сервера на Bevy ECS](https://www.sourceforge.net/projects/valence.mirror)
-- [Pumpkin — Rust-сервер Minecraft](https://minecraft.how/blog/post/pumpkin-rust-minecraft-server-guide)
-- [Veloren — плагіни на wasmtime::component](https://docs.veloren.net/src/veloren_common_state/plugin/module.rs.html)
-- [Wasvy — WASM-моди для Bevy](https://lib.rs/crates/wasvy)
-- [wasm-link — ліміти fuel/epoch/пам'яті](https://docs.rs/crate/wasm-link/0.4.1)
-- [WASM Component Model на практиці](https://maddevs.io/writeups/wasm-component-model-practical-guide-part-one/)
-- [Distant Horizons — опис LOD](https://distant-horizons-guide.pages.dev/about)
-- [Aokana — GPU-driven воксельний рендер (arXiv)](https://arxiv.org/html/2505.02017v1)
+- [binary-greedy-meshing 0.4.2 — meshing benchmarks](https://docs.rs/crate/binary-greedy-meshing/0.4.2)
+- [Folia — regional multithreading (official PaperMC repository)](https://github.com/PaperMC/Folia)
+- [Valence — a Rust server framework on Bevy ECS](https://www.sourceforge.net/projects/valence.mirror)
+- [Pumpkin — a Rust Minecraft server](https://minecraft.how/blog/post/pumpkin-rust-minecraft-server-guide)
+- [Veloren — plugins on wasmtime::component](https://docs.veloren.net/src/veloren_common_state/plugin/module.rs.html)
+- [Wasvy — WASM mods for Bevy](https://lib.rs/crates/wasvy)
+- [wasm-link — fuel/epoch/memory limits](https://docs.rs/crate/wasm-link/0.4.1)
+- [WASM Component Model in practice](https://maddevs.io/writeups/wasm-component-model-practical-guide-part-one/)
+- [Distant Horizons — LOD description](https://distant-horizons-guide.pages.dev/about)
+- [Aokana — GPU-driven voxel rendering (arXiv)](https://arxiv.org/html/2505.02017v1)
 - [Microsoft Authentication Scheme (wiki.vg)](https://www.wiki.vg/MSA)
-- [lighty-auth — вхід Microsoft на Rust](https://hamadi.gitbook.io/lightylauncher/crates/auth/docs/microsoft)
-- [Folia region logic — злиття, розділення, буфер регіону](https://docs.papermc.io/folia/reference/region-logic)
-- [Wasmtime — epoch і fuel: ціна й детермінізм](https://docs.wasmtime.dev/examples-interrupting-wasm.html)
+- [lighty-auth — Microsoft login in Rust](https://hamadi.gitbook.io/lightylauncher/crates/auth/docs/microsoft)
+- [Folia region logic — merging, splitting, region buffer](https://docs.papermc.io/folia/reference/region-logic)
+- [Wasmtime — epoch and fuel: cost and determinism](https://docs.wasmtime.dev/examples-interrupting-wasm.html)
 - [wgpu Features — MULTI\_DRAW\_INDIRECT\_COUNT, INDIRECT\_FIRST\_INSTANCE](https://docs.rs/wgpu/latest/wgpu/struct.Features.html)
-- [wgpu Limits — storage-буфери, масиви текстур, WebGL2](https://docs.rs/wgpu/latest/wgpu/struct.Limits.html)
-- [binary-greedy-meshing 0.6.4 — довільний розмір чанку, формат квада](https://docs.rs/binary-greedy-meshing/latest/binary_greedy_meshing/)
-- [NATS JetStream — гарантії доставки](https://docs.nats.io/nats-concepts/jetstream)
+- [wgpu Limits — storage buffers, texture arrays, WebGL2](https://docs.rs/wgpu/latest/wgpu/struct.Limits.html)
+- [binary-greedy-meshing 0.6.4 — arbitrary chunk size, quad format](https://docs.rs/binary-greedy-meshing/latest/binary_greedy_meshing/)
+- [NATS JetStream — delivery guarantees](https://docs.nats.io/nats-concepts/jetstream)
 
-## 12. Журнал рецензії
+## 12. Review log
 
-Рецензія знайшла три серйозні помилки механік (меш-чанк 62³ не сумісний із секціями 16³, стан WASM-модів при паралельних регіонах, 2PC поверх core NATS) і кілька завищених чи неперевірених чисел. Тести запущені на 2-ядерному VM без GPU (±30%); розрахунки — оцінки з названими припущеннями.
+The review found three serious mechanics errors (a 62³ mesh chunk is incompatible with 16³ sections, WASM mod state under parallel regions, 2PC on top of core NATS) and several inflated or unverified numbers. Tests were run on a 2-core VM without a GPU (±30%); calculations are estimates with named assumptions.
 
-| Розділ | Що було | Що виправлено / чому | Перевірка (джерело або тест) |
+| Section | What it was | What was fixed / why | Verification (source or test) |
 | --- | --- | --- | --- |
-| 4. Мешинг | Меш-чанк 62³ «групує секції 16³»; перемешування «лише секції» | 62 не ділиться на 16 → меш-чанк 32³ (або 48³), перемешування — цілого меш-чанку | Код крейта 0.6.4: `Mesher<const CS>` з CS ≤ 62 |
-| 1, 4. Мешинг | 65/90 мкс без застережень; метрика ≤ 0,2 мс для «чанку» | Уточнено: це fast\_mesh із готовими масками; метрика — для 32³, позначена непідтвердженою | [docs.rs 0.4.2](https://docs.rs/crate/binary-greedy-meshing/0.4.2): mesh 300–340 мкс; тест VM: fast\_mesh 0,27 мс, mesh 1,1 мс, маски 0,35 мс |
-| 4. Квад 8 Б | «Позиція, розмір, тип і світло в u64»; «8–10× менше VRAM» | Згладжене світло й AO не вміщаються та ламають жадібне злиття → світло з 3D-текстури; виграш 12–19× | Бітова схема з README 0.6.4; розрахунок `review/budget.py` |
-| 4. GPU-driven | «Весь світ за 1–3 виклики» скрізь; fallback «той самий формат» | MDI count лише DX12/Vulkan 1.2+; без нього емуляція і instance\_count = 0; на GL ES/WebGL2 квад як per-instance атрибут; ліміти 128/256 МіБ і 256 шарів; другий прохід Hi-Z | [wgpu Features](https://docs.rs/wgpu/latest/wgpu/struct.Features.html), [wgpu Limits](https://docs.rs/wgpu/latest/wgpu/struct.Limits.html) (wgpu 30) |
-| 4. LOD | «Секції з вокселем 32³» (більше за секцію); формат «висота + колір» при 3D-кільцях | LOD n = 16³ вокселів по 2ⁿ блоків; той самий палітровий формат; до 64 чанків досить LOD0–LOD3; спідниці проти щілин; +14% обсягу | Арифметика: 12·2ⁿ = 24…384 |
-| 3. Регіони | Сусідні регіони спілкуються запит/відповідь у тому ж тіку; злиття без правил | Інваріант буфера як у Folia (локальні дії не виходять за регіон), злиття після тіку; відповідь через ≥ 2 тіки | [Folia region logic](https://docs.papermc.io/folia/reference/region-logic) |
-| 3. Детермінізм | «Редстоун повторюваний» з lock-free чергами | Сортування повідомлень у Exchange; гарантія лише при тому самому розбитті на регіони | Аналіз механіки |
-| 3, 4. Пам'ять, світло | Немає бюджету пам'яті чанків; світло в пулі без синхронізації з тіком; видалення світла не описане | Додано числа RAM, хеш-індекс палітри, знімок секцій, зворотний BFS, інкрементне оновлення | Тест VM: 15 000 секцій ≈ 17 МіБ + світло 59 МіБ; set 8 біт 67 нс; релайт 3×3×3 1,4–2,2 мс |
-| 5. WASM-стан | «Рушій сам паралелізує моди» без моделі екземплярів | Екземпляр на потік, стан у компонентах хоста (без 1–15 ГБ на екземпляри по регіонах); гаряче перезавантаження зберігає стан | Оцінка `review/budget.py`; тест VM: Store + інстанціювання 4,2 мкс |
-| 5. Epoch/fuel | Бюджет часу через epoch без ціни й впливу на детермінізм | Epoch — сторож у проді, fuel — у тестах; пачка змін відкидається при перериванні | [Wasmtime](https://docs.wasmtime.dev/examples-interrupting-wasm.html): epoch \~10%; тест VM: epoch 0–9%, fuel +50–90% |
-| 5. Виклик хука | «≤ 1 мкс» без даних | Додано цифри; пакетні API обов'язкові | Тест VM: core 17–35 нс, компонент \~0,4 мкс; 1 000 викликів 0,5 мс проти \~3 мкс пачкою |
-| 5. Реєстри, синхронізація | Числові ID без таблиці в збереженні; #\[replicate\] для будь-якого мода; глобальні запити не описані | Таблиця ID у світі; replicate лише для both; глобальні запити — знімок попереднього тіку | Аналіз механіки |
-| 7. Вхід | JWT на 24 год; не сказано, як перевіряється токен Minecraft | Сервіс входу перевіряє профіль і володіння, JWT 15–60 хв + оновлення, щоб бан діяв швидко | [wiki.vg MSA](https://www.wiki.vg/MSA): ланцюжок токенів, 403 без схвалення, секрет не потрібен |
-| 7. Асети | «Володіння — наша підстава»; «не змінюємо», але конвертуємо; BC7/ASTC | Робоча гіпотеза до юриста; локальна конвертація — теж питання юристу; ASTC прибрано для ПК | Читання тексту (не юридична перевірка) |
-| 8. Мережа | Ціль 50 Кбіт/с і вхід ≤ 5 с без розрахунку | Оцінки: 20 сутностей ≈ 48 Кбіт/с, 50 ≈ 105; вхід 1–4 с при 20 Мбіт/с; ліміт датаграми \~1200 Б | `review/budget.py` (припущення про розмір дельти і колони); zstd-тест непридатний (синтетичні дані) |
-| 8, 10. Шарди | «Двофазний протокол» поверх NATS; тіньові копії без правил для дій через кордон | Номер власності + ідемпотентний прийом + JetStream або прямий канал; дії через кордон — команда власнику | [NATS JetStream](https://docs.nats.io/nats-concepts/jetstream): core = at most once |
-| 8. Сервер | Досилання на форк jdkeke142/Folia; 500 на ноду без заліза | Офіційний PaperMC/Folia; «16+ ядер» у цілях і виході етапу 6 | [Folia](https://github.com/PaperMC/Folia): ≥ 16 ядер, \~330 гравців на тесті |
-| 9. План | 3–4 роки без розкладу; виходи етапів не зв'язані з метриками (500/ноду ніде не перевіряється; RAM 1,5 проти 2 ГБ) | Сума етапів 31–34 міс.; виходи етапів 1, 2, 3, 5, 6 уточнені; дамп можливостей GPU у етапі 0 | Арифметика тривалостей |
-| 5. Veloren | — | Залишено без змін: твердження підтверджене | [Код Veloren](https://docs.veloren.net/src/veloren_common_state/plugin/module.rs.html): `wasmtime::component`, `bindgen!` з WIT |
+| 4. Meshing | A 62³ mesh chunk "groups 16³ sections"; remeshing "sections only" | 62 is not divisible by 16 → a 32³ mesh chunk (or 48³), remeshing of the whole mesh chunk | Crate 0.6.4 code: `Mesher<const CS>` with CS ≤ 62 |
+| 1, 4. Meshing | 65/90 µs without caveats; metric ≤ 0.2 ms for a "chunk" | Clarified: this is fast\_mesh with ready masks; the metric is for 32³, marked as unconfirmed | [docs.rs 0.4.2](https://docs.rs/crate/binary-greedy-meshing/0.4.2): mesh 300–340 µs; VM test: fast\_mesh 0.27 ms, mesh 1.1 ms, masks 0.35 ms |
+| 4. Quad 8 B | "Position, size, type, and light in a u64"; "8–10× less VRAM" | Smooth light and AO do not fit and break greedy merging → light from a 3D texture; gain 12–19× | Bit layout from README 0.6.4; calculation `review/budget.py` |
+| 4. GPU-driven | "The whole world in 1–3 draw calls" everywhere; fallback "the same format" | MDI count only on DX12/Vulkan 1.2+; without it emulation and instance\_count = 0; on GL ES/WebGL2 the quad as a per-instance attribute; limits 128/256 MiB and 256 layers; second Hi-Z pass | [wgpu Features](https://docs.rs/wgpu/latest/wgpu/struct.Features.html), [wgpu Limits](https://docs.rs/wgpu/latest/wgpu/struct.Limits.html) (wgpu 30) |
+| 4. LOD | "Sections with a 32³ voxel" (larger than a section); "height + color" format with 3D rings | LOD n = 16³ voxels of 2ⁿ blocks; the same palette format; up to 64 chunks LOD0–LOD3 is enough; skirts against gaps; +14% volume | Arithmetic: 12·2ⁿ = 24…384 |
+| 3. Regions | Neighboring regions communicate request/response in the same tick; merging without rules | Buffer invariant as in Folia (local actions do not leave the region), merge after the tick; reply after ≥ 2 ticks | [Folia region logic](https://docs.papermc.io/folia/reference/region-logic) |
+| 3. Determinism | "Redstone is repeatable" with lock-free queues | Sorting of messages in Exchange; guarantee only with the same region partitioning | Mechanics analysis |
+| 3, 4. Memory, lighting | No chunk memory budget; lighting in the pool not synchronized with the tick; light removal not described | Added RAM numbers, palette hash index, section snapshot, reverse BFS, incremental update | VM test: 15,000 sections ≈ 17 MiB + light 59 MiB; 8-bit set 67 ns; relight 3×3×3 1.4–2.2 ms |
+| 5. WASM state | "The engine parallelizes mods itself" without an instance model | An instance per thread, state in host components (without 1–15 GB for per-region instances); hot reload preserves state | `review/budget.py` estimate; VM test: Store + instantiation 4.2 µs |
+| 5. Epoch/fuel | Time budget via epoch without cost or effect on determinism | Epoch is a watchdog in prod, fuel — in tests; a batch of changes is discarded on interruption | [Wasmtime](https://docs.wasmtime.dev/examples-interrupting-wasm.html): epoch \~10%; VM test: epoch 0–9%, fuel +50–90% |
+| 5. Hook call | "≤ 1 µs" without data | Added numbers; batched APIs are mandatory | VM test: core 17–35 ns, component \~0.4 µs; 1,000 calls 0.5 ms vs \~3 µs as a batch |
+| 5. Registries, synchronization | Numeric IDs without a table in the save; #\[replicate\] for any mod; global queries not described | ID table in the world; replicate only for both; global queries — a snapshot of the previous tick | Mechanics analysis |
+| 7. Login | A 24-hour JWT; not stated how the Minecraft token is verified | The login service verifies profile and ownership, JWT 15–60 min + refresh so that a ban takes effect quickly | [wiki.vg MSA](https://www.wiki.vg/MSA): token chain, 403 without approval, no secret needed |
+| 7. Assets | "Ownership is our basis"; "we do not modify" but we convert; BC7/ASTC | Working hypothesis pending a lawyer; local conversion is also a question for the lawyer; ASTC removed for PC | Text reading (not a legal check) |
+| 8. Network | Target 50 kbit/s and join ≤ 5 s without calculation | Estimates: 20 entities ≈ 48 kbit/s, 50 ≈ 105; join 1–4 s at 20 Mbit/s; datagram limit \~1200 B | `review/budget.py` (assumptions about delta and column size); zstd test unsuitable (synthetic data) |
+| 8, 10. Shards | A "two-phase protocol" on top of NATS; shadow copies without rules for actions across the border | Ownership number + idempotent receiving + JetStream or a direct channel; actions across the border — a command to the owner | [NATS JetStream](https://docs.nats.io/nats-concepts/jetstream): core = at most once |
+| 8. Server | A reference to the jdkeke142/Folia fork; 500 per node without hardware | Official PaperMC/Folia; "16+ cores" in the targets and the stage 6 exit | [Folia](https://github.com/PaperMC/Folia): ≥ 16 cores, \~330 players in the test |
+| 9. Plan | 3–4 years without a schedule; stage exits not tied to metrics (500/node is never checked; RAM 1.5 vs 2 GB) | Sum of stages 31–34 months; exits of stages 1, 2, 3, 5, 6 refined; GPU capability dump in stage 0 | Duration arithmetic |
+| 5. Veloren | — | Left unchanged: the claim is confirmed | [Veloren code](https://docs.veloren.net/src/veloren_common_state/plugin/module.rs.html): `wasmtime::component`, `bindgen!` from WIT |
 
-### Відкриті питання
+### Open questions
 
-- Розмір меш-чанку — вирішено: 32³. Зайві draw-команди компенсуємо пакетами 2×2×2 меш-чанки (розд. 14).
-- Чи потрібен веб-клієнт (WebGL2)? Якщо ні, GL-шлях можна лишити мінімальним.
-- Детермінізм: чи треба реплеї сервера з побітовим збігом? Тоді розбиття на регіони треба журналювати, а моди — з fuel (+50–90%).
-- Джерело правди для власника сутності між шардами: JetStream чи PostgreSQL з версією запису?
-- Передавати токен Minecraft на власний сервіс входу — чи дозволяють це умови Microsoft? Питання до юриста разом із асетами.
-- Реальний розмір стисненої колони і серверна RAM на 500 розпорошених гравців — поміряти на справжньому світі (синтетичний zstd-тест не підходить).
-- Тік 25 мс при 500 гравцях, MDI на iGPU і GTX 1050, 60 FPS — не перевірені (немає GPU і сервера в тестах).
+- Mesh chunk size — decided: 32³. The extra draw commands are compensated by 2×2×2 mesh chunk batches (section 14).
+- Is a web client (WebGL2) needed? If not, the GL path can be kept minimal.
+- Determinism: are bit-exact server replays needed? Then the region partitioning must be logged, and mods run with fuel (+50–90%).
+- Source of truth for an entity's owner between shards: JetStream or PostgreSQL with a record version?
+- Passing the Minecraft token to our own login service — do Microsoft's terms allow it? A question for the lawyer together with assets.
+- The real size of a compressed column and server RAM for 500 scattered players — measure on a real world (a synthetic zstd test is not suitable).
+- Tick 25 ms at 500 players, MDI on iGPU and GTX 1050, 60 FPS — not verified (no GPU or server in the tests).
 
-## 13. Аналіз оптимізацій: рекомендації
+## 13. Optimization analysis: recommendations
 
-**Головний висновок.** Цілі по пам'яті клієнта (≤ 2 ГБ) і по оверхеду мод-хуків (≤ 1 мкс) реалістичні з запасом. Меш-бюджет 0,2 мс досяжний лише для `fast_mesh` з підтримуваними масками. Справжні вузькі місця — не меш і не WASM, а збір даних у меш-юніт (gather/маски ≈ 0,35 мс), інкрементальне світло, пам'ять сервера при 500 гравцях і пропускна здатність вершин на iGPU. Серверні цілі (25 мс @ 500 гравців, 5000+ з шардингом) поки не підкріплені жодним тестом і мають статус гіпотези.
+**Main conclusion.** The client memory target (≤ 2 GB) and the mod hook overhead target (≤ 1 µs) are realistic with headroom. The 0.2 ms mesh budget is reachable only for `fast_mesh` with maintained masks. The real bottlenecks are not the mesh or WASM, but gathering data into a mesh unit (gather/masks ≈ 0.35 ms), incremental lighting, server memory at 500 players, and vertex throughput on iGPU. The server targets (25 ms @ 500 players, 5000+ with sharding) are not yet backed by any test and have the status of a hypothesis.
 
-**Рішення щодо меш-чанку: 32³** (розд. 14). Цей аналіз рахував на юніті 62³; числа пропорційно перераховуються на 32³ (≈ 1/7,3 вокселів на юніт, ≈ 7× більше юнітів). Кількість draw-команд лишається як у 62³ завдяки пакетам 2×2×2.
+**Mesh chunk decision: 32³** (section 14). This analysis computed on a 62³ unit; the numbers scale proportionally to 32³ (≈ 1/7.3 voxels per unit, ≈ 7× more units). The number of draw commands stays as with 62³ thanks to 2×2×2 batches.
 
-### 13.0 Як читати цей розділ
+### 13.0 How to read this section
 
-- Джерела: бенчмарки на зашумленій VM (2 vCPU Xeon 2,1 ГГц, похибка ±30 %), веб-ресьорч, сирі логи бенчів.
-- Додатково прогнано мешинг з `-C target-cpu=x86-64-v3`: `fast_mesh` 262–291 мкс проти 269–302 мкс базово — у межах шуму.
-- Перевірено docs.rs: wgpu 30.0.2 має `DownlevelFlags::VERTEX_STORAGE` та `INDIRECT_EXECUTION` (немає на WebGL2, GLES 3.0, Apple1/2). quinn 0.11.12 має `SendStream::set_priority`.
-- Позначки: **\[тест\]** — виміряно; **\[джерело\]** — цитоване джерело; **\[оцінка\]** — арифметика або припущення.
+- Sources: benchmarks on a noisy VM (2 vCPU Xeon 2.1 GHz, error ±30 %), web research, raw benchmark logs.
+- Meshing was additionally run with `-C target-cpu=x86-64-v3`: `fast_mesh` 262–291 µs vs 269–302 µs baseline — within noise.
+- Checked on docs.rs: wgpu 30.0.2 has `DownlevelFlags::VERTEX_STORAGE` and `INDIRECT_EXECUTION` (absent on WebGL2, GLES 3.0, Apple1/2). quinn 0.11.12 has `SendStream::set_priority`.
+- Labels: **\[test\]** — measured; **\[source\]** — cited source; **\[estimate\]** — arithmetic or assumption.
 
-### 13.1 Де ресьорч і тести розходяться
+### 13.1 Where research and tests diverge
 
-| Тема | Ресьорч | Тести | Чому довіряю |
+| Topic | Research | Tests | Why I trust it |
 | --- | --- | --- | --- |
-| Час мешу | 50–200 мкс (без прозорості); \~600 мкс з прозорістю | `mesh()` 1,1 мс; `fast_mesh` 0,27 мс (VM, 8 % прозорих) | Тестам — для відносних висновків (`fast_mesh` у 4× швидший). Ресьорч описує стару версію крейта. |
-| Версія крейта | 0.3.6 | 0.6.4 (є `fast_mesh`, `mesh_lod`) | Тестам (Cargo.lock). |
-| Epoch | \~10 % (документація Wasmtime) | 0–9 % | Узгоджено. |
-| Fuel | «дорожче за epoch», без чисел | +50–92 % на `fib(35)`, \~0–2 % на тісному циклі | Тестам. |
-| Пакування палітри | «індекси можуть перетинати long» | Без перетину, як у MC 1.16+ | Тестовому варіанту: простіший і швидший доступ. |
-| zstd для регіонів | Linear: −50–60 % (без методики) | Синтетика: нереальні 19–184× | Жодному для абсолютних чисел. |
+| Mesh time | 50–200 µs (without transparency); \~600 µs with transparency | `mesh()` 1.1 ms; `fast_mesh` 0.27 ms (VM, 8 % transparent) | The tests — for relative conclusions (`fast_mesh` is 4× faster). The research describes an old crate version. |
+| Crate version | 0.3.6 | 0.6.4 (has `fast_mesh`, `mesh_lod`) | The tests (Cargo.lock). |
+| Epoch | \~10 % (Wasmtime documentation) | 0–9 % | Consistent. |
+| Fuel | "more expensive than epoch", no numbers | +50–92 % on `fib(35)`, \~0–2 % on a tight loop | The tests. |
+| Palette packing | "indices may cross a long" | No crossing, as in MC 1.16+ | The test variant: simpler and faster access. |
+| zstd for regions | Linear: −50–60 % (no methodology) | Synthetic: unrealistic 19–184× | Neither, for absolute numbers. |
 
-### 13.2 Мешинг
+### 13.2 Meshing
 
-**Рішення:** `binary-greedy-meshing` 0.6.4, режим `fast_mesh`, маски opaque/transparent підтримуються інкрементально. Запасний варіант: власний порт cgerikj v2 під інший розмір юніта.
+**Decision:** `binary-greedy-meshing` 0.6.4, `fast_mesh` mode, opaque/transparent masks maintained incrementally. Fallback: our own port of cgerikj v2 for a different unit size.
 
-| Мешер \[тест, юніт 62³\] | Медіана | p95 | Квадів | Байт (8 Б/квад) |
+| Mesher \[test, 62³ unit\] | Median | p95 | Quads | Bytes (8 B/quad) |
 | --- | --- | --- | --- | --- |
-| `mesh()` | 1083–1178 мкс | 1540–1990 мкс | 4962 | 39 КБ |
-| `fast_mesh` (готові маски) | 269–278 мкс | 457–556 мкс | 4962 | 39 КБ |
-| наївний | 898 мкс | 1425 мкс | 11762 | 92 КБ |
-| побудова масок з нуля | 341–366 мкс | 550–636 мкс | — | — |
-| порожній / суцільний юніт | 52 мкс | \~66 мкс | 0 | 0 |
+| `mesh()` | 1083–1178 µs | 1540–1990 µs | 4962 | 39 KB |
+| `fast_mesh` (ready masks) | 269–278 µs | 457–556 µs | 4962 | 39 KB |
+| naive | 898 µs | 1425 µs | 11762 | 92 KB |
+| building masks from scratch | 341–366 µs | 550–636 µs | — | — |
+| empty / solid unit | 52 µs | \~66 µs | 0 | 0 |
 
-**Перегляд цілі «≤ 0,2 мс/чанк»:**
+**Revision of the "≤ 0.2 ms/chunk" target:**
 
-- `fast_mesh` ≤ 0,3 мс p50 і ≤ 0,6 мс p95 на юніт 62³ на референсному 4-ядерному CPU;
-- повний конвеєр (gather + маски + меш) ≤ 0,5 мс p50 на юніт;
-- пропуск порожніх і суцільних юнітів за метаданими секцій, без виклику мешера.
+- `fast_mesh` ≤ 0.3 ms p50 and ≤ 0.6 ms p95 per 62³ unit on a reference 4-core CPU;
+- full pipeline (gather + masks + mesh) ≤ 0.5 ms p50 per unit;
+- skip empty and solid units based on section metadata, without calling the mesher.
 
-**Навантаження** \[оцінка, повний конвеєр ≈ 0,62 мс\]: радіус 12 чанків ≈ 260 юнітів 62³. Два воркери встигають ≈ 53 юніти за кадр, повна перебудова ≈ 5 кадрів. Правка блоку на межі зачіпає до 4–8 юнітів ≈ 2,5 мс — встигає в той самий кадр. Висновок: CPU-час мешингу не вузьке місце; вузьке місце — gather і маски.
+**Load** \[estimate, full pipeline ≈ 0.62 ms\]: a 12-chunk radius ≈ 260 units of 62³. Two workers manage ≈ 53 units per frame, a full rebuild ≈ 5 frames. A block edit on a border affects up to 4–8 units ≈ 2.5 ms — fits in the same frame. Conclusion: CPU meshing time is not the bottleneck; the bottleneck is gather and masks.
 
-| Ризик | Експеримент | Поріг |
+| Risk | Experiment | Threshold |
 | --- | --- | --- |
-| Gather з палітри через `get()` ≈ 1 мс на юніт \[оцінка\] | Масове розпакування секції в буфер 64³, маски прямо з палітри | gather + маски ≤ 100 мкс p50 |
-| Інкрементальні маски не реалізовані | Оновлення бітів при `set_block`, 10 000 правок | ≤ 20 нс на правку |
-| Сітка 62 не кратна 16 | Проптести індексної математики на межах | 0 розбіжностей з еталоном |
-| AO не виміряно | AO-біти у квад | ≤ +30 % до `fast_mesh` |
-| Десктопний CPU не тестувався | Той самий бенч на 4+ ГГц | `fast_mesh` ≤ 0,2 мс p50 |
+| Gather from the palette via `get()` ≈ 1 ms per unit \[estimate\] | Bulk unpacking of a section into a 64³ buffer, masks straight from the palette | gather + masks ≤ 100 µs p50 |
+| Incremental masks not implemented | Bit updates on `set_block`, 10,000 edits | ≤ 20 ns per edit |
+| The 62 grid is not a multiple of 16 | Proptests of index math at borders | 0 mismatches with the reference |
+| AO not measured | AO bits in the quad | ≤ +30 % to `fast_mesh` |
+| Desktop CPU not tested | The same bench on 4+ GHz | `fast_mesh` ≤ 0.2 ms p50 |
 
-### 13.3 GPU-рендеринг і запасний шлях
+### 13.3 GPU rendering and the fallback path
 
-**Рішення (етапи 0–1):** квади 8 Б, vertex pulling зі спільного storage-буфера (slab-алокатор). Один draw на юніт на напрям грані на прохід. CPU frustum culling і відкидання напрямів граней. Вершина з `vertex_index`, тому `first_instance` не потрібен.
+**Decision (stages 0–1):** 8 B quads, vertex pulling from a shared storage buffer (slab allocator). One draw per unit per face direction per pass. CPU frustum culling and face-direction discarding. Vertex from `vertex_index`, so `first_instance` is not needed.
 
-**Запасний шлях:** без `VERTEX_STORAGE` ті самі 8 Б подаються як per-instance атрибут. **Етап 2+:** compute-culling + `multi_draw_indirect(_count)` там, де є `INDIRECT_EXECUTION`; Hi-Z — лише після вимірювань. Впевненість: середня, GPU не тестувався.
+**Fallback path:** without `VERTEX_STORAGE` the same 8 B are fed as a per-instance attribute. **Stage 2+:** compute culling + `multi_draw_indirect(_count)` where `INDIRECT_EXECUTION` exists; Hi-Z — only after measurements. Confidence: medium, GPU not tested.
 
-**Вершини** \[оцінка\]: ≈ 100 непорожніх юнітів × 4962 квадив ≈ 0,5 млн квадив = 3 млн вершин за кадр, при 60 FPS ≈ 180 млн вершин/с (≈ удвічі менше після відкидання граней). **Це головний невиміряний ризик рендера.** Draw-викликів без indirect ≈ 600.
+**Vertices** \[estimate\]: ≈ 100 non-empty units × 4962 quads ≈ 0.5 M quads = 3 M vertices per frame, at 60 FPS ≈ 180 M vertices/s (≈ half that after face discarding). **This is the main unmeasured renderer risk.** Draw calls without indirect ≈ 600.
 
-| Ризик | Експеримент | Поріг |
+| Risk | Experiment | Threshold |
 | --- | --- | --- |
-| Пропуск вершин на iGPU | Сцена 0,5 млн квадив: vertex pulling vs instanced vs індексований; Intel UHD + GTX 1050 | ≤ 8 мс GPU-часу на кадр |
-| Instanced-квади повільні | Порівняти з `draw(0..6n)` | не гірше за 1,3× |
-| Підтримка функцій | Дамп `features()`, `limits()`, `downlevel_capabilities()` на цільових GPU | `VERTEX_STORAGE` на Vulkan і DX12 |
-| Вартість draw | 600 vs 2000 draw на iGPU | ≤ 1 мс CPU на запис команд |
-| Cave culling | Граф видимості між гранями юніта | ≥ 50 % відкинутих юнітів у печері |
+| Vertex throughput on iGPU | A 0.5 M quad scene: vertex pulling vs instanced vs indexed; Intel UHD + GTX 1050 | ≤ 8 ms GPU time per frame |
+| Instanced quads are slow | Compare with `draw(0..6n)` | no worse than 1.3× |
+| Feature support | Dump `features()`, `limits()`, `downlevel_capabilities()` on target GPUs | `VERTEX_STORAGE` on Vulkan and DX12 |
+| Draw cost | 600 vs 2000 draws on iGPU | ≤ 1 ms CPU for command recording |
+| Cave culling | Visibility graph between unit faces | ≥ 50 % of units culled in a cave |
 
-### 13.4 LOD (до 64 чанків)
+### 13.4 LOD (up to 64 chunks)
 
-**Рішення:** даунсемплінг вокселів 2× на рівень, той самий мешер (`mesh_lod` у 0.6.4, не тестувався). Сервер шле базовий LOD-рівень. Шви — «спідниці». Світло LOD — лише небо, запечене у вершину. Aokana (SVDAG) відкинуто для етапів 0–1: немає редагування, прозорості, потрібен compute.
+**Decision:** 2× voxel downsampling per level, the same mesher (`mesh_lod` in 0.6.4, not tested). The server sends the base LOD level. Seams — "skirts". LOD lighting — sky light only, baked into the vertex. Aokana (SVDAG) rejected for stages 0–1: no editing, no transparency, needs compute.
 
-| Кільце \[оцінка\] | Площа, м² | Ділення квадив | Меш, МБ | Юнітів |
+| Ring \[estimate\] | Area, m² | Quad divisor | Mesh, MB | Units |
 | --- | --- | --- | --- | --- |
-| L0: 0–12 чанків | 160 000 | 1 | 1,6 | ≈ 260 |
-| L1: 12–24 | 430 000 | 4 | 1,1 | ≈ 87 |
-| L2: 24–48 | 1 770 000 | 16 | 1,1 | ≈ 44 |
-| L3: 48–64 | 1 830 000 | 64 | 0,3 | ≈ 7 |
-| Разом | 4 190 000 | — | ≈ 4 (×5 запас = 20) | ≈ 400 |
+| L0: 0–12 chunks | 160,000 | 1 | 1.6 | ≈ 260 |
+| L1: 12–24 | 430,000 | 4 | 1.1 | ≈ 87 |
+| L2: 24–48 | 1,770,000 | 16 | 1.1 | ≈ 44 |
+| L3: 48–64 | 1,830,000 | 64 | 0.3 | ≈ 7 |
+| Total | 4,190,000 | — | ≈ 4 (×5 reserve = 20) | ≈ 400 |
 
-64 чанки через LOD дешеві. А **повні дані на 64 чанки неможливі**: 399 384 секції × 4 КБ світла = 1,52 ГіБ лише світла. Повні воксельні дані — лише в радіусі 12–16 чанків.
+64 chunks via LOD are cheap. But **full data for 64 chunks is impossible**: 399,384 sections × 4 KB of light = 1.52 GiB for light alone. Full voxel data only within a radius of 12–16 chunks.
 
-| Ризик | Експеримент | Поріг |
+| Risk | Experiment | Threshold |
 | --- | --- | --- |
-| Оновлення LOD після правок | Правка → перерахунок предків L1..L3 | ≤ 1 мс на правку |
-| Тріщини на межах рівнів | Скріншот-тест зі спідницями | 0 дірок з 8 ракурсів |
-| `mesh_lod` | Порівняти з даунсемплінгом + `fast_mesh` | час ≤ `fast_mesh`; квадив ≤ 1/3 від L0 |
+| LOD update after edits | Edit → recompute ancestors L1..L3 | ≤ 1 ms per edit |
+| Cracks at level borders | Screenshot test with skirts | 0 holes from 8 angles |
+| `mesh_lod` | Compare with downsampling + `fast_mesh` | time ≤ `fast_mesh`; quads ≤ 1/3 of L0 |
 
-### 13.5 Освітлення
+### 13.5 Lighting
 
-**Рішення:** нібли per-section (4 КБ на секцію), Single-варіант для однорідних секцій, **інкрементальні BFS-черги add/remove**, двопрохідне світло групами 2×2 для початкової генерації. Світло для рендера рахує клієнт; сервер — лише для геймплея (спавн мобів), ліниво.
+**Decision:** nibbles per section (4 KB per section), a Single variant for uniform sections, **incremental add/remove BFS queues**, two-pass lighting in 2×2 groups for initial generation. The client computes light for rendering; the server — only for gameplay (mob spawning), lazily.
 
-| Сценарій \[тест\] | 16³ | 48³ (27 секцій) |
+| Scenario \[test\] | 16³ | 48³ (27 sections) |
 | --- | --- | --- |
-| 1 факел, відкрито | 24 мкс | 36 мкс |
-| 8 факелів/секцію, відкрито | 46 мкс | 1415 мкс |
-| 26–45 % непрозорих, 8 факелів | 25–27 мкс | 2062–2181 мкс |
-| Небо | не показово | 554 мкс |
+| 1 torch, open | 24 µs | 36 µs |
+| 8 torches/section, open | 46 µs | 1415 µs |
+| 26–45 % opaque, 8 torches | 25–27 µs | 2062–2181 µs |
+| Sky | not representative | 554 µs |
 
-&#91;Оцінка\] Один новий факел інкрементально ≈ 36–100 мкс, видалення ≈ 2×. 50 правок за тік ≈ 2–5 мс — прийнятно. 1000 правок (TNT) ≈ 36–100 мс — **не влазить**, потрібен ліміт світлових оновлень за тік з відкладанням.
+&#91;Estimate\] One new torch incrementally ≈ 36–100 µs, removal ≈ 2×. 50 edits per tick ≈ 2–5 ms — acceptable. 1000 edits (TNT) ≈ 36–100 ms — **does not fit**, a per-tick limit on light updates with deferral is needed.
 
-| Ризик | Експеримент | Поріг |
+| Risk | Experiment | Threshold |
 | --- | --- | --- |
-| Remove-BFS не тестувався | Прибрати факел, зламати блок під небом | p95 ≤ 100 мкс на правку |
-| Межі секцій | Факел на межі 3×3×3, порівняти з повним перерахунком | побітова рівність |
-| Детермінізм клієнт/сервер | Однакові входи → хеш світла | хеші збігаються |
+| Remove-BFS not tested | Remove a torch, break a block under the sky | p95 ≤ 100 µs per edit |
+| Section borders | A torch on a 3×3×3 border, compare with a full recompute | bitwise equality |
+| Client/server determinism | Identical inputs → light hash | hashes match |
 
-### 13.6 Зберігання світу і пам'ять
+### 13.6 World storage and memory
 
-**Рішення:** секції 16³ з палітрою без перетину слів, Single-варіант, **хеш-індекс для палітр > 16 записів**. Диск і мережа: палітрові секції + zstd (3 — диск, 1 — мережа, 9 — бекапи). Словник — лише після тесту на реальних світах.
+**Decision:** 16³ sections with a palette without word crossing, a Single variant, **a hash index for palettes > 16 entries**. Disk and network: palette sections + zstd (3 — disk, 1 — network, 9 — backups). A dictionary — only after a test on real worlds.
 
-Ключові числа \[тест\]: Single 56 Б; поверхня 1640 Б; підземелля 2124 Б; найгірше 6616 Б. `get` ≈ 3,8 нс; `set` 6–7 нс при палітрі ≤ 16, але 66,7 нс при палітрі 256 (лінійний пошук).
+Key numbers \[test\]: Single 56 B; surface 1640 B; dungeon 2124 B; worst case 6616 B. `get` ≈ 3.8 ns; `set` 6–7 ns with a palette ≤ 16, but 66.7 ns with a palette of 256 (linear search).
 
-| Компонент клієнта | 12 чанків | 64 чанки (LOD) |
+| Client component | 12 chunks | 64 chunks (LOD) |
 | --- | --- | --- |
-| Воксельні секції (15 000) | 17 МіБ \[тест, припущений мікс\]; найгірше 95 МіБ | те саме |
-| Світло | ≈ 15–30 МіБ з Single (59 МіБ без) | те саме |
-| GPU-меші | ≈ 2–10 МіБ | + LOD ≈ 4–20 МіБ |
-| Текстури | ≈ 1,5 МіБ (паки 64 px ≈ 25 МіБ) | те саме |
-| Фреймбуфери 1080p | ≈ 32 МіБ | те саме |
-| ECS, сутності, UI, аудіо | ≈ 100–200 МіБ | ≈ 100–200 МіБ |
-| WASM-моди (10 шт.) | ≈ 100–200 МіБ | те саме |
-| Бінарник, драйвер, staging | ≈ 200–300 МіБ | ≈ 200–300 МіБ |
-| **Разом** \[оцінка\] | **≈ 0,5–0,9 ГіБ** | **≈ 0,55–1,0 ГіБ** |
+| Voxel sections (15,000) | 17 MiB \[test, assumed mix\]; worst case 95 MiB | same |
+| Light | ≈ 15–30 MiB with Single (59 MiB without) | same |
+| GPU meshes | ≈ 2–10 MiB | + LOD ≈ 4–20 MiB |
+| Textures | ≈ 1.5 MiB (64 px packs ≈ 25 MiB) | same |
+| 1080p framebuffers | ≈ 32 MiB | same |
+| ECS, entities, UI, audio | ≈ 100–200 MiB | ≈ 100–200 MiB |
+| WASM mods (10) | ≈ 100–200 MiB | same |
+| Binary, driver, staging | ≈ 200–300 MiB | ≈ 200–300 MiB |
+| **Total** \[estimate\] | **≈ 0.5–0.9 GiB** | **≈ 0.55–1.0 GiB** |
 
-Ціль 2 ГБ реалістична; пропонується внутрішній бюджет 1 ГіБ. **Сервер** \[оцінка\]: 500 розкиданих гравців × 15 000 секцій ≈ 8,9 ГБ лише вокселів. Тому сервер тримає дистанцію симуляції 6–8 чанків і LRU-кеш стиснених колон.
+The 2 GB target is realistic; an internal budget of 1 GiB is proposed. **Server** \[estimate\]: 500 scattered players × 15,000 sections ≈ 8.9 GB of voxels alone. So the server keeps a simulation distance of 6–8 chunks and an LRU cache of compressed columns.
 
-| Ризик | Експеримент | Поріг |
+| Risk | Experiment | Threshold |
 | --- | --- | --- |
-| Реальний мікс секцій | Гістограма бітності на реальному світі | ≤ 40 МіБ на 15 000 секцій |
-| `set` на великих палітрах | Хеш-індекс | ≤ 10 нс |
-| Реальні коефіцієнти zstd | Реальні колони, рівні 1/3/9 | ≤ 50 мкс на колону |
-| RSS клієнта | `dhat` + RSS після 10 хв польоту | ≤ 1 ГіБ |
+| Real section mix | Bit-width histogram on a real world | ≤ 40 MiB per 15,000 sections |
+| `set` on large palettes | Hash index | ≤ 10 ns |
+| Real zstd ratios | Real columns, levels 1/3/9 | ≤ 50 µs per column |
+| Client RSS | `dhat` + RSS after 10 min of flight | ≤ 1 GiB |
 
-### 13.7 Мережа
+### 13.7 Network
 
-**Рішення:** одне QUIC-з'єднання (quinn 0.11): датаграми для стану сутностей (дельта від підтвердженого знімка, 20 Гц), пріоритетні стріми (`set_priority`) для чанків за відстанню. Авторитетний сервер + передбачення + інтерполяція. Нічого не тестувалось.
+**Decision:** one QUIC connection (quinn 0.11): datagrams for entity state (delta from the acknowledged snapshot, 20 Hz), priority streams (`set_priority`) for chunks by distance. Authoritative server + prediction + interpolation. Nothing was tested.
 
-&#91;Оцінка\] Вхід: 625 колон × 5–20 КБ = 3–12 МБ. Сутності: 50 видимих × 16 Б × 20 Гц ≈ 128 кбіт/с на гравця; × 500 ≈ 64 Мбіт/с вихідного трафіку ноди плюс чанки; 10 000 датаграм/с.
+&#91;Estimate\] Join: 625 columns × 5–20 KB = 3–12 MB. Entities: 50 visible × 16 B × 20 Hz ≈ 128 kbit/s per player; × 500 ≈ 64 Mbit/s of node outbound traffic plus chunks; 10,000 datagrams/s.
 
-| Ризик | Експеримент | Поріг |
+| Risk | Experiment | Threshold |
 | --- | --- | --- |
-| CPU quinn на 500 з'єднань | 500 ботів, 20 Гц × 1 КБ | ≤ 1 ядро на 10 000 пакетів/с |
-| Head-of-line між стрімами | 2 % втрат + RTT 100 мс (`tc netem`) | найближчі 3×3 колони ≤ 1 с |
-| Розмір чанк-пакетів | Див. 13.6 | ≤ 20 КБ на колону |
+| quinn CPU at 500 connections | 500 bots, 20 Hz × 1 KB | ≤ 1 core per 10,000 packets/s |
+| Head-of-line between streams | 2 % loss + RTT 100 ms (`tc netem`) | nearest 3×3 columns ≤ 1 s |
+| Chunk packet size | See 13.6 | ≤ 20 KB per column |
 
-### 13.8 Регіональні потоки сервера
+### 13.8 Server region threads
 
-**Рішення:** регіон = окремий bevy `World` у власності одного воркера на тік; стабільні глобальні ID сутностей (`NetId → Entity`), тож злиття/розділення — копіювання. Ціль 25 мс = p99 на регіон при 20 TPS. Запасний варіант: один `World` на ноду з `par_iter` по компоненту регіону. Впевненість низька–середня.
+**Decision:** a region = a separate bevy `World` owned by one worker per tick; stable global entity IDs (`NetId → Entity`), so merging/splitting is copying. The 25 ms target = p99 per region at 20 TPS. Fallback: one `World` per node with `par_iter` over a region component. Confidence low–medium.
 
-&#91;Оцінка\] 16 ядер × 25 мс / 500 = 0,8 мс CPU на гравця за тік. Достатньо, **якщо гравці розкидані хоча б по 8 регіонах**. Скупчення 500 гравців в одному місці дає один потік, і ціль не виконується. Потрібна окрема ціль «ємність одного регіону» і жорсткий ліміт з інстансами або чергою. WASM: інстанс на мод **на воркер-потік**, не на регіон (інакше 0,6–3,2 ГіБ).
+&#91;Estimate\] 16 cores × 25 ms / 500 = 0.8 ms CPU per player per tick. Sufficient **if players are spread across at least 8 regions**. A crowd of 500 players in one place gives a single thread, and the target is not met. A separate "single region capacity" target and a hard limit with instances or a queue are needed. WASM: an instance per mod **per worker thread**, not per region (otherwise 0.6–3.2 GiB).
 
-| Ризик | Експеримент | Поріг |
+| Risk | Experiment | Threshold |
 | --- | --- | --- |
-| Тік 500 гравців | 500 ботів, 8 і 1 регіон, 16 ядер | p99 ≤ 25 мс на 8 регіонах; знайти максимум на 1 регіон |
-| Перенесення сутностей між `World` | Злиття/розділення з 1000 сутностей | ≤ 5 мкс на сутність |
-| Пам'ять ноди | RSS після 500 ботів на 10 км | ≤ 16 ГБ |
+| 500-player tick | 500 bots, 8 and 1 regions, 16 cores | p99 ≤ 25 ms on 8 regions; find the maximum on 1 region |
+| Entity transfer between `World`s | Merge/split with 1000 entities | ≤ 5 µs per entity |
+| Node memory | RSS after 500 bots over 10 km | ≤ 16 GB |
 
-### 13.9 Шардинг і передача сутностей
+### 13.9 Sharding and entity handoff
 
-**Рішення:** статична сітка регіонів по нодах + шлюз (QUIC-проксі), зона перекриття ≥ радіус AOI. Передача з номером власності сутності та ідемпотентними операціями (узгоджено з виправленням у розділі 8). Динамічне перерозбиття — пізніше. Впевненість низька: тестів немає.
+**Decision:** a static grid of regions across nodes + a gateway (QUIC proxy), overlap zone ≥ AOI radius. Handoff with an entity ownership number and idempotent operations (consistent with the fix in section 8). Dynamic repartitioning — later. Confidence low: no tests.
 
-&#91;Оцінка\] 5000 / 500 = 10 нод лише за рівномірного розподілу. Перетин межі ≈ раз на 90 с на гравця ≈ 55 передач/с на кластер — мале навантаження. Ціль передачі: ≤ 1 тік (50 мс), а не «< 1 мс».
+&#91;Estimate\] 5000 / 500 = 10 nodes only with an even distribution. Border crossing ≈ once per 90 s per player ≈ 55 handoffs/s per cluster — a small load. Handoff target: ≤ 1 tick (50 ms), not "< 1 ms".
 
-| Ризик | Експеримент | Поріг |
+| Risk | Experiment | Threshold |
 | --- | --- | --- |
-| Дублікати/втрати | Дві ноди, RTT 100 мс, 1000 переходів | 0 дублікатів, 0 втрат, p99 ≤ 50 мс |
-| Скупчення на межі | 200 ботів на межі нод | тік обох ≤ 25 мс |
-| Гаряча точка (2000 гравців) | Не розв'язується шардингом | потрібна політика інстансів |
+| Duplicates/losses | Two nodes, RTT 100 ms, 1000 transitions | 0 duplicates, 0 losses, p99 ≤ 50 ms |
+| Crowd at the border | 200 bots at a node border | tick of both ≤ 25 ms |
+| Hot spot (2000 players) | Not solved by sharding | an instance policy is needed |
 
-### 13.10 WASM-моддинг
+### 13.10 WASM modding
 
-**Рішення:** Component Model (WIT), але **грубі пакетні хуки**: один виклик на мод на тип події за тік з `list<event>`. Epoch завжди; fuel вимкнено (лише для реплеїв/античиту). `InstancePre` + pooling allocator. Запасний варіант: core-модулі з власним ABI (у 15–20× дешевший виклик, без типобезпеки WIT).
+**Decision:** Component Model (WIT), but **coarse batched hooks**: one call per mod per event type per tick with `list<event>`. Epoch always; fuel off (only for replays/anti-cheat). `InstancePre` + pooling allocator. Fallback: core modules with a custom ABI (a 15–20× cheaper call, without WIT type safety).
 
-| Вимір \[тест, wasmtime 50.0.1\] | Значення |
+| Measurement \[test, wasmtime 50.0.1\] | Value |
 | --- | --- |
-| Core: порожній виклик | 17–30 нс |
-| Core: 1000 оновлень окремо / одним викликом | 18–35 / 0,9–2,9 нс на оновлення |
-| Гість → хост | 3,7–4,9 нс |
-| **Component: порожній виклик** | **≈ 0,40 мкс** |
-| Component: 1000 окремих викликів | ≈ 0,5 мкс на оновлення |
-| Component: один виклик з `list<u32>` на 4000 | ≈ 3,6 нс на оновлення |
-| Epoch / Fuel (рекурсія) | 0–9 % / +50–92 % |
-| Інстанціювання (`InstancePre`) | 4,2 мкс |
+| Core: empty call | 17–30 ns |
+| Core: 1000 updates separately / in one call | 18–35 / 0.9–2.9 ns per update |
+| Guest → host | 3.7–4.9 ns |
+| **Component: empty call** | **≈ 0.40 µs** |
+| Component: 1000 separate calls | ≈ 0.5 µs per update |
+| Component: one call with `list<u32>` of 4000 | ≈ 3.6 ns per update |
+| Epoch / Fuel (recursion) | 0–9 % / +50–92 % |
+| Instantiation (`InstancePre`) | 4.2 µs |
 
-**Нова ціль:** ≤ 1 мкс на пакетний виклик хука, ≤ 5 нс на подію, заборона per-voxel/per-entity викликів через межу компонента. \[Оцінка\] Без пакетів хуки забирають ≈ 2 мс тіку; з пакетами ≈ 0,1 мс.
+**New target:** ≤ 1 µs per batched hook call, ≤ 5 ns per event, a ban on per-voxel/per-entity calls across the component boundary. \[Estimate\] Without batches the hooks take ≈ 2 ms of the tick; with batches ≈ 0.1 ms.
 
-| Ризик | Експеримент | Поріг |
+| Risk | Experiment | Threshold |
 | --- | --- | --- |
-| Ліфтинг `string`/`record` у Rust-гості | `list<record>` на 1000 елементів | ≤ 20 нс на елемент |
-| Холодний старт модів | `Component::new` для 1–5 МБ, кеш | ≤ 50 мс на мод з кешем |
-| Пам'ять інстансів | 20 модів × 16 воркерів | ≤ 1 ГБ на ноду |
-| Зависання мода | Нескінченний цикл | перервано ≤ 1 мс після дедлайну |
+| Lifting `string`/`record` in a Rust guest | `list<record>` of 1000 elements | ≤ 20 ns per element |
+| Mod cold start | `Component::new` for 1–5 MB, cache | ≤ 50 ms per mod with cache |
+| Instance memory | 20 mods × 16 workers | ≤ 1 GB per node |
+| Hung mod | Infinite loop | interrupted ≤ 1 ms after the deadline |
 
-### 13.11 Рівень Rust
+### 13.11 Rust level
 
-- Збірка: LTO, `codegen-units = 1`, базова ціль x86-64-v2, без `target-cpu=native` (v3 дав виграш у межах шуму \[тест\]). Гарячі ядра — через runtime dispatch (`multiversion`).
-- Явний SIMD — лише коли профіль покаже потребу; кандидати — gather/маски і BFS світла.
-- `mimalloc` і PGO — лише після A/B на бенчах (поріг: −10 % p99 тіку для mimalloc, ≥ 10 % для PGO).
-- Профілювання з першого дня: Tracy, `dhat`, criterion у CI.
+- Build: LTO, `codegen-units = 1`, baseline target x86-64-v2, no `target-cpu=native` (v3 gave a gain within noise \[test\]). Hot kernels — via runtime dispatch (`multiversion`).
+- Explicit SIMD — only when the profile shows a need; candidates — gather/masks and light BFS.
+- `mimalloc` and PGO — only after an A/B on benchmarks (threshold: −10 % tick p99 for mimalloc, ≥ 10 % for PGO).
+- Profiling from day one: Tracy, `dhat`, criterion in CI.
 
-### 13.12 Зведена таблиця цілей
+### 13.12 Summary table of targets
 
-| Ціль | Статус | Пропозиція |
+| Target | Status | Proposal |
 | --- | --- | --- |
-| 60 FPS iGPU/GTX 1050, 12 чанків | Не тестовано | Першим міряти пропуск вершин на iGPU |
-| 64+ чанки через LOD | Реалістично \[оцінка\] | Повні дані лише ≤ 12–16 чанків |
-| RAM клієнта ≤ 2 ГБ | Реалістично \[тест + оцінка\] | Внутрішній бюджет 1 ГіБ |
-| Меш ≤ 0,2 мс/чанк | На VM 0,27 мс | ≤ 0,3 мс `fast_mesh` / ≤ 0,5 мс конвеєр на юніт |
-| Хук ≤ 1 мкс | Виконано (0,40 мкс) | ≤ 1 мкс на пакет + ≤ 5 нс на подію |
-| Тік ≤ 25 мс @ 500 | Не тестовано | Додати ємність регіону; гравці ≥ 8 регіонів |
-| 5000+ гравців | Не тестовано | Лише за рівномірного розподілу; політика гарячих точок |
+| 60 FPS iGPU/GTX 1050, 12 chunks | Not tested | Measure vertex throughput on iGPU first |
+| 64+ chunks via LOD | Realistic \[estimate\] | Full data only ≤ 12–16 chunks |
+| Client RAM ≤ 2 GB | Realistic \[test + estimate\] | Internal budget 1 GiB |
+| Mesh ≤ 0.2 ms/chunk | On VM 0.27 ms | ≤ 0.3 ms `fast_mesh` / ≤ 0.5 ms pipeline per unit |
+| Hook ≤ 1 µs | Achieved (0.40 µs) | ≤ 1 µs per batch + ≤ 5 ns per event |
+| Tick ≤ 25 ms @ 500 | Not tested | Add region capacity; players across ≥ 8 regions |
+| 5000+ players | Not tested | Only with an even distribution; hot spot policy |
 
-### 13.13 «Зробити першим» (етапи 0–1)
+### 13.13 "Do first" (stages 0–1)
 
-1. Меш-юніт + `fast_mesh`, інкрементальні маски, пропуск порожніх і суцільних юнітів.
-2. Швидкий gather з палітри (масове розпакування): gather + маски ≤ 100 мкс.
-3. Палітра без перетину слів + Single + хеш-індекс: `set` ≤ 10 нс на будь-якій бітності.
-4. Квад 8 Б, vertex pulling, draw на юніт × напрям; пробник можливостей адаптера; instanced-атрибут як запасний шлях.
-5. Бенч пропуску вершин на iGPU і GTX 1050 до складного рендера.
-6. Інкрементальне світло (add/remove BFS) з лімітом за тік: ≤ 100 мкс p95 на правку.
-7. WIT API з пакетними хуками; epoch увімкнено, fuel вимкнено; інстанс на мод на воркер.
-8. Регіон = bevy `World` + стабільні глобальні ID; одразу бенч 500 ботів на 1 і 8 регіонах.
-9. Одне QUIC-з'єднання: датаграми для сутностей, пріоритетні стріми для чанків.
-10. Палітрові секції + zstd (3 — диск, 1 — мережа).
-11. Tracy, `dhat`, criterion у CI з фіксованим корпусом світів і порогами регресії.
-12. Збірка x86-64-v2, LTO; mimalloc і PGO — лише після A/B.
+1. Mesh unit + `fast_mesh`, incremental masks, skipping empty and solid units.
+2. Fast gather from the palette (bulk unpacking): gather + masks ≤ 100 µs.
+3. Palette without word crossing + Single + hash index: `set` ≤ 10 ns at any bit width.
+4. 8 B quad, vertex pulling, draw per unit × direction; adapter capability probe; instanced attribute as a fallback path.
+5. Vertex throughput bench on iGPU and GTX 1050 before the complex renderer.
+6. Incremental lighting (add/remove BFS) with a per-tick limit: ≤ 100 µs p95 per edit.
+7. WIT API with batched hooks; epoch on, fuel off; an instance per mod per worker.
+8. Region = bevy `World` + stable global IDs; right away a bench of 500 bots on 1 and 8 regions.
+9. One QUIC connection: datagrams for entities, priority streams for chunks.
+10. Palette sections + zstd (3 — disk, 1 — network).
+11. Tracy, `dhat`, criterion in CI with a fixed corpus of worlds and regression thresholds.
+12. x86-64-v2 build, LTO; mimalloc and PGO — only after an A/B.
 
-## 14. Пріоритети рішень і розбір старих ідей
+## 14. Decision priorities and review of old ideas
 
-Коли оптимізація сперечається з відчуттям гри, виграє відчуття: гра має бути схожою на Minecraft, не лагати, мати розумних мобів і далеку прорисовку. З 11 старих ідей 5 беремо, 4 беремо частково, 2 відкладаємо на пізніше.
+When an optimization conflicts with game feel, feel wins: the game must feel like Minecraft, not lag, have smart mobs and a long render distance. Of 11 old ideas, 5 are adopted, 4 partially, and 2 are deferred.
 
-### Пріоритети досвіду
+### Experience priorities
 
-1. **Плавність.** Жодних фризів кадру > 33 мс і розсинхронів з сервером. Це важливіше за піковий FPS.
-2. **Прорисовка.** Повні дані мінімум 8 чанків на найслабшому профілі (Low), 12 — за замовчуванням, 16 — на High. Далі LOD до 32–64 чанків. Коротша дальність за 8 не пропонується навіть у налаштуваннях: спершу знижуються тіні, ефекти і LOD.
-3. **Розумні моби.** Повний ШІ в радіусі ≈ 48 блоків від гравця \[оцінка, підібрати плейтестом\]. Пошук шляху — асинхронно в пулі задач, щоб розумний ШІ не забирав час тіку. Далі частота рішень ШІ знижується, але моб ніколи не «замерзає» на виду в гравця.
-4. **Відчуття Minecraft.** Фізика гравця, темп копання, 20 TPS блокової механіки в радіусі симуляції — без компромісів заради оптимізації.
+1. **Smoothness.** No frame spikes > 33 ms and no desyncs with the server. This matters more than peak FPS.
+2. **Render distance.** Full data at least 8 chunks on the weakest profile (Low), 12 by default, 16 on High. Beyond that LOD up to 32–64 chunks. A distance shorter than 8 is not offered even in settings: shadows, effects, and LOD are reduced first.
+3. **Smart mobs.** Full AI within ≈ 48 blocks of the player \[estimate, to be tuned by playtest\]. Pathfinding — asynchronous in the task pool, so smart AI does not eat tick time. Farther out, the AI decision rate drops, but a mob never "freezes" in a player's view.
+4. **Minecraft feel.** Player physics, digging pace, 20 TPS block mechanics within the simulation distance — no compromises for optimization.
 
-### Рішення: меш-чанк 32³
+### Decision: 32³ mesh chunk
 
-Мешимо чанками 32³ (2×2×2 секції): межі збігаються з даними, а правка блоку перемешує в ≈ 7 разів менше вокселів, ніж у 62³. Ціна — в ≈ 7 разів більше юнітів: при 12 чанках ≈ 1 900 юнітів і до ≈ 4 500 draw-команд без indirect \[оцінка\].
+We mesh in 32³ chunks (2×2×2 sections): boundaries coincide with the data, and a block edit remeshes ≈ 7 times fewer voxels than with 62³. The cost is ≈ 7 times more units: at 12 chunks ≈ 1,900 units and up to ≈ 4,500 draw commands without indirect \[estimate\].
 
-Компенсація: квад крейта кодує координати 6 бітами (0–63). Тому квади восьми сусідніх меш-чанків 32³ можна покласти в один пакет 64³ зі зсувом +32 і малювати однією командою. Draw-команд стає стільки ж, скільки в 62³ (≈ 600), а перемешування лишається дрібним. Це проєктне рішення, від бенчмарку етапу 0 чекаємо: копіювання пакета після правки ≤ 50 мкс. На Vulkan/DX12 з `multi_draw_indirect` пакети не потрібні.
+Compensation: the crate's quad encodes coordinates in 6 bits (0–63). So the quads of eight neighboring 32³ mesh chunks can be put into one 64³ batch with a +32 offset and drawn with one command. The number of draw commands becomes the same as with 62³ (≈ 600), while remeshing stays fine-grained. This is a design decision; from the stage 0 benchmark we expect: copying a batch after an edit ≤ 50 µs. On Vulkan/DX12 with `multi_draw_indirect` batches are not needed.
 
-### Розбір старих ідей
+### Review of old ideas
 
-| # | Ідея | Вердикт | Як беремо | На що зважити |
+| # | Idea | Verdict | How we adopt it | What to weigh |
 | --- | --- | --- | --- | --- |
-| 1 | LOD завантажується із сервера | Беремо (вже в плані) | Сервер шле LOD-секції, клієнт кешує їх на диску | Клієнт не генерує LOD сам: для цього йому потрібен seed світу, а це відкриває чити на пошук руд. Поки LOD не прийшов — туман |
-| 2 | Спочатку складний спосіб, потім кращий; старий вимикається і вивантажується | Беремо як принцип | Запасний шлях працює, доки немає кращого (кешу, серверних даних, GPU-функцій), потім його дані звільняються | Вивантажувати треба дані, асети і WASM-модулі. Сам код рушія — десятки МБ, виграшу від вивантаження майже немає |
-| 3 | На старті лише базовий код; решта — за етапом гри (боси, данжі, предмети) | Частково | Важкі асети (моделі, текстури, звуки) вантажаться ліниво, за близькістю і зоною (див. № 10) | Не за прогресом гравця: інший гравець може принести предмет чи привести моба пізнього етапу. Реєстри блоків і предметів завжди повні (кілобайти, потрібні для синхронізації). Передзавантаження заздалегідь + заглушка, інакше фриз |
-| 4 | Генерація за швидкістю і висотою; під землею не генерувати верх; моби в повітрі з вимкненим ШІ | Частково | Черга завантаження з пріоритетами: напрям руху, видимість, висота. Високо — більше LOD; під землею — cave culling для рендера | Під землею верх лише не малюється, дані не викидаються. Моби в повітрі без ШІ — ні: це прямо «тупі моби». Натомість спавн лише у валідному радіусі, як у Minecraft, і LOD симуляції (№ 5) |
-| 5 | Далі від гравця — менша текстура і повільніша симуляція | Беремо | Текстури — міпмапи і LOD (GPU робить сам). Симуляція — частота ШІ сутностей спадає з відстанню | Блокова механіка (ферми, механізми) у радіусі симуляції завжди на 20 TPS, інакше ферми ламаються. Мод може позначити систему «кожен тік» |
-| 6 | Переписати ядро під найпопулярніший сервер; одне ядро на максимум чи порівну; окреме ядро під моди | Частково | Обрати цільовий режим (напр. SMP-виживання) і ганяти бенчмарки ботами саме на ньому. CPU з високою частотою; найважчі регіони — на найшвидші ядра (pinning). Мережа, IO і генерація — на окремих ядрах | Погано ділиться тік одного щільного регіону (натовп, великі механізми, ланцюги оновлень блоків): тут вирішує частота ядра. Окреме ядро під моди — ні: кожен хук став би міжпотоковою синхронізацією і все сповільнилося б. Моди йдуть у тіку свого регіону з бюджетом |
-| 7 | Купити свої сервери | Пізніше | На старті орендувати виділені bare-metal сервери (не хмарні VM). Купувати і ставити в дата-центр — коли навантаження стабільне (етап 6+) | Покупка до гравців — заморожені гроші і не то залізо. Обов'язковий захист від DDoS |
-| 8 | Оптимізація під своє залізо | Пізніше | На етапі 6: CPU pinning, huge pages, NUMA, NVMe, 10 Гбіт, тюнінг ядра Linux. До того — звичайна збірка x86-64-v2 | Рушій не має прив'язуватися до однієї моделі сервера |
-| 9 | Швидкий запуск: гра відкривається прямо у вікні лаунчера за кілька секунд | Беремо | Ціль ≤ 5 с від кнопки до меню: кеш шейдерів, заздалегідь конвертовані асети, mmap реєстрів, ліниве завантаження. Замість Tauri-лаунчера і окремої гри: лаунчер стає головним меню самої гри, оновлення робить крихітний окремий апдейтер | Змінює розд. 7: вхід, моди і каталог переїжджають у гру. Апдейтер лишається окремим, бо запущений бінарник не може замінити сам себе |
-| 10 | Сервер пише дії кожного; можна приховати людей разом з їхніми будівлями | Частково | Журнал дій (хто що поставив чи зламав) — для відкату гріфу і модерації. Приховати аватар, чат і голос гравця — так | Приховувати будівлі в спільному світі не можна: блоки фізичні, і прихований блок стає невидимою стіною (розсинхрон з мобами, водою, фізикою). Можна лише в окремих режимах (творчі ділянки). Журнал також займає диск — потрібні стиснення і термін зберігання |
-| 11 | Зони світу з біомами і складністю; спавн і логіка рахуються лише де можуть бути | Беремо | «Ігрові зони» зі своїми таблицями спавну, блоків і данжів: система спавну не перевіряє чужі списки, асети зони вантажаться при наближенні | Ігрова зона ≠ регіон з розд. 3: регіони потоків динамічні і залежать від гравців, зони — статична розмітка мапи. Моб може перейти межу зони, тож його поведінка працює всюди — обмежується лише спавн |
+| 1 | LOD is downloaded from the server | Adopt (already in the plan) | The server sends LOD sections, the client caches them on disk | The client does not generate LOD itself: it would need the world seed, which opens up ore-finding cheats. Until LOD arrives — fog |
+| 2 | Start with a complex way, then a better one; the old one is turned off and unloaded | Adopt as a principle | The fallback path works until there is something better (cache, server data, GPU features), then its data is freed | What needs unloading is data, assets, and WASM modules. The engine code itself is tens of MB, with almost no gain from unloading |
+| 3 | At start only the base code; the rest by game stage (bosses, dungeons, items) | Partially | Heavy assets (models, textures, sounds) load lazily, by proximity and zone (see no. 11) | Not by player progress: another player may bring an item or lead a late-stage mob. Block and item registries are always full (kilobytes, needed for synchronization). Preloading in advance + a placeholder, otherwise a freeze |
+| 4 | Generation by speed and height; do not generate the top underground; mobs in the air with AI off | Partially | A load queue with priorities: movement direction, visibility, height. High up — more LOD; underground — cave culling for rendering | Underground the top is only not drawn, the data is not discarded. Mobs in the air without AI — no: that is literally "dumb mobs". Instead, spawn only in a valid radius, as in Minecraft, and simulation LOD (no. 5) |
+| 5 | Farther from the player — a smaller texture and slower simulation | Adopt | Textures — mipmaps and LOD (the GPU does it itself). Simulation — the entity AI rate decreases with distance | Block mechanics (farms, contraptions) within the simulation distance always at 20 TPS, otherwise farms break. A mod can mark a system "every tick" |
+| 6 | Rewrite the core for the most popular server; one core for the maximum or evenly; a separate core for mods | Partially | Choose a target mode (e.g. SMP survival) and run bot benchmarks on exactly that. High-frequency CPU; the heaviest regions — on the fastest cores (pinning). Network, IO, and generation — on separate cores | The tick of a single dense region (a crowd, large contraptions, block update chains) splits poorly: core frequency decides here. A separate core for mods — no: every hook would become cross-thread synchronization and everything would slow down. Mods run in their region's tick with a budget |
+| 7 | Buy our own servers | Later | At the start rent dedicated bare-metal servers (not cloud VMs). Buy and place in a data center when the load is stable (stage 6+) | Buying before there are players is frozen money and the wrong hardware. DDoS protection is mandatory |
+| 8 | Optimization for our own hardware | Later | At stage 6: CPU pinning, huge pages, NUMA, NVMe, 10 Gbit, Linux kernel tuning. Before that — a regular x86-64-v2 build | The engine must not be tied to one server model |
+| 9 | Fast start: the game opens right in the launcher window in a few seconds | Adopt | Target ≤ 5 s from button to menu: shader cache, pre-converted assets, mmap of registries, lazy loading. Instead of a Tauri launcher and a separate game: the launcher becomes the main menu of the game itself, and updates are done by a tiny separate updater | Changes section 7: login, mods, and catalog move into the game. The updater stays separate because a running binary cannot replace itself |
+| 10 | The server logs everyone's actions; people can be hidden together with their buildings | Partially | An action log (who placed or broke what) — for griefing rollback and moderation. Hiding a player's avatar, chat, and voice — yes | Hiding buildings in a shared world is not possible: blocks are physical, and a hidden block becomes an invisible wall (desync with mobs, water, physics). Only possible in separate modes (creative plots). The log also takes disk — compression and a retention period are needed |
+| 11 | World zones with biomes and difficulty; spawn and logic are computed only where they can occur | Adopt | "Game zones" with their own spawn, block, and dungeon tables: the spawn system does not check foreign lists, zone assets load on approach | Game zone ≠ the region from section 3: threading regions are dynamic and depend on players, zones are a static map layout. A mob can cross a zone border, so its behavior works everywhere — only spawning is restricted |
 
-### Що це змінює в плані
+### What this changes in the plan
 
-- **Розд. 7 (Лаунчер):** вирішено — меню всередині гри + маленький апдейтер (№ 9); Tauri не використовуємо.
-- **Етап 1:** додати чергу завантаження з пріоритетами (№ 4), ліниве завантаження асетів (№ 3) і пакети мешів 2×2×2; вихідний критерій — запуск до меню ≤ 5 с (№ 9).
-- **Етап 2:** LOD симуляції сутностей і асинхронний пошук шляху (№ 5, пріоритет 3).
-- **Етап 4:** ігрові зони (№ 11) і журнал дій з відкатом (№ 10).
-- **Етап 6:** власне залізо і тюнінг під нього (№ 7–8), пінінг важких регіонів (№ 6).
+- **Section 7 (Launcher):** decided — an in-game menu + a small updater (no. 9); we do not use Tauri.
+- **Stage 1:** add a load queue with priorities (no. 4), lazy asset loading (no. 3), and 2×2×2 mesh batches; exit criterion — launch to menu ≤ 5 s (no. 9).
+- **Stage 2:** entity simulation LOD and asynchronous pathfinding (no. 5, priority 3).
+- **Stage 4:** game zones (no. 11) and an action log with rollback (no. 10).
+- **Stage 6:** own hardware and tuning for it (no. 7–8), pinning of heavy regions (no. 6).

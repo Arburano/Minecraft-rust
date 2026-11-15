@@ -1,30 +1,30 @@
-# T0-04. Gather, інкрементні маски і fast_mesh для меш-чанка 32³
+# T0-04. Gather, incremental masks and fast_mesh for the 32³ mesh chunk
 
-- **Статус:** todo
-- **Залежить від:** T0-03
-- **Виконавець:** агент
+- **Status:** todo
+- **Depends on:** T0-03
+- **Owner:** agent
 
-## Мета
+## Goal
 
-У крейті `mesh`: gather 34³ з секцій (пословне розпакування), маски непрозорих/прозорих з інкрементним оновленням на `set_block`, виклик `binary-greedy-meshing` 0.6.4 `Mesher<32>::fast_mesh`, пропуск порожніх і суцільних меш-чанків. Відправна точка — `research/bench/meshing` (там юніт 62³).
+In the `mesh` crate: gather 34³ from sections (word-by-word unpacking), opaque/transparent masks with incremental update on `set_block`, call `binary-greedy-meshing` 0.6.4 `Mesher<32>::fast_mesh`, skip empty and solid mesh chunks. Starting point — `research/bench/meshing` (there the unit is 62³).
 
-## Специфікації
+## Specs
 
 - [docs/architecture/meshing-and-rendering.md](../../docs/architecture/meshing-and-rendering.md)
 - [docs/adr/0005-mesh-chunk-32-with-batches.md](../../docs/adr/0005-mesh-chunk-32-with-batches.md)
 
-## Результат
+## Deliverables
 
-- API: `MeshChunkBuilder::build(&SectionNeighborhood) -> MeshChunkQuads` і `MaskCache::on_block_set`.
-- Еталонний наївний мешер для тестів (кількість видимих граней має збігатися).
-- Бенчмарк на фіксованому корпусі (синтетичний рельєф із seed, 8% прозорих).
+- API: `MeshChunkBuilder::build(&SectionNeighborhood) -> MeshChunkQuads` and `MaskCache::on_block_set`.
+- Naive reference mesher for tests (count of visible faces must match).
+- Benchmark on a fixed corpus (synthetic terrain with seed, 8% transparent).
 
-## Критерії приймання
+## Acceptance criteria
 
-- [ ] Видима геометрія `fast_mesh` дорівнює еталону (проптест на випадкових меш-чанках; порівнювати покриті грані, а не кількість квадив).
-- [ ] Числа gather+маски, `fast_mesh`, оновлення маски записані в performance-budgets.md.
-- [ ] Правка на межі меш-чанка позначає брудними правильних сусідів (тест).
+- [ ] Visible geometry of `fast_mesh` equals the reference (proptest on random mesh chunks; compare covered faces, not the quad count).
+- [ ] Numbers for gather+masks, `fast_mesh`, and mask update recorded in performance-budgets.md.
+- [ ] An edit on a mesh chunk boundary marks the correct neighbors as dirty (test).
 
-## Поза межами задачі
+## Out of scope
 
-Без GPU і без рендер-пакетів (T0-05).
+No GPU and no render batches (T0-05).

@@ -1,12 +1,12 @@
-# Огляд архітектури
+# Architecture overview
 
-Рушій — це «воксельна ОС»: ядро (світ, рендер, мережа, планування, хост модів) нічого не знає про конкретні блоки чи мобів. Увесь геймплей — мод `core` на публічному API. Клієнт і сервер — одна кодова база; одиночна гра запускає вбудований сервер у тому ж процесі.
+The engine is a "voxel OS": the core (world, rendering, networking, scheduling, mod host) knows nothing about specific blocks or mobs. All gameplay is the `core` mod on the public API. Client and server share one codebase; single-player runs an embedded server in the same process.
 
-## Крейти
+## Crates
 
 ```text
                  ┌────────────┐
-                 │engine-core │  тік, фази, бюджети, планувальник задач
+                 │engine-core │  tick, phases, budgets, task scheduler
                  └─────┬──────┘
           ┌────────────┼───────────────┬──────────────┐
           ▼            ▼               ▼              ▼
@@ -26,64 +26,64 @@
                │                     server ◄──────────┘
             updater (bin)             (bin)
 
- mod-sdk  — бібліотека для авторів модів (збирається в wasm32-wasip2)
+ mod-sdk  — library for mod authors (built to wasm32-wasip2)
  engine-cli — new / dev / test / bench / publish
 ```
 
-| Крейт | Тип | Залежить від | Відповідальність |
+| Crate | Type | Depends on | Responsibility |
 | --- | --- | --- | --- |
-| `engine-core` | lib | — | `Tick`, `TickPhase`, `Budget`, планувальник задач з пріоритетами, профайлер-зони |
-| `world` | lib | engine-core | координати, `BlockStateId`, секції з палітрою, колони, реєстри, таблиця ID |
-| `mesh` | lib | world | gather, маски, `fast_mesh` для 32³, складання рендер-пакетів 64³ |
-| `light` | lib | world | інкрементальне світло add/remove BFS на знімках секцій |
-| `worldgen` | lib | world | пайплайн генерації, карта висот і біомів |
-| `lod` | lib | world | LOD-секції, брудні вузли, дисковий кеш |
-| `render` | lib | mesh | wgpu: пробник можливостей, vertex pulling, кулінг, масиви текстур, рендер-граф |
-| `protocol` | lib | world | версіоновані повідомлення клієнт↔сервер↔шлюз |
-| `net` | lib | protocol | QUIC (quinn): пріоритетні потоки, датаграми |
-| `sim` | lib | engine-core, world | регіони, ECS-світ регіону, фізика гравця, ШІ, передбачення |
-| `modhost` | lib | engine-core, world | wasmtime, завантаження модів, пакетні хуки, epoch, дозволи |
-| `mod-sdk` | lib | — | API для авторів модів поверх згенерованих WIT-біндингів |
-| `assets` | lib | — | завантаження асетів Mojang, конвертація, запасні асети, кеш |
-| `auth` | lib | — | ланцюжок токенів Microsoft, клієнт сесійного JWT, сховище секретів |
-| `client` | bin | багато | вікно, меню-лаунчер, рендер-цикл, вбудований сервер |
-| `server` | bin | багато | виділений сервер |
-| `updater` | bin | — | оновлення бінарника і запуск гри |
-| `engine-cli` | bin | — | інструменти для модів і розробки |
+| `engine-core` | lib | — | `Tick`, `TickPhase`, `Budget`, prioritized task scheduler, profiler zones |
+| `world` | lib | engine-core | coordinates, `BlockStateId`, palette sections, columns, registries, ID table |
+| `mesh` | lib | world | gather, masks, `fast_mesh` for 32³, 64³ render batch assembly |
+| `light` | lib | world | incremental add/remove BFS lighting on section snapshots |
+| `worldgen` | lib | world | generation pipeline, height and biome map |
+| `lod` | lib | world | LOD sections, dirty nodes, disk cache |
+| `render` | lib | mesh | wgpu: capability probe, vertex pulling, culling, texture arrays, render graph |
+| `protocol` | lib | world | versioned client↔server↔gateway messages |
+| `net` | lib | protocol | QUIC (quinn): prioritized streams, datagrams |
+| `sim` | lib | engine-core, world | regions, region ECS world, player physics, AI, prediction |
+| `modhost` | lib | engine-core, world | wasmtime, mod loading, batched hooks, epoch, permissions |
+| `mod-sdk` | lib | — | API for mod authors on top of generated WIT bindings |
+| `assets` | lib | — | Mojang asset download, conversion, fallback assets, cache |
+| `auth` | lib | — | Microsoft token chain, session JWT client, secret storage |
+| `client` | bin | many | window, in-game launcher menu, render loop, embedded server |
+| `server` | bin | many | dedicated server |
+| `updater` | bin | — | binary update and game launch |
+| `engine-cli` | bin | — | tools for mods and development |
 
-Правило залежностей: стрілки йдуть лише вниз. `world` не знає про рендер, `sim` не знає про мережу (мережа подає наміри в `PreTick` і забирає дельти в `PostTick`). Новий зв'язок між крейтами, що порушує напрям, — лише через ADR.
+Dependency rule: arrows only point down. `world` knows nothing about rendering, `sim` knows nothing about the network (the network feeds intents into `PreTick` and picks up deltas in `PostTick`). A new link between crates that violates the direction requires an ADR.
 
-## Потоки
+## Threads
 
-Клієнт:
+Client:
 
-| Потік | Робота | Частота |
+| Thread | Work | Rate |
 | --- | --- | --- |
-| Головний | winit, ввід, UI меню | кадр |
-| Симуляція | ECS-розклад клієнта: передбачення, анімації, клієнтські моди | 20 Гц + інтерполяція |
-| Рендер | знімок стану → команди GPU | кадр, відстає на 1 кадр |
-| Мережа | tokio + quinn | асинхронно |
-| Пул задач (N−2) | gather/мешинг, світло, декодування, LOD, патфайндінг | черга з пріоритетами |
-| IO/аудіо | асети, кеш, звук | асинхронно |
+| Main | winit, input, menu UI | frame |
+| Simulation | client ECS schedule: prediction, animations, client mods | 20 Hz + interpolation |
+| Render | state snapshot → GPU commands | frame, lags by 1 frame |
+| Network | tokio + quinn | async |
+| Task pool (N−2) | gather/meshing, lighting, decoding, LOD, pathfinding | priority queue |
+| IO/audio | assets, cache, sound | async |
 
-Сервер: мережа (кілька потоків), IO чанків, генерація, пул тіку регіонів (≈ 80% ядер), пул задач. Деталі — [server-regions.md](server-regions.md).
+Server: network (several threads), chunk IO, generation, region tick pool (≈ 80% of cores), task pool. Details in [server-regions.md](server-regions.md).
 
-## Потік даних блоку (від зміни до пікселя)
+## Block data flow (from change to pixel)
 
-1. Гравець натискає «зламати» → клієнт передбачає зміну локально і шле намір.
-2. Сервер у `PreTick` приймає намір, у `Simulate` регіон застосовує зміну і пише подію `block-broken`.
-3. Моди отримують пачку подій; їхні зміни застосовуються атомарно після виклику.
-4. `PostTick`: дельта секції йде клієнтам у зоні видимості; світло стає в чергу на інкрементне оновлення; LOD-предки позначаються брудними.
-5. Клієнт застосовує дельту (або підтверджує прогноз), оновлює маски, ставить меш-чанк у чергу з високим пріоритетом.
-6. Пул задач перемешує 32³, копіює квади в рендер-пакет 64³, рендер-потік вантажить їх у GPU-буфер.
+1. The player presses "break" → the client predicts the change locally and sends an intent.
+2. The server accepts the intent in `PreTick`; in `Simulate` the region applies the change and emits a `block-broken` event.
+3. Mods receive a batch of events; their changes are applied atomically after the call.
+4. `PostTick`: the section delta goes to clients in the visibility zone; lighting is queued for an incremental update; LOD ancestors are marked dirty.
+5. The client applies the delta (or confirms the prediction), updates masks, and queues the mesh chunk with high priority.
+6. The task pool re-meshes 32³, copies quads into the 64³ render batch, and the render thread uploads them to the GPU buffer.
 
-## Де що лежить у репозиторії
+## Where things live in the repository
 
 ```text
-crates/      код рушія (workspace)
-wit/         контракт модів (WIT)
-mods/core/   базовий геймплей як мод
-docs/        PRD, специфікації, ADR, процес, рісьорч
-tasks/       беклог задач по етапах
-research/    бенчмарки, що обґрунтували рішення (окремий workspace)
+crates/      engine code (workspace)
+wit/         mod contract (WIT)
+mods/core/   base gameplay as a mod
+docs/        PRD, specifications, ADRs, process, research
+tasks/       task backlog by stage
+research/    benchmarks that justified decisions (separate workspace)
 ```

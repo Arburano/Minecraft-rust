@@ -1,26 +1,26 @@
-# 0003. Власний рендер на wgpu з трьома шляхами
+# 0003. Own renderer on wgpu with three paths
 
-Статус: Прийнято (2026-11-15)
+Status: Accepted (2026-11-15)
 
-## Контекст
+## Context
 
-Ціль — 60 FPS на iGPU і GTX 1050, але й на старих GPU без compute/indirect. `MULTI_DRAW_INDIRECT_COUNT` є лише на DX12 і Vulkan 1.2+; на GL ES 3.0/WebGL2 немає storage-буферів у вершинному шейдері і `INDIRECT_EXECUTION`.
+Target — 60 FPS on iGPUs and the GTX 1050, but also on older GPUs without compute/indirect. `MULTI_DRAW_INDIRECT_COUNT` is available only on DX12 and Vulkan 1.2+; on GL ES 3.0/WebGL2 there are no storage buffers in the vertex shader and no `INDIRECT_EXECUTION`.
 
-## Рішення
+## Decision
 
-Рендер пишемо самі на `wgpu`. Пробник можливостей на старті обирає шлях: A — GPU-driven (compute-кулінг + multi_draw_indirect_count), B — vertex pulling 8-байтних квадив зі storage-буфера з CPU-кулінгом, C — ті самі 8 байт як per-instance атрибут. Формат даних однаковий для всіх шляхів. Етапи 0–1 будують B і C; A — після вимірювань.
+We write the renderer ourselves on `wgpu`. A capability probe at startup selects the path: A — GPU-driven (compute culling + multi_draw_indirect_count), B — vertex pulling of 8-byte quads from a storage buffer with CPU culling, C — the same 8 bytes as a per-instance attribute. The data format is the same for all paths. Stages 0–1 build B and C; A comes after measurements.
 
-## Наслідки
+## Consequences
 
-- Один формат даних, три шляхи малювання — тестується логіка вибору без GPU.
-- Головний ризик — пропуск вершин на iGPU; вимірюється першим (T0-06).
+- One data format, three drawing paths — the selection logic can be tested without a GPU.
+- The main risk is missing vertices on iGPUs; it is measured first (T0-06).
 
-## Розглянуті альтернативи
+## Alternatives considered
 
-- Рендер Bevy — не під воксельний масштаб.
-- Лише GPU-driven — відсікає старі GPU.
-- OpenGL напряму — гірша кросплатформеність і немає Metal.
+- Bevy's renderer — not built for voxel scale.
+- GPU-driven only — excludes older GPUs.
+- Raw OpenGL — worse cross-platform support and no Metal.
 
-## Посилання
+## References
 
 docs/architecture/meshing-and-rendering.md.

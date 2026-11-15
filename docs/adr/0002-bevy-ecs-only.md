@@ -1,27 +1,27 @@
-# 0002. bevy_ecs без решти Bevy
+# 0002. bevy_ecs without the rest of Bevy
 
-Статус: Прийнято (2026-11-15)
+Status: Accepted (2026-11-15)
 
-## Контекст
+## Context
 
-Потрібен ECS з автоматичним паралельним плануванням систем за декларованим доступом. Повний Bevy тягне загальний рендер, не оптимізований під мільйони вокселів, і ламає API кожні 3–4 місяці.
+We need an ECS with automatic parallel scheduling of systems based on declared access. Full Bevy pulls in a general-purpose renderer that is not optimized for millions of voxels, and breaks its API every 3–4 months.
 
-## Рішення
+## Decision
 
-Використовуємо лише крейт `bevy_ecs` (версія відкріплена у workspace). Рендер, вікно, ассети, UI — свої або окремі крейти (wgpu, winit, egui). Кожен потоковий регіон сервера — окремий `World`.
+We use only the `bevy_ecs` crate (version pinned in the workspace). Rendering, windowing, assets, UI — our own or separate crates (wgpu, winit, egui). Each server threading region is a separate `World`.
 
-## Наслідки
+## Consequences
 
-- Перевірений планувальник систем, архетипи SoA.
-- Оновлення `bevy_ecs` — планові, раз на півроку, з окремим PR.
-- Тонкий шар абстракції над `World` у `sim`, щоб міграції версій торкались одного місця.
+- A proven system scheduler, SoA archetypes.
+- `bevy_ecs` upgrades are planned, every six months, in a separate PR.
+- A thin abstraction layer over `World` in `sim`, so version migrations touch a single place.
 
-## Розглянуті альтернативи
+## Alternatives considered
 
-- Повний Bevy — див. контекст.
-- Власний ECS — місяці роботи без вигоди.
-- `hecs`/`flecs` — немає вбудованого паралельного планувальника з декларованим доступом (hecs) або це C (flecs).
+- Full Bevy — see context.
+- Our own ECS — months of work with no benefit.
+- `hecs`/`flecs` — hecs has no built-in parallel scheduler with declared access, and flecs is C.
 
-## Посилання
+## References
 
 PRD §2.

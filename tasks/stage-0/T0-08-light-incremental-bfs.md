@@ -1,29 +1,29 @@
-# T0-08. Інкрементальне світло add/remove
+# T0-08. Incremental light add/remove
 
-- **Статус:** todo
-- **Залежить від:** T0-03
-- **Виконавець:** агент
+- **Status:** todo
+- **Depends on:** T0-03
+- **Owner:** agent
 
-## Мета
+## Goal
 
-У крейті `light`: ніблові масиви з варіантом Single, BFS додавання, зворотний BFS видалення, небо з карти висот, робота на знімку 3×3×3 секцій. Відправна точка — `research/bench/light`.
+In the `light` crate: nibble arrays with a Single variant, BFS for additions, reverse BFS for removals, sky light from the heightmap, operating on a snapshot of 3×3×3 sections. Starting point — `research/bench/light`.
 
-## Специфікації
+## Specs
 
 - [docs/architecture/lighting.md](../../docs/architecture/lighting.md)
 - [docs/adr/0011-client-light-server-lod.md](../../docs/adr/0011-client-light-server-lod.md)
 
-## Результат
+## Deliverables
 
-- API: `relight_add`, `relight_remove`, `full_relight` на `LightNeighborhood`.
-- Еталон — повний перерахунок; проптест рівності.
-- Бенчмарк: інкрементне додавання/видалення, повний перерахунок 3×3×3.
+- API: `relight_add`, `relight_remove`, `full_relight` on `LightNeighborhood`.
+- Reference — full recalculation; equality proptest.
+- Benchmark: incremental add/remove, full recalculation of 3×3×3.
 
-## Критерії приймання
+## Acceptance criteria
 
-- [ ] Після будь-якої послідовності правок інкрементне світло побітово дорівнює повному перерахунку (проптест).
-- [ ] Числа записані в performance-budgets.md; ціль ≤ 100/200 мкс p95 перевірена або відхилення пояснене.
+- [ ] After any sequence of edits, incremental lighting is bitwise equal to a full recalculation (proptest).
+- [ ] Numbers recorded in performance-budgets.md; target of ≤ 100/200 µs p95 verified, or the deviation explained.
 
-## Поза межами задачі
+## Out of scope
 
-Без інтеграції з регіонами.
+No integration with regions.

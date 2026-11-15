@@ -1,47 +1,47 @@
-# Бюджети продуктивності
+# Performance budgets
 
-Єдине джерело чисел. Змінюйте тут і в PRD §1 одночасно. Статус: **Ціль** — зобов'язання; **Гіпотеза** — ще не виміряно; **Виміряно** — є бенчмарк (позначено, на чому).
+The single source of numbers. Change here and in PRD §1 at the same time. Status: **Target** — a commitment; **Hypothesis** — not yet measured; **Measured** — a benchmark exists (marked with what it ran on).
 
-## Клієнт
+## Client
 
-| Що | Значення | Статус |
+| What | Value | Status |
 | --- | --- | --- |
-| FPS на iGPU / GTX 1050, 12 чанків | ≥ 60, 1% low ≥ 45 | Ціль |
-| Стрибок кадру | жодного > 33 мс за 30 хв ходіння | Ціль |
-| Мінімальна дальність повних даних | 8 чанків (Low), 12 (за замовчуванням), 16 (High) | Ціль |
-| Дальність з LOD | 64 чанки на GTX 1050 | Ціль (етап 5) |
-| RAM клієнта, 12 чанків | ≤ 1 ГіБ внутрішній бюджет; ≤ 2 ГБ зовнішня ціль | Гіпотеза: 0,5–0,9 ГіБ |
-| Холодний старт до меню | ≤ 5 с | Ціль |
-| Вхід на сервер до керування | ≤ 5 с з кешем асетів | Ціль |
-| GPU-час геометрії | ≤ 8 мс на кадр на iGPU | Гіпотеза |
-| CPU запису команд | ≤ 1 мс на кадр | Гіпотеза |
-| `fast_mesh` меш-чанка 32³ | ≤ 0,2 мс p50 на 4-ядерному десктопі | Гіпотеза (VM, 62³: 0,27 мс) |
-| Gather + маски меш-чанка 32³ | ≤ 100 мкс p50 | Гіпотеза |
-| Оновлення маски на правку | ≤ 20 нс | Гіпотеза |
-| Копіювання рендер-пакета після правки | ≤ 50 мкс | Гіпотеза |
-| Світло: додавання / видалення на правку | ≤ 100 / ≤ 200 мкс p95 | Гіпотеза |
-| `set` у секції, будь-яка бітність | ≤ 10 нс | Гіпотеза (VM: 6–7 нс до 16 станів, 67 нс при 256 без індексу) |
+| FPS on iGPU / GTX 1050, 12 chunks | ≥ 60, 1% low ≥ 45 | Target |
+| Frame spike | none > 33 ms over 30 min of walking | Target |
+| Minimum full-data distance | 8 chunks (Low), 12 (default), 16 (High) | Target |
+| Distance with LOD | 64 chunks on GTX 1050 | Target (stage 5) |
+| Client RAM, 12 chunks | ≤ 1 GiB internal budget; ≤ 2 GB external target | Hypothesis: 0.5–0.9 GiB |
+| Cold start to menu | ≤ 5 s | Target |
+| Joining a server until control | ≤ 5 s with asset cache | Target |
+| GPU geometry time | ≤ 8 ms per frame on iGPU | Hypothesis |
+| CPU command recording | ≤ 1 ms per frame | Hypothesis |
+| `fast_mesh` of a 32³ mesh chunk | ≤ 0.2 ms p50 on a 4-core desktop | Hypothesis (VM, 62³: 0.27 ms) |
+| Gather + masks of a 32³ mesh chunk | ≤ 100 µs p50 | Hypothesis |
+| Mask update per edit | ≤ 20 ns | Hypothesis |
+| Render batch copy after an edit | ≤ 50 µs | Hypothesis |
+| Lighting: add / remove per edit | ≤ 100 / ≤ 200 µs p95 | Hypothesis |
+| `set` in a section, any bit width | ≤ 10 ns | Hypothesis (VM: 6–7 ns up to 16 states, 67 ns at 256 without an index) |
 
-## Сервер
+## Server
 
-| Що | Значення | Статус |
+| What | Value | Status |
 | --- | --- | --- |
-| Тік при 500 гравцях на ноду (16+ ядер, гравці ≥ 8 регіонів) | ≤ 25 мс p99, hard 50 мс | Ціль |
-| Ємність одного регіону | визначає бенчмарк етапу 2 | Відкрито |
-| Перенесення сутності між `World` | ≤ 5 мкс | Гіпотеза |
-| Передача сутності між нодами | ≤ 50 мс p99, 0 дюпів | Ціль (етап 6) |
-| Мережевий CPU | ≤ 1 ядро на 10 000 пакетів/с | Гіпотеза |
-| Трафік на гравця, стабільний стан | ≤ 50 Кбіт/с (≤ 20 рухомих сутностей поруч) | Ціль |
-| RAM ноди, 500 розкиданих гравців | ≤ 16 ГБ | Гіпотеза |
+| Tick with 500 players per node (16+ cores, players in ≥ 8 regions) | ≤ 25 ms p99, hard 50 ms | Target |
+| Capacity of one region | determined by the stage 2 benchmark | Open |
+| Entity transfer between `World`s | ≤ 5 µs | Hypothesis |
+| Entity handoff between nodes | ≤ 50 ms p99, 0 dupes | Target (stage 6) |
+| Network CPU | ≤ 1 core per 10,000 packets/s | Hypothesis |
+| Traffic per player, steady state | ≤ 50 kbit/s (≤ 20 moving entities nearby) | Target |
+| Node RAM, 500 scattered players | ≤ 16 GB | Hypothesis |
 
-## Моди
+## Mods
 
-| Що | Значення | Статус |
+| What | Value | Status |
 | --- | --- | --- |
-| Диспетчеризація пакетного хука | ≤ 1 мкс | Виміряно (VM: ≈ 0,4 мкс, component) |
-| Подія в пакеті | ≤ 5 нс | Виміряно (VM: ≈ 3,6 нс/елемент `list<u32>`) |
-| Ціна epoch | ≤ 10% | Виміряно (VM: 0–9%) |
-| Холодний старт мода з кешем | ≤ 50 мс | Гіпотеза |
-| Мод за замовчуванням | 0,5 мс на тік на регіон, 32 МБ | Ціль |
+| Batched hook dispatch | ≤ 1 µs | Measured (VM: ≈ 0.4 µs, component) |
+| Event in a batch | ≤ 5 ns | Measured (VM: ≈ 3.6 ns/element of `list<u32>`) |
+| Epoch cost | ≤ 10% | Measured (VM: 0–9%) |
+| Cold start of a mod with cache | ≤ 50 ms | Hypothesis |
+| Default mod | 0.5 ms per tick per region, 32 MB | Target |
 
-Цифри «VM» — 2 vCPU Xeon 2,1 ГГц, шум ±30%: `docs/research/optimization-tests.md`.
+"VM" figures — 2 vCPU Xeon 2.1 GHz, noise ±30%: `docs/research/optimization-tests.md`.

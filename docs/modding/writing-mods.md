@@ -1,32 +1,32 @@
-# Як писати моди
+# How to write mods
 
-Цей гайд для авторів модів. Статус: SDK і `engine-cli` ще будуються (етап 3); приклади показують цільовий API.
+This guide is for mod authors. Status: the SDK and `engine-cli` are still being built (stage 3); the examples show the target API.
 
-## 1. Почніть з даних
+## 1. Start with data
 
-Більшість контенту — датапак: блоки, предмети, рецепти, лут, біоми, зони. Код потрібен лише для поведінки, яку даними не описати. Див. [datapacks.md](datapacks.md).
+Most content is a datapack: blocks, items, recipes, loot, biomes, zones. Code is needed only for behavior that data cannot describe. See [datapacks.md](datapacks.md).
 
-## 2. Створіть мод
+## 2. Create a mod
 
 ```bash
-engine-cli new copper_pipes      # шаблон: mod.toml, data/, assets/, src/lib.rs
+engine-cli new copper_pipes      # template: mod.toml, data/, assets/, src/lib.rs
 cd copper_pipes
-engine-cli dev                   # локальний сервер + клієнт, гаряче перезавантаження даних, асетів і .wasm
+engine-cli dev                   # local server + client, hot reload of data, assets and .wasm
 ```
 
-## 3. Поведінка кодом (Rust → wasm32-wasip2)
+## 3. Behavior in code (Rust → wasm32-wasip2)
 
 ```rust
 use engine_mod_sdk::prelude::*;
 
 #[derive(Component, Default)]
-#[replicate]                      // лише для side = "both"
+#[replicate]                      // only for side = "both"
 struct Flow { amount: u16 }
 
 #[mod_init]
 fn init(app: &mut ModApp) {
     app.component::<Flow>("copper_pipes:flow")
-       .system("flow", Phase::Simulate, flow_system)   // доступ виводиться з сигнатури
+       .system("flow", Phase::Simulate, flow_system)   // access is derived from the signature
        .every_n_ticks(2)
        .on::<BlockPlaced>(on_placed);
 }
@@ -42,34 +42,34 @@ fn flow_system(region: &mut Region, pipes: Query<(&BlockPos, &mut Flow)>) {
         }
         flow.amount /= 2;
     }
-    region.apply_flow_batch(&changes);    // один виклик хоста на систему
+    region.apply_flow_batch(&changes);    // one host call per system
 }
 ```
 
-Що тут важливо:
+What matters here:
 
-- Стан (`Flow`) живе в хості, а не в статичних змінних мода.
-- Сусідній регіон — лише через `send_to`; відповідь прийде в наступному тіку.
-- Зміни — пакетом.
+- State (`Flow`) lives in the host, not in the mod's static variables.
+- A neighboring region only through `send_to`; the response arrives on the next tick.
+- Changes come in a batch.
 
-## 4. Тести
-
-```bash
-engine-cli test       # headless-сервер: фіксований seed, N тіків, перевірки стану; fuel замість epoch → повторювано
-engine-cli bench      # час мода на тік і пам'ять; падає, якщо вихід за [budget]
-```
-
-## 5. Публікація
+## 4. Tests
 
 ```bash
-engine-cli publish    # перевірка, збирання, підпис ed25519, завантаження в реєстр
+engine-cli test       # headless server: fixed seed, N ticks, state checks; fuel instead of epoch → repeatable
+engine-cli bench      # mod time per tick and memory; fails if it exceeds [budget]
 ```
 
-## 6. Налагодження продуктивності
+## 5. Publishing
 
-- `/profile mods` на сервері — час кожного мода на тік по регіонах.
-- Правила — [performance-rules.md](performance-rules.md).
+```bash
+engine-cli publish    # check, build, ed25519 signing, upload to the registry
+```
 
-## Інші мови
+## 6. Performance debugging
 
-Будь-яка мова з підтримкою WASI 0.2 Component Model (C, Zig, Go через TinyGo, AssemblyScript) за тим самим WIT. Офіційний SDK — Rust; друга мова — етап 7.
+- `/profile mods` on the server — each mod's time per tick by region.
+- Rules — [performance-rules.md](performance-rules.md).
+
+## Other languages
+
+Any language with WASI 0.2 Component Model support (C, Zig, Go via TinyGo, AssemblyScript) against the same WIT. The official SDK is Rust; the second language is stage 7.

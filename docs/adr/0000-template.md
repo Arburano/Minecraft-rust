@@ -1,22 +1,22 @@
-# NNNN. Назва рішення
+# NNNN. Decision title
 
-Статус: Запропоновано | Прийнято | Замінено ADR-XXXX
+Status: Proposed | Accepted | Superseded ADR-XXXX
 
-## Контекст
+## Context
 
-Що змушує приймати рішення: факти, числа, обмеження.
+What forces the decision: facts, numbers, constraints.
 
-## Рішення
+## Decision
 
-Що вирішили, одним-двома абзацами. Конкретно: крейти, формати, числа.
+What was decided, in one or two paragraphs. Be specific: crates, formats, numbers.
 
-## Наслідки
+## Consequences
 
-- Що стає простіше.
-- Що стає складніше або дорожче.
-- Що треба зробити (задачі).
+- What becomes simpler.
+- What becomes harder or more expensive.
+- What needs to be done (tasks).
 
-## Розглянуті альтернативи
+## Alternatives considered
 
-- Варіант A — чому ні.
-- Варіант B — чому ні.
+- Option A — why not.
+- Option B — why not.

@@ -1,20 +1,20 @@
-# Датапаки
+# Datapacks
 
-Мод рівня 1: усе, що можна описати даними, описується даними. Рушій компілює датапаки в реєстри при завантаженні; у рантаймі вони нічого не коштують.
+A level 1 mod: everything that can be described by data is described by data. The engine compiles datapacks into registries at load time; at runtime they cost nothing.
 
-## Структура
+## Structure
 
 ```text
 <mod>/data/
   blocks/*.toml      items/*.toml      entities/*.toml
   recipes/*.toml     loot/*.toml       tags/*.toml
   worldgen/biomes/*.toml   worldgen/structures/*.toml   worldgen/zones/*.toml
-  physics/player.toml      # параметри руху (core)
+  physics/player.toml      # movement parameters (core)
 <mod>/assets/
   textures/   models/   sounds/   lang/<locale>.json   shaders/*.wgsl
 ```
 
-## Блок
+## Block
 
 ```toml
 id = "copper_pipes:copper_pipe"
@@ -23,17 +23,17 @@ textures = { all = "copper_pipes:block/copper_pipe" }
 hardness = 2.5
 tool = "pickaxe"
 opaque = false
-transparent = true                      # іде в маску прозорих
+transparent = true                      # goes into the transparent mask
 light_emission = 0
 collision = "model"                     # full | none | model
 states = { facing = ["north", "south", "east", "west", "up", "down"], waterlogged = [false, true] }
-components = ["copper_pipes:flow"]      # поведінка з WASM
+components = ["copper_pipes:flow"]      # behavior from WASM
 tick = "none"                           # none | random | scheduled
 ```
 
-Кожна комбінація `states` — окремий `BlockStateId`. Тримайте кількість станів малою: вона множиться.
+Every combination of `states` is a separate `BlockStateId`. Keep the number of states small: it multiplies.
 
-## Зона (PRD §14, № 11)
+## Zone (PRD §14, no. 11)
 
 ```toml
 id = "core:frozen_peaks"
@@ -47,10 +47,10 @@ structures = ["core:igloo"]
 dungeons = []
 ```
 
-## Перевизначення
+## Overrides
 
-Мод може змінити запис іншого мода лише якщо оголосив його залежністю і поставив `override = true`. Конфлікт двох перевизначень одного ID — помилка завантаження з переліком модів.
+A mod may change another mod's entry only if it declared it as a dependency and set `override = true`. A conflict of two overrides of the same ID is a load error listing the mods.
 
-## Валідація
+## Validation
 
-`engine-cli check` і завантажувач перевіряють: схему кожного файлу, посилання на текстури/моделі (з запасними асетами), унікальність ID, діапазони чисел. Помилка показує файл і рядок.
+`engine-cli check` and the loader verify: the schema of each file, references to textures/models (with fallback assets), ID uniqueness, number ranges. An error shows the file and line.

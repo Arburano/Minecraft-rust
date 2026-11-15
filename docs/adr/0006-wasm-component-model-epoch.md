@@ -1,27 +1,27 @@
-# 0006. WASM Component Model, epoch, стан у хості
+# 0006. WASM Component Model, epoch, host-side state
 
-Статус: Прийнято (2026-11-15)
+Status: Accepted (2026-11-15)
 
-## Контекст
+## Context
 
-Моди мають бути безпечними, з будь-якої мови, з гарячим перезавантаженням і лімітами. Тест (wasmtime 50, VM): виклик core-модуля 17–30 нс, компонента ≈ 0,4 мкс; 1 000 окремих викликів компонента — 0,5 мс, пакет — ≈ 3 мкс; epoch 0–9%, fuel +50–92% на коді з викликами. `Store` не можна викликати з кількох потоків. Екземпляр на регіон — 1–15 ГБ.
+Mods must be safe, written in any language, with hot reload and limits. Test (wasmtime 50, VM): a core-module call 17–30 ns, a component call ≈ 0.4 µs; 1 000 separate component calls — 0.5 ms, a batch — ≈ 3 µs; epoch 0–9%, fuel +50–92% on code with calls. A `Store` cannot be called from multiple threads. An instance per region — 1–15 GB.
 
-## Рішення
+## Decision
 
-Моди рівня 2 — компоненти WebAssembly за контрактом `wit/engine-api.wit`, хост — `wasmtime`. Хуки лише пакетні. Epoch увімкнений завжди; fuel — лише в тестах і реплеях. Екземпляр мода на робочий потік (`InstancePre` + pooling allocator). Стан мода — у компонентах ECS хоста. Зміни світу від виклику застосовуються атомарно лише після успіху.
+Level 2 mods are WebAssembly components under the `wit/engine-api.wit` contract; the host is `wasmtime`. Hooks are batched only. Epoch is always enabled; fuel is only used in tests and replays. One mod instance per worker thread (`InstancePre` + pooling allocator). Mod state lives in the host's ECS components. World changes from a call are applied atomically, and only after success.
 
-## Наслідки
+## Consequences
 
-- Безпечні сторонні моди, будь-яка мова з WASI 0.2.
-- Пакетні API — обов'язкова дисципліна дизайну.
-- Тулінг Component Model ще змінюється — версії відкріплені в SDK.
+- Safe third-party mods, any language with WASI 0.2.
+- Batched APIs are a required design discipline.
+- Component Model tooling is still changing — versions are pinned in the SDK.
 
-## Розглянуті альтернативи
+## Alternatives considered
 
-- Нативні dll — немає ABI і пісочниці.
-- Lua/JS — повільніше, гірша типізація, окремий рантайм.
-- Core-модулі з власним ABI — у 15–20× дешевший виклик, але без типів WIT; лишається запасним варіантом.
+- Native DLLs — no ABI and no sandbox.
+- Lua/JS — slower, weaker typing, a separate runtime.
+- Core modules with a custom ABI — calls 15–20× cheaper, but without WIT types; remains the fallback option.
 
-## Посилання
+## References
 
 docs/modding/overview.md; docs/research/optimization-tests.md.

@@ -1,330 +1,330 @@
-## 13. Аналіз оптимізацій: рекомендації
+## 13. Optimization analysis: recommendations
 
-**Головний висновок.** Цілі по пам'яті клієнта (≤ 2 ГБ) і по оверхеду мод-хуків (≤ 1 мкс) реалістичні з запасом, а меш-бюджет 0,2 мс досяжний лише для `fast_mesh` з підтримуваними масками і за умови, що «чанк» визначено як меш-юніт 62³. Справжні вузькі місця — не меш і не WASM, а збір даних у меш-юніт (gather/маски ≈ 0,35 мс), інкрементальне світло, пам'ять сервера при 500 гравцях і пропускна здатність вершин на iGPU. Серверні цілі (25 мс @ 500 гравців, 5000+ з шардингом) поки не підкріплені жодним тестом і мають статус гіпотези.
+**Main conclusion.** The client memory target (≤ 2 GB) and the mod hook overhead target (≤ 1 µs) are realistic with margin, while the 0.2 ms meshing budget is achievable only for `fast_mesh` with maintained masks and only if a "chunk" is defined as a 62³ mesh unit. The real bottlenecks are not meshing or WASM, but data collection into the mesh unit (gather/masks ≈ 0.35 ms), incremental lighting, server memory at 500 players, and vertex throughput on an iGPU. The server targets (25 ms @ 500 players, 5000+ with sharding) are not yet backed by any test and have the status of a hypothesis.
 
-### 13.0 Як читати цей розділ
+### 13.0 How to read this section
 
-- Джерела: `optimization_tests.md` (бенчмарки на зашумленій VM: 2 vCPU Xeon 2,1 ГГц, похибка ±30 %), `optimization_search.md` (веб-ресьорч), сирі логи в `/home/claude/bench/results/`.
-- Додатково я прогнав `meshing` з `-C target-cpu=x86-64-v3` (2 запуски проти 2 базових). Результат: `fast_mesh` 262–291 мкс проти 269–302 мкс базово. Різниця в межах шуму.
-- Також перевірено docs.rs: wgpu 30.0.2 має `DownlevelFlags::VERTEX_STORAGE` («storage buffers in vertex shaders») та `INDIRECT_EXECUTION` (немає на WebGL2, GLES 3.0, Apple1/2). quinn 0.11.12 має `SendStream::set_priority`.
-- Позначки: **[тест]** — виміряно; **[джерело]** — цитоване джерело з URL; **[оцінка]** — моя арифметика або припущення, не вимірювалось.
-- Впевненість: висока / середня / низька.
+- Sources: `optimization_tests.md` (benchmarks on a noisy VM: 2 vCPU Xeon 2.1 GHz, error ±30 %), `optimization_search.md` (web research), raw logs in `/home/claude/bench/results/`.
+- Additionally, I ran `meshing` with `-C target-cpu=x86-64-v3` (2 runs against 2 baseline). Result: `fast_mesh` 262–291 µs vs 269–302 µs baseline. The difference is within noise.
+- Also verified on docs.rs: wgpu 30.0.2 has `DownlevelFlags::VERTEX_STORAGE` ("storage buffers in vertex shaders") and `INDIRECT_EXECUTION` (absent on WebGL2, GLES 3.0, Apple1/2). quinn 0.11.12 has `SendStream::set_priority`.
+- Tags: **[test]** — measured; **[source]** — a cited source with a URL; **[estimate]** — my arithmetic or assumption, not measured.
+- Confidence: high / medium / low.
 
-### 13.1 Де ресьорч і тести розходяться
+### 13.1 Where research and tests diverge
 
-| Тема | Ресьорч | Тести | Чому довіряю |
+| Topic | Research | Tests | Why I trust it |
 |---|---|---|---|
-| Час мешу | 50–200 мкс (Ryzen 3800X, без прозорості); ~600 мкс з прозорістю (Xeon E5) | `mesh()` 1,1 мс; `fast_mesh` 0,27 мс (VM, 8 % прозорих) | Тестам — для **відносних** висновків (`fast_mesh` у 4× швидший за `mesh`). Абсолютні числа ресьорчу правдоподібні для швидшого CPU, але для старої версії крейту. |
-| Версія крейту | 0.3.6 | 0.6.4 (є `fast_mesh`, `mesh_lod`) | Тестам (Cargo.lock). |
-| Epoch | ~10 % сповільнення (документація Wasmtime) | 0–9 % | Узгоджено. |
-| Fuel | «дорожче за epoch», без чисел | +50–92 % на `fib(35)`, ~0–2 % на тісному циклі | Тестам: тепер є число. |
-| Пакування палітри | «індекси можуть перетинати long» (вікі) | Без перетину, як у MC 1.16+ | Тестовому варіанту: простіший і швидший доступ. Вікі описує старий формат (за моїми знаннями, не перевірено). |
-| zstd для регіонів | Linear: −50–60 % розміру (без методики) | Синтетика дала нереальні 19–184× | Ні тому, ні іншому для абсолютних чисел. З тестів беру лише відносне: рівні, словник, швидкість. |
+| Meshing time | 50–200 µs (Ryzen 3800X, no transparency); ~600 µs with transparency (Xeon E5) | `mesh()` 1.1 ms; `fast_mesh` 0.27 ms (VM, 8 % transparent) | The tests — for **relative** conclusions (`fast_mesh` is 4× faster than `mesh`). The research's absolute numbers are plausible for a faster CPU, but for an old crate version. |
+| Crate version | 0.3.6 | 0.6.4 (has `fast_mesh`, `mesh_lod`) | The tests (Cargo.lock). |
+| Epoch | ~10 % slowdown (Wasmtime documentation) | 0–9 % | Consistent. |
+| Fuel | "more expensive than epoch", no numbers | +50–92 % on `fib(35)`, ~0–2 % on a tight loop | The tests: now there is a number. |
+| Palette packing | "indices may cross a long" (wiki) | No crossing, as in MC 1.16+ | The test variant: simpler and faster access. The wiki describes the old format (to my knowledge, not verified). |
+| zstd for regions | Linear: −50–60 % size (no methodology) | Synthetic data gave unrealistic 19–184× | Neither for absolute numbers. From the tests I take only the relative: levels, dictionary, speed. |
 
-### 13.2 Мешинг
+### 13.2 Meshing
 
-**Рішення:** `binary-greedy-meshing` 0.6.4, режим `fast_mesh`. Меш-юніт 62³ з падингом до 64³. Маски opaque/transparent підтримуються інкрементально. Запасний варіант: власний порт cgerikj v2 під інший розмір юніта.
+**Decision:** `binary-greedy-meshing` 0.6.4, `fast_mesh` mode. Mesh unit 62³ padded to 64³. The opaque/transparent masks are maintained incrementally. Fallback: our own port of cgerikj v2 for a different unit size.
 
-| Мешер | Медіана | p95 | Квадів/юніт | Байт (8 Б/квад) |
+| Mesher | Median | p95 | Quads/unit | Bytes (8 B/quad) |
 |---|---|---|---|---|
-| `mesh()` (BTreeSet) | 1083–1178 мкс | 1540–1990 мкс | 4962 | 39 КБ |
-| `fast_mesh` (готові маски) | 269–278 мкс | 457–556 мкс | 4962 | 39 КБ |
-| наївний (таблиця) | 898 мкс | 1425 мкс | 11762 | 92 КБ |
-| побудова масок з нуля | 341–366 мкс | 550–636 мкс | — | — |
-| порожній / суцільний юніт, `fast_mesh` | 52 мкс | ~66 мкс | 0 | 0 |
+| `mesh()` (BTreeSet) | 1083–1178 µs | 1540–1990 µs | 4962 | 39 KB |
+| `fast_mesh` (precomputed masks) | 269–278 µs | 457–556 µs | 4962 | 39 KB |
+| naive (table) | 898 µs | 1425 µs | 11762 | 92 KB |
+| building masks from scratch | 341–366 µs | 550–636 µs | — | — |
+| empty / solid unit, `fast_mesh` | 52 µs | ~66 µs | 0 | 0 |
 
-Джерело: [тест]. Впевненість: **висока** для вибору `fast_mesh`; **середня** для абсолютного часу на десктопі.
+Source: [test]. Confidence: **high** for choosing `fast_mesh`; **medium** for the absolute time on a desktop.
 
-**Що означає «чанк» у цілі 0,2 мс.** Це треба визначити явно:
-- Юніт 62³ = 238 328 вокселів ≈ 58 секцій 16³ ≈ 2,4 колони 16×16×384. [оцінка]
-- `fast_mesh` ≈ 270 мкс / 238 328 ≈ **1,13 нс/воксель** на VM. [тест + арифметика]
-- Для колони 16×16×384 (98 304 вокселі) це ≈ 0,11 мс при лінійному масштабуванні. Але крейт працює лише з 62³, тож це умовне число. [оцінка]
+**What "chunk" means in the 0.2 ms target.** This must be defined explicitly:
+- A 62³ unit = 238,328 voxels ≈ 58 sections of 16³ ≈ 2.4 columns of 16×16×384. [estimate]
+- `fast_mesh` ≈ 270 µs / 238,328 ≈ **1.13 ns/voxel** on the VM. [test + arithmetic]
+- For a 16×16×384 column (98,304 voxels) that is ≈ 0.11 ms under linear scaling. But the crate works only with 62³, so this is a hypothetical number. [estimate]
 
-**Перегляд цілі.** Замість «≤ 0,2 мс/чанк» пропоную:
-- `fast_mesh` ≤ 0,3 мс p50 і ≤ 0,6 мс p95 на юніт 62³ на референсному 4-ядерному CPU;
-- **повний конвеєр** (gather із секцій + маски + меш) ≤ 0,5 мс p50 на юніт;
-- пропуск порожніх і суцільних юнітів за метаданими секцій, без виклику мешера (навіть 52 мкс на порожній юніт — марна витрата).
+**Target revision.** Instead of "≤ 0.2 ms/chunk" I propose:
+- `fast_mesh` ≤ 0.3 ms p50 and ≤ 0.6 ms p95 per 62³ unit on a reference 4-core CPU;
+- **the full pipeline** (gather from sections + masks + mesh) ≤ 0.5 ms p50 per unit;
+- skipping empty and solid units by section metadata, without calling the mesher (even 52 µs for an empty unit is wasted work).
 
-**Арифметика навантаження** [оцінка, на числах VM, повний конвеєр 0,27 + 0,35 ≈ 0,62 мс]:
-- Радіус 12 чанків = 400 × 400 блоків. По горизонталі (400/62)² ≈ 42 колони юнітів; по вертикалі 384/62 ≈ 6,2. Разом ≈ **260 юнітів**.
-- 2 воркери мешингу (ноутбук з 4 ядрами): 2 × 16,7 мс / 0,62 мс ≈ **53 юніти за кадр**. Повна перебудова 260 юнітів ≈ 5 кадрів.
-- Зміна одного блоку на межі зачіпає падинг сусідів: до 4 юнітів (до 8 з AO по діагоналях). 4 × 0,62 = 2,5 мс на одному потоці. Встигає в той самий кадр.
-- Політ зі швидкістю 30 блоків/с [припущення]: 30 × 400 × 384 = 4,6 млн вокселів/с ≈ 19 юнітів/с. Це дрібниця.
+**Load arithmetic** [estimate, on VM numbers, full pipeline 0.27 + 0.35 ≈ 0.62 ms]:
+- Radius of 12 chunks = 400 × 400 blocks. Horizontally (400/62)² ≈ 42 unit columns; vertically 384/62 ≈ 6.2. Total ≈ **260 units**.
+- 2 meshing workers (a 4-core laptop): 2 × 16.7 ms / 0.62 ms ≈ **53 units per frame**. A full rebuild of 260 units ≈ 5 frames.
+- Changing a single block on a border affects the neighbors' padding: up to 4 units (up to 8 with AO on diagonals). 4 × 0.62 = 2.5 ms on one thread. Fits in the same frame.
+- Flying at 30 blocks/s [assumption]: 30 × 400 × 384 = 4.6 million voxels/s ≈ 19 units/s. That is a small thing.
 
-Висновок: CPU-час мешингу не є вузьким місцем. Вузьке місце — gather і маски.
+Conclusion: meshing CPU time is not the bottleneck. The bottleneck is gather and masks.
 
-**Ризики та найдешевші експерименти:**
+**Risks and cheapest experiments:**
 
-| Ризик | Експеримент | Поріг |
+| Risk | Experiment | Threshold |
 |---|---|---|
-| Gather з палітрових секцій у 64³ через `get()` = 262 144 × 3,8 нс ≈ **1 мс** [оцінка з тесту палітри] | Масове розпакування секції (word-by-word) у буфер 64³ і побудова масок прямо з палітри (Single-секції = memset) | gather + маски ≤ 100 мкс p50 |
-| Інкрементальні маски не реалізовані | Оновлення бітів маски при `set_block`; 10 000 випадкових правок | ≤ 20 нс на правку |
-| Сітка 62 не кратна 16 (НСК = 496) | Перевірити індексну математику gather на межах секцій (проптести) | 0 розбіжностей з еталонним наївним мешером |
-| AO не виміряно | Додати AO-біти у квад, порівняти час | ≤ +30 % до `fast_mesh` |
-| Десктопний CPU не тестувався | Той самий бенч на Ryzen/Intel 4+ ГГц | `fast_mesh` ≤ 0,2 мс p50 |
+| Gather from palette sections into 64³ via `get()` = 262,144 × 3.8 ns ≈ **1 ms** [estimate from the palette test] | Bulk unpacking of a section (word-by-word) into a 64³ buffer and building masks directly from the palette (Single sections = memset) | gather + masks ≤ 100 µs p50 |
+| Incremental masks are not implemented | Update mask bits on `set_block`; 10,000 random edits | ≤ 20 ns per edit |
+| The 62 grid is not a multiple of 16 (LCM = 496) | Check the gather index math at section boundaries (property tests) | 0 mismatches with the reference naive mesher |
+| AO not measured | Add AO bits to the quad, compare time | ≤ +30 % to `fast_mesh` |
+| Desktop CPU not tested | The same bench on a Ryzen/Intel 4+ GHz | `fast_mesh` ≤ 0.2 ms p50 |
 
-### 13.3 GPU-рендеринг і запасний шлях для слабких GPU
+### 13.3 GPU rendering and a fallback path for weak GPUs
 
-**Рішення (етап 0–1):** квади 8 Б, vertex pulling зі спільного storage-буфера (slab-алокатор). Один draw на юніт на напрям грані на прохід (opaque, потім transparent). CPU frustum culling. Відкидання напрямів граней, які дивляться від камери. Вершина обчислюється з `vertex_index` (квад = `vertex_index / 6`), тому `first_instance` не потрібен.
+**Decision (stage 0–1):** 8 B quads, vertex pulling from a shared storage buffer (slab allocator). One draw per unit per face direction per pass (opaque, then transparent). CPU frustum culling. Discarding face directions facing away from the camera. The vertex is computed from `vertex_index` (quad = `vertex_index / 6`), so `first_instance` is not needed.
 
-**Запасний шлях:** якщо немає `DownlevelFlags::VERTEX_STORAGE`, ті самі 8 Б подаються як per-instance атрибут (`Uint32x2`, 4 вершини на інстанс). Шейдерна логіка та сама.
+**Fallback path:** if there is no `DownlevelFlags::VERTEX_STORAGE`, the same 8 B are supplied as a per-instance attribute (`Uint32x2`, 4 vertices per instance). The shader logic is the same.
 
-**Наступний варіант (етап 2+):** compute-culling, що пише indirect-аргументи, + `multi_draw_indirect(_count)` там, де є `INDIRECT_EXECUTION` / `MULTI_DRAW_INDIRECT_COUNT`. Hi-Z (як в Aokana) — лише після вимірювань.
+**Next option (stage 2+):** compute culling that writes indirect arguments, + `multi_draw_indirect(_count)` where `INDIRECT_EXECUTION` / `MULTI_DRAW_INDIRECT_COUNT` are available. Hi-Z (as in Aokana) — only after measurements.
 
-Впевненість: **середня**. GPU не тестувався взагалі.
+Confidence: **medium**. The GPU was not tested at all.
 
-Доводи:
-- Ліміт прив'язки storage-буфера 128 МіБ [джерело: docs.rs wgpu Limits]. Це 16,7 млн квадив на прив'язку. Оцінка потреби — нижче. Ліміт не заважає.
-- `INDIRECT_EXECUTION` відсутній на GLES 3.0/WebGL2 [джерело: docs.rs DownlevelFlags]. Тому GPU-driven шлях не може бути єдиним.
-- Великі юніти 62³ дають мало draw-викликів: ≈ 260 юнітів, з них непорожніх ≈ 100 [оцінка]. 100 юнітів × ≤ 3 видимі напрями × 2 проходи ≈ **600 draw** без indirect. Для DX12/Vulkan це прийнятно [оцінка, не виміряно].
+Arguments:
+- The storage buffer binding limit is 128 MiB [source: docs.rs wgpu Limits]. That is 16.7 million quads per binding. The need estimate is below. The limit does not interfere.
+- `INDIRECT_EXECUTION` is absent on GLES 3.0/WebGL2 [source: docs.rs DownlevelFlags]. So the GPU-driven path cannot be the only one.
+- Large 62³ units yield few draw calls: ≈ 260 units, of which non-empty ≈ 100 [estimate]. 100 units × ≤ 3 visible directions × 2 passes ≈ **600 draws** without indirect. For DX12/Vulkan that is acceptable [estimate, not measured].
 
-**Арифметика вершин** [оцінка]:
-- ≈ 100 непорожніх юнітів × 4962 квадив ≈ 0,5 млн квадив = 3 млн вершин (6 на квад) за кадр.
-- При 60 FPS це 180 млн вершин/с. Відкидання напрямів граней зменшує це приблизно вдвічі (≤ 3 з 6 напрямів видимі).
-- Для старих iGPU це може бути на межі. **Це головний невиміряний ризик рендера.**
+**Vertex arithmetic** [estimate]:
+- ≈ 100 non-empty units × 4962 quads ≈ 0.5 million quads = 3 million vertices (6 per quad) per frame.
+- At 60 FPS that is 180 million vertices/s. Discarding face directions reduces this by about half (≤ 3 of 6 directions visible).
+- For old iGPUs this may be borderline. **This is the main unmeasured rendering risk.**
 
-| Ризик | Експеримент | Поріг |
+| Risk | Experiment | Threshold |
 |---|---|---|
-| Пропуск вершин на iGPU | wgpu-сцена 0,5 млн квадив, vertex pulling vs instanced vs індексований буфер; Intel UHD + GTX 1050 | ≤ 8 мс GPU-часу на кадр (половина бюджету 60 FPS) |
-| Instanced-квади (4 вершини на інстанс) повільні на деяких GPU | Той самий тест, порівняти з `draw(0..6n)` | instanced не гірший за 1,3× |
-| Підтримка функцій | Дамп `adapter.features()`, `limits()`, `downlevel_capabilities()` на цільових GPU (Vulkan і DX12) | `VERTEX_STORAGE` на обох; інакше запасний шлях за замовчуванням |
-| Вартість draw-викликів | 600 vs 2000 draw на iGPU | CPU-час запису команд ≤ 1 мс |
-| Печерне відсікання (cave culling) | Граф видимості між гранями юніта; рахувати відкинуті юніти під землею | ≥ 50 % відкинутих юнітів у печері |
+| Vertex throughput on an iGPU | wgpu scene of 0.5 million quads, vertex pulling vs instanced vs indexed buffer; Intel UHD + GTX 1050 | ≤ 8 ms GPU time per frame (half of the 60 FPS budget) |
+| Instanced quads (4 vertices per instance) are slow on some GPUs | The same test, compare with `draw(0..6n)` | instanced no worse than 1.3× |
+| Feature support | Dump `adapter.features()`, `limits()`, `downlevel_capabilities()` on target GPUs (Vulkan and DX12) | `VERTEX_STORAGE` on both; otherwise the fallback path by default |
+| Draw call cost | 600 vs 2000 draws on an iGPU | command recording CPU time ≤ 1 ms |
+| Cave culling | A visibility graph between unit faces; count units discarded underground | ≥ 50 % of units discarded in a cave |
 
-### 13.4 LOD (до 64 чанків)
+### 13.4 LOD (up to 64 chunks)
 
-**Рішення:** LOD як даунсемплінг вокселів 2× на рівень. Кожен LOD-юніт 62³ покриває 62·2^L блоків і мешиться тим самим мешером (`mesh_lod` є в 0.6.4, але не тестувався). Сервер шле базовий LOD-рівень (патерн Distant Horizons [джерело]). Шви — «спідниці» (skirts). Освітлення LOD — лише небо, запечене у вершину.
+**Decision:** LOD as voxel downsampling 2× per level. Each 62³ LOD unit covers 62·2^L blocks and is meshed by the same mesher (`mesh_lod` exists in 0.6.4 but was not tested). The server sends the base LOD level (the Distant Horizons pattern [source]). Seams — skirts. LOD lighting — sky only, baked into the vertex.
 
-**Запасний варіант:** клієнтська генерація LOD з власних даних без серверного потоку.
+**Fallback:** client-side LOD generation from its own data without a server stream.
 
-**Відкинуто для етапу 0–1:** Aokana SVDAG + ray marching [джерело: arXiv 2505.02017]. Причини: немає редагування в рантаймі, немає прозорості, потрібен compute (не працює на запасному шляху), лише Unity. Transvoxel — для marching cubes, не для блокового світу.
+**Rejected for stage 0–1:** Aokana SVDAG + ray marching [source: arXiv 2505.02017]. Reasons: no runtime editing, no transparency, needs compute (does not work on the fallback path), Unity only. Transvoxel is for marching cubes, not for a block world.
 
-Впевненість: **середня** (вибір), **низька** (числа).
+Confidence: **medium** (choice), **low** (numbers).
 
-**Арифметика** [оцінка; LOD0 ≈ 39 КБ на 62×62 = 3844 м² ≈ 10 Б/м², квадив на рівні L менше в 4^L]:
+**Arithmetic** [estimate; LOD0 ≈ 39 KB per 62×62 = 3844 m² ≈ 10 B/m², quads at level L are 4^L fewer]:
 
-| Кільце | Площа, м² | Ділення | Меш, МБ | Юнітів (гориз. × верт.) |
+| Ring | Area, m² | Divisor | Mesh, MB | Units (horiz. × vert.) |
 |---|---|---|---|---|
-| L0: 0–12 чанків | 160 000 | 1 | 1,6 | 42 × 6,2 ≈ 260 |
-| L1: 12–24 | 430 000 | 4 | 1,1 | 28 × 3,1 ≈ 87 |
-| L2: 24–48 | 1 770 000 | 16 | 1,1 | 29 × 1,5 ≈ 44 |
-| L3: 48–64 | 1 830 000 | 64 | 0,3 | 7 × 1 ≈ 7 |
-| **Разом** | 4 190 000 | — | **≈ 4 (×5 запас = 20)** | **≈ 400** |
+| L0: 0–12 chunks | 160,000 | 1 | 1.6 | 42 × 6.2 ≈ 260 |
+| L1: 12–24 | 430,000 | 4 | 1.1 | 28 × 3.1 ≈ 87 |
+| L2: 24–48 | 1,770,000 | 16 | 1.1 | 29 × 1.5 ≈ 44 |
+| L3: 48–64 | 1,830,000 | 64 | 0.3 | 7 × 1 ≈ 7 |
+| **Total** | 4,190,000 | — | **≈ 4 (×5 margin = 20)** | **≈ 400** |
 
-Висновок: 64 чанки через LOD дешеві і за пам'яттю, і за кількістю draw. А от **повні дані на 64 чанки неможливі**: 129² × 24 = 399 384 секцій × 4 КБ світла = 1,52 ГіБ лише на світло. Повні воксельні дані — лише в радіусі 12–16.
+Conclusion: 64 chunks via LOD is cheap both in memory and in draw count. But **full data for 64 chunks is impossible**: 129² × 24 = 399,384 sections × 4 KB of light = 1.52 GiB for light alone. Full voxel data only within a radius of 12–16.
 
-| Ризик | Експеримент | Поріг |
+| Risk | Experiment | Threshold |
 |---|---|---|
-| Оновлення LOD після правок (жодне джерело не описує) | Брудні регіони: правка → перерахунок предків L1..L3 | ≤ 1 мс на правку сумарно по рівнях |
-| Тріщини на межах рівнів | Скріншот-тест зі спідницями | 0 видимих дірок із 8 ракурсів |
-| `mesh_lod` поводиться інакше, ніж очікується | Бенч `mesh_lod` vs даунсемплінг + `fast_mesh` | Час ≤ `fast_mesh`; квадив ≤ 1/3 від L0 |
+| LOD update after edits (no source describes it) | Dirty regions: edit → recompute ancestors L1..L3 | ≤ 1 ms per edit total across levels |
+| Cracks at level boundaries | Screenshot test with skirts | 0 visible holes from 8 viewpoints |
+| `mesh_lod` behaves differently than expected | Bench `mesh_lod` vs downsampling + `fast_mesh` | Time ≤ `fast_mesh`; quads ≤ 1/3 of L0 |
 
-### 13.5 Освітлення
+### 13.5 Lighting
 
-**Рішення:** нібли per-section (блок + небо, 4 КБ на секцію), Single-варіант для однорідних секцій (усе небо 15 / усе темне 0). **Інкрементальні BFS-черги add/remove** для правок. Двопрохідне світло по групах 2×2 (специфікація dktapps [джерело]) — для початкової генерації. Світло для рендера рахує клієнт. Сервер рахує світло лише там, де воно потрібне для геймплея (спавн мобів), ліниво.
+**Decision:** per-section nibbles (block + sky, 4 KB per section), a Single variant for uniform sections (all sky 15 / all dark 0). **Incremental add/remove BFS queues** for edits. Two-pass light in 2×2 groups (the dktapps specification [source]) — for initial generation. Light for rendering is computed by the client. The server computes light only where it is needed for gameplay (mob spawn), lazily.
 
-**Запасний варіант:** серверне світло, що надсилається клієнту (як у MC). Дорожче для CPU сервера і трафіку.
+**Fallback:** server light sent to the client (as in MC). More expensive for server CPU and traffic.
 
-Впевненість: **висока**, що потрібне інкрементальне світло; **середня** — щодо клієнтського розрахунку.
+Confidence: **high** that incremental light is needed; **medium** about client-side computation.
 
-| Сценарій [тест] | 16³ | 48³ (27 секцій) |
+| Scenario [test] | 16³ | 48³ (27 sections) |
 |---|---|---|
-| 1 факел, відкрите повітря | 24 мкс | 36 мкс |
-| 8 факелів/секцію, відкрито | 46 мкс | 1415 мкс |
-| 26–45 % непрозорих, 8 факелів | 25–27 мкс | 2062–2181 мкс |
-| Небо (heightmap + дахи) | не показово | 554 мкс |
+| 1 torch, open air | 24 µs | 36 µs |
+| 8 torches/section, open | 46 µs | 1415 µs |
+| 26–45 % opaque, 8 torches | 25–27 µs | 2062–2181 µs |
+| Sky (heightmap + roofs) | not indicative | 554 µs |
 
-Вартість: 10–13 нс на pop у відкритому просторі, 27–35 нс з перешкодами [тест].
+Cost: 10–13 ns per pop in open space, 27–35 ns with obstacles [test].
 
-**Арифметика** [оцінка]:
-- Один новий факел інкрементально ≈ 3303 pop × 11–30 нс ≈ **36–100 мкс**. Видалення ≈ 2× (дві черги).
-- Сервер, 50 світлових правок за тік: 2–5 мс, розподілено між регіональними потоками. Прийнятно.
-- 1000 правок за тік (TNT, масове будівництво): 36–100 мс. **Не влазить** → потрібен ліміт світлових оновлень за тік з відкладанням.
-- Початкове небо клієнта: 554 мкс / 27 ≈ 20 мкс/секцію × 15 000 = 0,3 с одного потоку. На пулі під час завантаження — прийнятно.
+**Arithmetic** [estimate]:
+- One new torch incrementally ≈ 3303 pops × 11–30 ns ≈ **36–100 µs**. Removal ≈ 2× (two queues).
+- Server, 50 light edits per tick: 2–5 ms, spread across region threads. Acceptable.
+- 1000 edits per tick (TNT, mass building): 36–100 ms. **Does not fit** → a per-tick limit on light updates with deferral is needed.
+- Client initial sky: 554 µs / 27 ≈ 20 µs/section × 15,000 = 0.3 s on one thread. On a pool during loading — acceptable.
 
-| Ризик | Експеримент | Поріг |
+| Risk | Experiment | Threshold |
 |---|---|---|
-| Інкрементальне видалення світла не тестувалось | Remove-BFS: прибрати факел, зламати блок під небом | p95 ≤ 100 мкс на правку |
-| Межі секцій у BFS | Тест 3×3×3 з факелом на межі; порівняти з повним перерахунком | Побітова рівність |
-| Детермінізм клієнт/сервер (якщо сервер теж рахує) | Однакові входи → хеш світла | Хеші збігаються |
-| Smooth lighting / AO у шейдері | Не досліджено; міряти після базового рендера | — |
+| Incremental light removal was not tested | Remove-BFS: remove a torch, break a block under the sky | p95 ≤ 100 µs per edit |
+| Section boundaries in BFS | A 3×3×3 test with a torch on a border; compare with a full recompute | Bit-for-bit equality |
+| Client/server determinism (if the server also computes) | Same inputs → light hash | Hashes match |
+| Smooth lighting / AO in the shader | Not researched; measure after the baseline renderer | — |
 
-### 13.6 Зберігання світу і пам'ять
+### 13.6 World storage and memory
 
-**Рішення:** секції 16³ з палітрою без перетину слів (1→2→…→8 біт, далі direct 12 біт), Single-варіант, **зворотний індекс (хеш) для палітр > 16 записів**. Диск і мережа: палітрово-упаковані секції + zstd. Рівень 3 для збереження, 1 для мережі, 9 для бекапів. Словник — лише для одиночних секцій у мережі і лише після тесту на реальних світах. Один файл на регіон (патерн Linear [джерело, без методики]).
+**Decision:** 16³ sections with a palette without word crossing (1→2→…→8 bits, then direct 12 bits), a Single variant, **a reverse index (hash) for palettes > 16 entries**. Disk and network: palette-packed sections + zstd. Level 3 for saving, 1 for network, 9 for backups. A dictionary — only for single sections on the network and only after a test on real worlds. One file per region (the Linear pattern [source, no methodology]).
 
-**Запасний варіант:** rkyv + mmap для швидкого завантаження регіонів (не перевірено, лише пошук).
+**Fallback:** rkyv + mmap for fast region loading (not verified, search only).
 
-Впевненість: **висока** (палітра), **середня** (zstd-рівні).
+Confidence: **high** (palette), **medium** (zstd levels).
 
-Ключові числа [тест]:
-- Розмір: Single 56 Б; поверхня (8 id, 3 біт) 1640 Б; підземелля (10 id, 4 біт) 2124 Б; найгірше 6616 Б (81 % від 8192).
-- `get` ≈ 3,8 нс (проти 1,0 нс у плоского масиву); `set` 6–7 нс при палітрі ≤ 16; **66,7 нс при палітрі 256** (лінійний пошук).
-- zstd: палітрово-упаковані колони проти сирих u16 на рівні 3 — 1081 Б проти 1361 Б, стиснення 26 мкс проти 73 мкс на колону. Палітра виграє і за розміром, і за швидкістю (відносно; дані синтетичні).
-- Рівень 9 дає −13–30 % розміру за 4–6× часу стиснення; розпакування однаково швидке.
-- Словник допоміг лише на одиночній секції 8 КБ (+3–5 %). На колонах нейтральний або шкідливий (144× → 100×).
+Key numbers [test]:
+- Size: Single 56 B; surface (8 ids, 3 bit) 1640 B; dungeon (10 ids, 4 bit) 2124 B; worst case 6616 B (81 % of 8192).
+- `get` ≈ 3.8 ns (vs 1.0 ns for a flat array); `set` 6–7 ns with a palette ≤ 16; **66.7 ns with a palette of 256** (linear search).
+- zstd: palette-packed columns vs raw u16 at level 3 — 1081 B vs 1361 B, compression 26 µs vs 73 µs per column. The palette wins both in size and speed (relative; the data is synthetic).
+- Level 9 gives −13–30 % size for 4–6× compression time; decompression is equally fast.
+- The dictionary helped only on a single 8 KB section (+3–5 %). On columns it is neutral or harmful (144× → 100×).
 
-**Бюджет пам'яті клієнта** (усе, крім рядків з позначкою [тест], — [оцінка]):
+**Client memory budget** (everything except rows tagged [test] is an [estimate]):
 
-| Компонент | 12 чанків | 64 чанки (через LOD) |
+| Component | 12 chunks | 64 chunks (via LOD) |
 |---|---|---|
-| Воксельні секції (15 000) | 17 МіБ [тест, припущений мікс]; найгірше 95 МіБ | Те саме (повні дані лише ≤ 12) |
-| Світло, 4 КБ/секцію | 58,6 МіБ без стиснення [арифм. з тесту]; ≈ 15–30 МіБ з Single | Те саме |
-| CPU-копії мешів | < 10 МіБ [арифм. з тесту]; звільняти після завантаження на GPU | — |
-| GPU-меші L0 | ≈ 2–10 МіБ | + LOD ≈ 4–20 МіБ |
-| Текстури (атлас 16 px, ~1000 блоків, міпи) | ≈ 1,5 МіБ; паки 64 px ≈ 25 МіБ | Те саме |
-| Фреймбуфери 1080p (3 кольорові + depth) | ≈ 32 МіБ (на iGPU — зі спільної RAM) | Те саме |
-| ECS, сутності, UI, аудіо | ≈ 100–200 МіБ | ≈ 100–200 МіБ |
-| WASM-моди на клієнті (10 × 10–20 МіБ) | ≈ 100–200 МіБ | Те саме |
-| Бінарник, драйвер, wgpu staging, фрагментація | ≈ 200–300 МіБ | ≈ 200–300 МіБ |
-| **Разом** | **≈ 0,5–0,9 ГіБ** | **≈ 0,55–1,0 ГіБ** |
+| Voxel sections (15,000) | 17 MiB [test, assumed mix]; worst case 95 MiB | The same (full data only ≤ 12) |
+| Light, 4 KB/section | 58.6 MiB uncompressed [arithmetic from the test]; ≈ 15–30 MiB with Single | The same |
+| CPU mesh copies | < 10 MiB [arithmetic from the test]; free after upload to GPU | — |
+| GPU meshes L0 | ≈ 2–10 MiB | + LOD ≈ 4–20 MiB |
+| Textures (16 px atlas, ~1000 blocks, mips) | ≈ 1.5 MiB; 64 px packs ≈ 25 MiB | The same |
+| 1080p framebuffers (3 color + depth) | ≈ 32 MiB (on an iGPU — from shared RAM) | The same |
+| ECS, entities, UI, audio | ≈ 100–200 MiB | ≈ 100–200 MiB |
+| WASM mods on the client (10 × 10–20 MiB) | ≈ 100–200 MiB | The same |
+| Binary, driver, wgpu staging, fragmentation | ≈ 200–300 MiB | ≈ 200–300 MiB |
+| **Total** | **≈ 0.5–0.9 GiB** | **≈ 0.55–1.0 GiB** |
 
-Висновок: ціль 2 ГБ **реалістична** з запасом. Пропоную внутрішній бюджет 1 ГіБ при 12 чанках, щоб лишити місце модам і пакам.
+Conclusion: the 2 GB target is **realistic** with margin. I propose an internal budget of 1 GiB at 12 chunks to leave room for mods and packs.
 
-**Сервер — окрема проблема** [оцінка]: 500 гравців, розкиданих без перетину, × 15 000 секцій = 7,5 млн секцій × 1,19 КБ ≈ **8,9 ГБ лише вокселів** (зі світлом 4 КБ — ще +30 ГБ). Тому сервер не тримає світло для всіх секцій, використовує дистанцію симуляції 6–8 чанків і LRU-кеш стиснених колон для решти радіусу видимості.
+**The server is a separate problem** [estimate]: 500 players scattered without overlap × 15,000 sections = 7.5 million sections × 1.19 KB ≈ **8.9 GB of voxels alone** (with 4 KB light — another +30 GB). So the server does not keep light for all sections, uses a simulation distance of 6–8 chunks, and an LRU cache of compressed columns for the rest of the view radius.
 
-| Ризик | Експеримент | Поріг |
+| Risk | Experiment | Threshold |
 |---|---|---|
-| Реальний мікс секцій невідомий (17 МіБ — припущення) | Згенерувати/імпортувати реальний світ, гістограма бітності секцій | ≤ 40 МіБ на 15 000 секцій |
-| `set` 66 нс на великих палітрах | Додати `HashMap<u16,u8>`/відсортований індекс для > 16 записів | ≤ 10 нс на `set` |
-| Реальні коефіцієнти zstd | Стиснути реальні колони (зі світлом і block entities) рівнями 1/3/9, зі словником і без | Обрати рівень, що дає ≤ 50 мкс/колону стиснення |
-| Фактичний RSS клієнта | `dhat` + RSS після 10 хв польоту на 12 чанках | ≤ 1 ГіБ |
+| The real section mix is unknown (17 MiB is an assumption) | Generate/import a real world, histogram of section bit widths | ≤ 40 MiB per 15,000 sections |
+| `set` 66 ns on large palettes | Add a `HashMap<u16,u8>`/sorted index for > 16 entries | ≤ 10 ns per `set` |
+| Real zstd ratios | Compress real columns (with light and block entities) at levels 1/3/9, with and without a dictionary | Choose a level giving ≤ 50 µs/column compression |
+| Actual client RSS | `dhat` + RSS after 10 min of flight at 12 chunks | ≤ 1 GiB |
 
-### 13.7 Мережа
+### 13.7 Network
 
-**Рішення:** одне QUIC-з'єднання (quinn 0.11). Ненадійні датаграми — для стану сутностей (дельта від останнього підтвердженого знімка, 20 Гц). Надійні стріми з пріоритетом (`SendStream::set_priority` [перевірено на docs.rs]) — для чанків, відсортованих за відстанню до гравця. Чанки йдуть як палітрові секції + zstd рівня 1. Модель: авторитетний сервер + передбачення клієнта + інтерполяція (Photon, Gambetta [джерело]).
+**Decision:** one QUIC connection (quinn 0.11). Unreliable datagrams — for entity state (delta from the last acknowledged snapshot, 20 Hz). Reliable prioritized streams (`SendStream::set_priority` [verified on docs.rs]) — for chunks sorted by distance to the player. Chunks go as palette sections + zstd level 1. Model: authoritative server + client prediction + interpolation (Photon, Gambetta [source]).
 
-**Запасний варіант:** `bevy_quinnet` як готова обгортка (не перевірено).
+**Fallback:** `bevy_quinnet` as a ready wrapper (not verified).
 
-Впевненість: **середня**. Нічого з мережі не тестувалось.
+Confidence: **medium**. Nothing about the network was tested.
 
-**Арифметика** [оцінка]:
-- Вхід гравця: 625 колон × 5–20 КБ (реальний розмір невідомий; синтетичний 1 КБ нереальний) = 3–12 МБ. За 10 с це 2,5–10 Мбіт/с на гравця.
-- Сутності: 50 видимих × 16 Б × 20 Гц = 16 КБ/с ≈ 128 кбіт/с на гравця. × 500 = **≈ 64 Мбіт/с** вихідного трафіку вузла плюс чанки.
-- Пакети: 500 гравців × 20 Гц = 10 000 датаграм/с на вузол.
+**Arithmetic** [estimate]:
+- Player login: 625 columns × 5–20 KB (real size unknown; a synthetic 1 KB is unrealistic) = 3–12 MB. Over 10 s that is 2.5–10 Mbit/s per player.
+- Entities: 50 visible × 16 B × 20 Hz = 16 KB/s ≈ 128 kbit/s per player. × 500 = **≈ 64 Mbit/s** of node outbound traffic plus chunks.
+- Packets: 500 players × 20 Hz = 10,000 datagrams/s per node.
 
-| Ризик | Експеримент | Поріг |
+| Risk | Experiment | Threshold |
 |---|---|---|
-| CPU quinn на 500 з'єднань | 500 клієнтів-ботів, 20 Гц × 1 КБ датаграми, один сервер-процес | ≤ 1 ядро на 10 000 пакетів/с |
-| Head-of-line між стрімами чанків | Втрати 2 % + RTT 100 мс (`tc netem`); час до видимості найближчих чанків | Найближчі 3×3 колони ≤ 1 с |
-| Розмір реальних чанк-пакетів | Див. 13.6 | ≤ 20 КБ/колону |
+| quinn CPU at 500 connections | 500 bot clients, 20 Hz × 1 KB datagrams, one server process | ≤ 1 core per 10,000 packets/s |
+| Head-of-line blocking between chunk streams | 2 % loss + RTT 100 ms (`tc netem`); time to visibility of the nearest chunks | Nearest 3×3 columns ≤ 1 s |
+| Size of real chunk packets | See 13.6 | ≤ 20 KB/column |
 
-### 13.8 Регіональні потоки сервера (Folia-стиль)
+### 13.8 Server region threads (Folia style)
 
-**Рішення:** регіон = окремий bevy `World` у власності одного воркера на тік. Стабільні глобальні ID сутностей (власний `NetId → Entity`), щоб злиття/розділення регіонів були копіюванням. Глобальний регіон — для чату, команд, таблиць. Ціль 25 мс трактую як ≤ 25 мс p99 на регіон при 20 TPS (бюджет тіку 50 мс → 50 % запасу).
+**Decision:** a region = a separate bevy `World` owned by a single worker per tick. Stable global entity IDs (our own `NetId → Entity`) so that merging/splitting regions is a copy. A global region — for chat, commands, tables. I interpret the 25 ms target as ≤ 25 ms p99 per region at 20 TPS (tick budget 50 ms → 50 % margin).
 
-**Запасний варіант:** один `World` на вузол з `par_iter` по компоненту регіону. Простіше, але гірше ізолює і ускладнює паралельні мутації між системами.
+**Fallback:** one `World` per node with `par_iter` over a region component. Simpler, but isolates worse and complicates parallel mutations across systems.
 
-Впевненість: **низька–середня**. Не тестувалось.
+Confidence: **low–medium**. Not tested.
 
-Доводи і арифметика:
-- Folia: бажано ≥ 16 ядер, тестовий сервер ≈ 330 гравців на піку [джерело: README Folia]. Наші 500 — у 1,5× амбітніші, хоча це Java проти Rust.
-- Бюджет [оцінка]: 16 ядер × 25 мс / 500 = 0,8 мс CPU на гравця за тік (до накладних витрат). Достатньо, **якщо гравці розкидані хоча б по 8 регіонах**. Скупчення 500 гравців в одному місці дає один регіон і один потік, і ціль не виконується.
-- Тому потрібна ціль «ємність одного регіону» і жорсткий ліміт (з інстансами/чергою) — число невідоме.
-- WASM на регіонах: `Store` не можна ділити між потоками. Інстанс на мод на регіон = 20 модів × 16 регіонів × 2–10 МіБ ≈ 0,6–3,2 ГіБ [оцінка]. Тому інстанс на мод **на воркер-потік**, а стан модів — на боці хоста (ECS-ресурси).
+Arguments and arithmetic:
+- Folia: ≥ 16 cores preferred, a test server of ≈ 330 players at peak [source: Folia README]. Our 500 is 1.5× more ambitious, though it is Java vs Rust.
+- Budget [estimate]: 16 cores × 25 ms / 500 = 0.8 ms CPU per player per tick (before overhead). Sufficient, **if players are spread across at least 8 regions**. A crowd of 500 players in one place yields one region and one thread, and the target is not met.
+- So a "single region capacity" target and a hard limit (with instances/queue) are needed — the number is unknown.
+- WASM on regions: a `Store` cannot be shared between threads. An instance per mod per region = 20 mods × 16 regions × 2–10 MiB ≈ 0.6–3.2 GiB [estimate]. So an instance per mod **per worker thread**, and mod state on the host side (ECS resources).
 
-| Ризик | Експеримент | Поріг |
+| Risk | Experiment | Threshold |
 |---|---|---|
-| Тік 500 гравців | bevy_ecs: 500 ботів (рух, інвентар, 10 сутностей поруч), 8 і 1 регіон, 16 ядер | p99 ≤ 25 мс на 8 регіонах; знайти максимум гравців на 1 регіон |
-| Перенесення сутностей між `World` | Злиття/розділення регіонів з 1000 сутностей | ≤ 5 мкс на сутність |
-| Пам'ять вузла | RSS після 500 ботів, розкиданих на 10 км | ≤ 16 ГБ |
+| Tick with 500 players | bevy_ecs: 500 bots (movement, inventory, 10 entities nearby), 8 and 1 region, 16 cores | p99 ≤ 25 ms on 8 regions; find the maximum players per 1 region |
+| Moving entities between `World`s | Merging/splitting regions with 1000 entities | ≤ 5 µs per entity |
+| Node memory | RSS after 500 bots scattered over 10 km | ≤ 16 GB |
 
-### 13.9 Шардинг між вузлами і передача сутностей
+### 13.9 Sharding across nodes and entity handoff
 
-**Рішення:** статична сітка регіонів по вузлах на старті + шлюз (QUIC-проксі), що тримає з'єднання клієнта, щоб передача не вимагала перепідключення. Зона перекриття (ghost zone) шириною ≥ радіус AOI. Двофазна передача (prepare → ghost → commit) з версіями сутностей і ідемпотентними операціями (патерн Photon [джерело]). Динамічне перерозбиття — пізніше.
+**Decision:** a static grid of regions across nodes at the start + a gateway (QUIC proxy) holding the client connection so that handoff does not require reconnecting. An overlap zone (ghost zone) of width ≥ AOI radius. A two-phase handoff (prepare → ghost → commit) with entity versions and idempotent operations (the Photon pattern [source]). Dynamic re-partitioning — later.
 
-**Запасний варіант:** MultiPaper-подібний майстер власності чанків [джерело]. Він у публічній беті і не описує переміщення сутностей між серверами.
+**Fallback:** a MultiPaper-like chunk ownership master [source]. It is in public beta and does not describe moving entities between servers.
 
-Впевненість: **низька**. Тестів немає; «субмілісекундна передача» Photon — заява без методики.
+Confidence: **low**. There are no tests; Photon's "sub-millisecond handoff" is a claim without methodology.
 
-**Арифметика** [оцінка]:
-- 5000 гравців / 500 = 10 вузлів **лише за рівномірного розподілу**.
-- Регіон вузла 512 блоків, біг ≈ 5,6 блоку/с → перетин кожні ≈ 90 с на гравця → ≈ 55 передач/с на кластер. Навантаження мале.
-- Ціль передачі: ≤ 1 тік (50 мс) і непомітно для гравця, а не «< 1 мс».
+**Arithmetic** [estimate]:
+- 5000 players / 500 = 10 nodes **only with an even distribution**.
+- A node region of 512 blocks, running ≈ 5.6 blocks/s → a crossing every ≈ 90 s per player → ≈ 55 handoffs/s per cluster. The load is small.
+- Handoff target: ≤ 1 tick (50 ms) and unnoticeable to the player, not "< 1 ms".
 
-| Ризик | Експеримент | Поріг |
+| Risk | Experiment | Threshold |
 |---|---|---|
-| Дублікати/втрати при передачі | Два вузли bevy_ecs + quinn, RTT 100 мс, 1000 переходів туди-назад | 0 дублікатів, 0 втрат, p99 ≤ 50 мс |
-| Скупчення на межі вузлів | 200 ботів стоять на межі | Тік обох вузлів ≤ 25 мс |
-| Гаряча точка (подія на 2000 гравців) | Поки не розв'язується шардингом → потрібна політика інстансів | Рішення на рівні дизайну |
+| Duplicates/losses on handoff | Two bevy_ecs nodes + quinn, RTT 100 ms, 1000 round-trip crossings | 0 duplicates, 0 losses, p99 ≤ 50 ms |
+| Crowding on a node border | 200 bots standing on the border | Tick of both nodes ≤ 25 ms |
+| Hot spot (an event with 2000 players) | Not solved by sharding for now → an instance policy is needed | A design-level decision |
 
-### 13.10 WASM-моддинг (wasmtime, Component Model)
+### 13.10 WASM modding (wasmtime, Component Model)
 
-**Рішення:** Component Model (WIT) для API модів, але **грубі пакетні хуки**: один виклик на мод на тип події за тік, з `list<event>`. Epoch-переривання увімкнено завжди. Fuel вимкнено (лише для детермінованих реплеїв/античиту). `InstancePre` + pooling allocator. Інстанс на мод на воркер-потік.
+**Decision:** Component Model (WIT) for the mod API, but **coarse batched hooks**: one call per mod per event type per tick, with `list<event>`. Epoch interruption always on. Fuel off (only for deterministic replays/anti-cheat). `InstancePre` + pooling allocator. An instance per mod per worker thread.
 
-**Запасний варіант:** core-модулі з власним ABI через спільну пам'ять. У 15–20× дешевший виклик, але без типобезпеки і версіонування WIT.
+**Fallback:** core modules with a custom ABI via shared memory. A 15–20× cheaper call, but without type safety and WIT versioning.
 
-Впевненість: **висока** (числа виклику, epoch vs fuel), **середня** (Rust-гість).
+Confidence: **high** (call numbers, epoch vs fuel), **medium** (Rust guest).
 
-| Вимір [тест, wasmtime 50.0.1] | Значення |
+| Measurement [test, wasmtime 50.0.1] | Value |
 |---|---|
-| Core: порожній виклик | 17–30 нс |
-| Core: 1000 оновлень окремими викликами | 18–35 нс/оновлення |
-| Core: 1000 оновлень одним викликом | 0,9–2,9 нс/оновлення |
-| Гість → хост (імпорт) | 3,7–4,9 нс |
-| **Component: порожній виклик** | **≈ 0,40 мкс** |
-| Component: 1000 окремих викликів | 423–523 мкс (≈ 0,5 мкс/оновлення) |
-| Component: один виклик з `list<u32>` на 4000 | 2,1–3,8 мкс (≈ 3,6 нс/оновлення) |
+| Core: empty call | 17–30 ns |
+| Core: 1000 updates by separate calls | 18–35 ns/update |
+| Core: 1000 updates in one call | 0.9–2.9 ns/update |
+| Guest → host (import) | 3.7–4.9 ns |
+| **Component: empty call** | **≈ 0.40 µs** |
+| Component: 1000 separate calls | 423–523 µs (≈ 0.5 µs/update) |
+| Component: one call with `list<u32>` of 4000 | 2.1–3.8 µs (≈ 3.6 ns/update) |
 | Epoch | 0–9 % |
-| Fuel, тісний цикл / рекурсія | ~0–2 % / **+50–92 %** |
-| Інстанціювання (`InstancePre`) | 4,2 мкс |
+| Fuel, tight loop / recursion | ~0–2 % / **+50–92 %** |
+| Instantiation (`InstancePre`) | 4.2 µs |
 
-**Перегляд цілі.** «≤ 1 мкс на хук» виконується (0,40 мкс), але запас лише 2,5× на повільній VM. Нова ціль:
-- ≤ 1 мкс на **диспетчеризацію** хука (один пакетний виклик);
-- ≤ 5 нс на **подію** всередині пакета;
-- заборона per-voxel/per-entity викликів через межу компонента в API.
+**Target revision.** "≤ 1 µs per hook" is met (0.40 µs), but with only a 2.5× margin on a slow VM. The new target:
+- ≤ 1 µs per hook **dispatch** (one batched call);
+- ≤ 5 ns per **event** inside a batch;
+- a ban on per-voxel/per-entity calls across the component boundary in the API.
 
-**Арифметика тіку** [оцінка]:
-- Без пакетів: 500 гравців × 10 хуків = 5000 викликів × 0,4 мкс = **2 мс** (8 % бюджету 25 мс) — лише на перетин межі, без роботи моду.
-- З пакетами: 20 модів × 10 типів подій = 200 викликів × 0,4 мкс = 80 мкс + 5000 подій × ~4 нс = 20 мкс → **≈ 0,1 мс**. У 20× дешевше.
+**Tick arithmetic** [estimate]:
+- Without batches: 500 players × 10 hooks = 5000 calls × 0.4 µs = **2 ms** (8 % of the 25 ms budget) — just for crossing the boundary, with no mod work.
+- With batches: 20 mods × 10 event types = 200 calls × 0.4 µs = 80 µs + 5000 events × ~4 ns = 20 µs → **≈ 0.1 ms**. 20× cheaper.
 
-| Ризик | Експеримент | Поріг |
+| Risk | Experiment | Threshold |
 |---|---|---|
-| Ліфтинг `string`/`record`/`resource` у Rust-гості (cargo-component + wit-bindgen) не виміряно | Rust-гість з `list<record{id:u32,pos:vec3,name:string}>` на 1000 елементів | ≤ 20 нс на елемент |
-| Холодний старт реальних модів | `Component::new` для мода 1–5 МБ; кеш скомпільованих модулів | Із кешем ≤ 50 мс на мод |
-| Пам'ять інстансів | 20 модів × 16 воркерів, RSS | ≤ 1 ГБ на вузол |
-| Async-yield за epoch | Мод з нескінченним циклом не повинен зірвати тік | Перервано ≤ 1 мс після дедлайну |
+| Lifting `string`/`record`/`resource` in a Rust guest (cargo-component + wit-bindgen) not measured | Rust guest with `list<record{id:u32,pos:vec3,name:string}>` of 1000 elements | ≤ 20 ns per element |
+| Cold start of real mods | `Component::new` for a 1–5 MB mod; cache of compiled modules | With cache ≤ 50 ms per mod |
+| Instance memory | 20 mods × 16 workers, RSS | ≤ 1 GB per node |
+| Async yield on epoch | A mod with an infinite loop must not break the tick | Interrupted ≤ 1 ms after the deadline |
 
-### 13.11 Рівень Rust: алокатори, SIMD, PGO, профілювання
+### 13.11 Rust level: allocators, SIMD, PGO, profiling
 
-**Рішення:**
-- Збірка: `lto = "fat"` або `"thin"`, `codegen-units = 1` для релізу. Базова ціль x86-64-v2. **Не** `target-cpu=native` для дистрибутиву. Мій тест v3 vs базова: `fast_mesh` 262–291 мкс проти 269–302 мкс — у межах шуму [тест]. Гарячі ядра за потреби — через runtime dispatch (крейт `multiversion`).
-- SIMD: явний SIMD не додавати, доки профіль не покаже потреби. Бінарний мешинг уже бітово-паралельний [джерело + тест]. Кандидати — gather/маски і BFS світла.
-- Алокатор: `mimalloc` за feature-прапором на сервері, ввімкнути лише після A/B. Числа в ресьорчі не перевірені.
-- PGO: етап 2+, після стабілізації тестового навантаження. Джерело (rustc book) обіцяє лише «має бути швидше», без чисел.
-- Профілювання з першого дня: Tracy (`tracy-client`) для зон кадру і тіку, `dhat` для пам'яті, criterion для мікробенчів у CI.
+**Decision:**
+- Build: `lto = "fat"` or `"thin"`, `codegen-units = 1` for release. Baseline target x86-64-v2. **Not** `target-cpu=native` for distribution. My v3 vs baseline test: `fast_mesh` 262–291 µs vs 269–302 µs — within noise [test]. Hot kernels if needed — via runtime dispatch (the `multiversion` crate).
+- SIMD: do not add explicit SIMD until the profile shows a need. Binary meshing is already bit-parallel [source + test]. Candidates — gather/masks and light BFS.
+- Allocator: `mimalloc` behind a feature flag on the server, enable only after A/B. The numbers in the research are unverified.
+- PGO: stage 2+, after the test workload stabilizes. The source (rustc book) promises only "should be faster", without numbers.
+- Profiling from day one: Tracy (`tracy-client`) for frame and tick zones, `dhat` for memory, criterion for microbenchmarks in CI.
 
-Впевненість: **середня**.
+Confidence: **medium**.
 
-| Ризик | Експеримент | Поріг для прийняття |
+| Risk | Experiment | Acceptance threshold |
 |---|---|---|
-| mimalloc | Серверний бенч тіку (13.8) з system vs mimalloc | p99 тіку −10 % або більше |
-| PGO | Мешинг + тік, звичайна збірка vs PGO | ≥ 10 % виграшу, інакше не ускладнювати CI |
-| Шум вимірювань | Повторити бенчі на bare-metal з фіксованою частотою | Розкид ≤ 5 % між запусками |
+| mimalloc | Server tick bench (13.8) with system vs mimalloc | tick p99 −10 % or more |
+| PGO | Meshing + tick, regular build vs PGO | ≥ 10 % gain, otherwise do not complicate CI |
+| Measurement noise | Repeat the benches on bare metal with a fixed frequency | Spread ≤ 5 % between runs |
 
-### 13.12 Зведена таблиця цілей
+### 13.12 Summary table of targets
 
-| Ціль | Статус | Пропозиція |
+| Target | Status | Proposal |
 |---|---|---|
-| 60 FPS iGPU/GTX 1050, 12 чанків | Не тестовано (немає GPU) | Лишити; першим міряти пропуск вершин на iGPU |
-| 64+ чанки через LOD | Реалістично за пам'яттю і draw [оцінка] | Лишити; повні дані лише ≤ 12–16 чанків |
-| RAM клієнта ≤ 2 ГБ | Реалістично [тест + оцінка] | Внутрішній бюджет 1 ГіБ при 12 чанках |
-| Меш ≤ 0,2 мс/чанк | Не визначено; на VM 0,27 мс | ≤ 0,3 мс `fast_mesh` / ≤ 0,5 мс повний конвеєр на юніт 62³ |
-| Хук ≤ 1 мкс | Виконано (0,40 мкс component) | ≤ 1 мкс на пакетний виклик + ≤ 5 нс на подію |
-| Тік ≤ 25 мс @ 500 | Не тестовано | Додати ємність одного регіону; гравців ≥ 8 регіонів |
-| 5000+ гравців | Не тестовано | Лише за рівномірного розподілу; потрібна політика гарячих точок |
+| 60 FPS iGPU/GTX 1050, 12 chunks | Not tested (no GPU) | Keep; measure vertex throughput on an iGPU first |
+| 64+ chunks via LOD | Realistic for memory and draws [estimate] | Keep; full data only ≤ 12–16 chunks |
+| Client RAM ≤ 2 GB | Realistic [test + estimate] | Internal budget 1 GiB at 12 chunks |
+| Mesh ≤ 0.2 ms/chunk | Undefined; 0.27 ms on the VM | ≤ 0.3 ms `fast_mesh` / ≤ 0.5 ms full pipeline per 62³ unit |
+| Hook ≤ 1 µs | Met (0.40 µs component) | ≤ 1 µs per batched call + ≤ 5 ns per event |
+| Tick ≤ 25 ms @ 500 | Not tested | Add single-region capacity; players across ≥ 8 regions |
+| 5000+ players | Not tested | Only with an even distribution; a hot-spot policy is needed |
 
-### 13.13 «Зробити першим» (етапи 0–1)
+### 13.13 "Do first" (stages 0–1)
 
-1. **Меш-юніт 62³ + `fast_mesh`.** Секції зберігання 16³. Підтримка масок opaque/transparent при кожній правці. Пропуск порожніх і суцільних юнітів.
-2. **Швидкий gather з палітри.** Масове розпакування замість `get()`. Ціль: gather + маски ≤ 100 мкс. Це найбільший відомий резерв конвеєра.
-3. **Палітра без перетину слів + Single + хеш-індекс для > 16 записів.** Ціль: `set` ≤ 10 нс на будь-якій бітності.
-4. **Квад 8 Б, vertex pulling, draw на юніт × напрям.** Пробник можливостей адаптера на старті. Instanced-атрибут як запасний шлях без `VERTEX_STORAGE`.
-5. **Бенч пропуску вершин на iGPU і GTX 1050** до того, як писати складний рендер. Це вирішує, чи потрібен indirect/Hi-Z.
-6. **Інкрементальне світло (add/remove BFS)** з лімітом оновлень за тік. Ціль: ≤ 100 мкс p95 на правку. Світло рахує клієнт.
-7. **WIT API з пакетними хуками** (`list<event>`). Epoch увімкнено, fuel вимкнено. Інстанс на мод на воркер. Заборона per-voxel викликів у API.
-8. **Регіон = bevy `World` + стабільні глобальні ID.** Одразу бенч 500 ботів на 1 і 8 регіонах.
-9. **Мережа: одне QUIC-з'єднання.** Датаграми для сутностей з дельтою, пріоритетні стріми для чанків за відстанню.
-10. **Формат на диску і в мережі:** палітрові секції + zstd (3 на диск, 1 у мережу). Словник — лише після тесту на реальних світах.
-11. **Інструменти з першого дня:** Tracy, `dhat`, criterion-набір у CI з фіксованим корпусом світів і порогами регресії.
-12. **Збірка:** x86-64-v2, LTO, `codegen-units = 1`. mimalloc і PGO — лише після A/B на бенчах із п. 8 і 11.
+1. **62³ mesh unit + `fast_mesh`.** 16³ storage sections. Maintain opaque/transparent masks on every edit. Skip empty and solid units.
+2. **Fast gather from the palette.** Bulk unpacking instead of `get()`. Target: gather + masks ≤ 100 µs. This is the biggest known reserve in the pipeline.
+3. **Palette without word crossing + Single + hash index for > 16 entries.** Target: `set` ≤ 10 ns at any bit width.
+4. **8 B quad, vertex pulling, draw per unit × direction.** An adapter capability probe at startup. An instanced attribute as the fallback path without `VERTEX_STORAGE`.
+5. **Vertex throughput bench on an iGPU and GTX 1050** before writing a complex renderer. This decides whether indirect/Hi-Z is needed.
+6. **Incremental lighting (add/remove BFS)** with a per-tick update limit. Target: ≤ 100 µs p95 per edit. The client computes light.
+7. **WIT API with batched hooks** (`list<event>`). Epoch on, fuel off. An instance per mod per worker. A ban on per-voxel calls in the API.
+8. **Region = bevy `World` + stable global IDs.** Immediately a bench of 500 bots on 1 and 8 regions.
+9. **Network: one QUIC connection.** Datagrams for entities with deltas, prioritized streams for chunks by distance.
+10. **On-disk and network format:** palette sections + zstd (3 for disk, 1 for network). A dictionary — only after a test on real worlds.
+11. **Tools from day one:** Tracy, `dhat`, a criterion suite in CI with a fixed world corpus and regression thresholds.
+12. **Build:** x86-64-v2, LTO, `codegen-units = 1`. mimalloc and PGO — only after A/B on the benches from items 8 and 11.

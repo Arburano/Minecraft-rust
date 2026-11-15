@@ -1,31 +1,31 @@
-# T0-07. WIT 0.1 і спайк хоста модів
+# T0-07. WIT 0.1 and mod host spike
 
-- **Статус:** todo
-- **Залежить від:** T0-01
-- **Виконавець:** агент
+- **Status:** todo
+- **Depends on:** T0-01
+- **Owner:** agent
 
-## Мета
+## Goal
 
-Довести `wit/engine-api.wit` до 0.1: Rust-гість через `wit-bindgen` (target `wasm32-wasip2`) у `mods/examples/hello`, хост у `modhost` через `wasmtime::component::bindgen!`. Виміряти: порожній `run-system`, `on-events` з 1 000 подій (`list<event>` з рядками), `set-blocks` на 4 000 змін; перевірити epoch-переривання нескінченного циклу і відкидання пачки змін.
+Bring `wit/engine-api.wit` to 0.1: a Rust guest built with `wit-bindgen` (target `wasm32-wasip2`) in `mods/examples/hello`, and a host in `modhost` via `wasmtime::component::bindgen!`. Measure: an empty `run-system`, `on-events` with 1 000 events (`list<event>` with strings), `set-blocks` with 4 000 changes; verify epoch interruption of an infinite loop and discarding of a batch of changes.
 
-## Специфікації
+## Specs
 
 - [docs/modding/wasm-api.md](../../docs/modding/wasm-api.md)
 - [docs/modding/overview.md](../../docs/modding/overview.md)
 - [docs/adr/0006-wasm-component-model-epoch.md](../../docs/adr/0006-wasm-component-model-epoch.md)
 
-## Результат
+## Deliverables
 
-- Робочий приклад мода і хоста, інтеграційний тест у `crates/modhost/tests/`.
-- Бенчмарк і числа в performance-budgets.md.
-- Оновлений WIT (валідний `wasm-tools component wit`).
+- Working example mod and host, integration test in `crates/modhost/tests/`.
+- Benchmark and numbers in performance-budgets.md.
+- Updated WIT (valid per `wasm-tools component wit`).
 
-## Критерії приймання
+## Acceptance criteria
 
-- [ ] Нескінченний цикл у моді переривається ≤ 1 мс після дедлайну, сервер продовжує тік (тест).
-- [ ] Зміни світу перерваного виклику не застосовані (тест).
-- [ ] Диспетчеризація хука ≤ 1 мкс, ≤ 5 нс на подію (або задокументоване відхилення).
+- [ ] An infinite loop in a mod is interrupted ≤ 1 ms after the deadline, and the server continues its tick (test).
+- [ ] World changes from the interrupted call are not applied (test).
+- [ ] Hook dispatch ≤ 1 µs, ≤ 5 ns per event (or a documented deviation).
 
-## Поза межами задачі
+## Out of scope
 
-Без дозволів, реєстру модів і гарячого перезавантаження — етап 3.
+No permissions, mod registry, or hot reload — stage 3.

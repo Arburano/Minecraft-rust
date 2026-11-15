@@ -1,28 +1,28 @@
-# T0-12. Детермінований тестовий рельєф
+# T0-12. Deterministic test terrain
 
-- **Статус:** todo
-- **Залежить від:** T0-03
-- **Виконавець:** агент
+- **Status:** todo
+- **Depends on:** T0-03
+- **Owner:** agent
 
-## Мета
+## Goal
 
-У крейті `worldgen`: простий детермінований генератор (карта висот + печери + руди + ~8% прозорих блоків) для корпусу бенчмарків і тестів. Відправна точка — генератор у `research/bench/meshing`.
+In the `worldgen` crate: a simple deterministic generator (heightmap + caves + ores + ~8% transparent blocks) for the benchmark corpus and tests. Starting point — the generator in `research/bench/meshing`.
 
-## Специфікації
+## Specs
 
 - [docs/architecture/worldgen.md](../../docs/architecture/worldgen.md)
 - [docs/process/testing-and-benchmarks.md](../../docs/process/testing-and-benchmarks.md)
 
-## Результат
+## Deliverables
 
-- `worldgen::test_corpus(seed, area) -> колони`.
-- Тест детермінізму: різний порядок і кількість потоків → однаковий хеш.
+- `worldgen::test_corpus(seed, area) -> columns`.
+- Determinism test: different generation order and thread count → same hash.
 
-## Критерії приймання
+## Acceptance criteria
 
-- [ ] Хеш колони не залежить від порядку генерації (тест).
-- [ ] Бенчмарки T0-03/04/08 використовують цей корпус.
+- [ ] Column hash does not depend on generation order (test).
+- [ ] Benchmarks T0-03/04/08 use this corpus.
 
-## Поза межами задачі
+## Out of scope
 
-Це не фінальний генератор гри.
+This is not the game's final generator.

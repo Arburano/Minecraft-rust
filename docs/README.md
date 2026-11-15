@@ -1,48 +1,48 @@
-# Документація
+# Documentation
 
-Головний документ — [`PRD.md`](PRD.md): навіщо, цілі, метрики, ризики, план. Решта тек — специфікації для розробки: що саме будуємо, з якими інваріантами і як перевіряємо.
+The main document is [`PRD.md`](PRD.md): why, goals, metrics, risks, plan. The remaining folders are development specifications: what exactly we build, with which invariants, and how we verify it.
 
-Порядок читання для нового розробника чи агента:
+Reading order for a new developer or agent:
 
-1. [`../AGENTS.md`](../AGENTS.md) — правила роботи в репозиторії.
-2. [`architecture/overview.md`](architecture/overview.md) — карта крейтів, потоків і даних.
-3. [`process/roadmap.md`](process/roadmap.md) — поточний етап і критерії виходу.
-4. Специфікація області, з якою працюєте (таблиця нижче).
-5. [`adr/`](adr/) — чому прийняті ключові рішення. Не переглядайте їх без нового ADR.
+1. [`../AGENTS.md`](../AGENTS.md) — rules for working in the repository.
+2. [`architecture/overview.md`](architecture/overview.md) — map of crates, threads and data.
+3. [`process/roadmap.md`](process/roadmap.md) — current stage and exit criteria.
+4. The specification of the area you work on (table below).
+5. [`adr/`](adr/) — why the key decisions were made. Do not revisit them without a new ADR.
 
-## Карта документів
+## Document map
 
-| Область | Документ | Крейт |
+| Area | Document | Crate |
 | --- | --- | --- |
-| Тік, фази, планувальник, бюджети | [architecture/engine-core.md](architecture/engine-core.md) | `engine-core` |
-| Секції, палітра, ID, збереження | [architecture/world-storage.md](architecture/world-storage.md) | `world` |
-| Мешинг і рендер | [architecture/meshing-and-rendering.md](architecture/meshing-and-rendering.md) | `mesh`, `render` |
+| Tick, phases, scheduler, budgets | [architecture/engine-core.md](architecture/engine-core.md) | `engine-core` |
+| Sections, palette, IDs, saving | [architecture/world-storage.md](architecture/world-storage.md) | `world` |
+| Meshing and rendering | [architecture/meshing-and-rendering.md](architecture/meshing-and-rendering.md) | `mesh`, `render` |
 | LOD | [architecture/lod.md](architecture/lod.md) | `lod` |
-| Світло | [architecture/lighting.md](architecture/lighting.md) | `light` |
-| Генерація світу | [architecture/worldgen.md](architecture/worldgen.md) | `worldgen` |
-| Симуляція, фізика, ШІ мобів | [architecture/simulation-and-ai.md](architecture/simulation-and-ai.md) | `sim` |
-| Мережевий протокол | [architecture/networking-protocol.md](architecture/networking-protocol.md) | `protocol`, `net` |
-| Регіони сервера | [architecture/server-regions.md](architecture/server-regions.md) | `sim`, `server` |
-| Шардування | [architecture/sharding.md](architecture/sharding.md) | `server` (+ майбутній `gateway`) |
-| Меню-лаунчер і апдейтер | [architecture/client-menu-and-updater.md](architecture/client-menu-and-updater.md) | `client`, `updater` |
-| Вхід і асети | [architecture/auth-and-assets.md](architecture/auth-and-assets.md) | `auth`, `assets` |
-| Моди: огляд | [modding/overview.md](modding/overview.md) | `modhost`, `mod-sdk` |
-| Маніфест мода | [modding/mod-manifest.md](modding/mod-manifest.md) | `modhost` |
-| Датапаки | [modding/datapacks.md](modding/datapacks.md) | `modhost`, `world` |
+| Lighting | [architecture/lighting.md](architecture/lighting.md) | `light` |
+| World generation | [architecture/worldgen.md](architecture/worldgen.md) | `worldgen` |
+| Simulation, physics, mob AI | [architecture/simulation-and-ai.md](architecture/simulation-and-ai.md) | `sim` |
+| Network protocol | [architecture/networking-protocol.md](architecture/networking-protocol.md) | `protocol`, `net` |
+| Server regions | [architecture/server-regions.md](architecture/server-regions.md) | `sim`, `server` |
+| Sharding | [architecture/sharding.md](architecture/sharding.md) | `server` (+ future `gateway`) |
+| In-game launcher menu and updater | [architecture/client-menu-and-updater.md](architecture/client-menu-and-updater.md) | `client`, `updater` |
+| Login and assets | [architecture/auth-and-assets.md](architecture/auth-and-assets.md) | `auth`, `assets` |
+| Mods: overview | [modding/overview.md](modding/overview.md) | `modhost`, `mod-sdk` |
+| Mod manifest | [modding/mod-manifest.md](modding/mod-manifest.md) | `modhost` |
+| Datapacks | [modding/datapacks.md](modding/datapacks.md) | `modhost`, `world` |
 | WASM API | [modding/wasm-api.md](modding/wasm-api.md), [`../wit/engine-api.wit`](../wit/engine-api.wit) | `modhost`, `mod-sdk` |
-| Як писати моди | [modding/writing-mods.md](modding/writing-mods.md) | `mod-sdk`, `engine-cli` |
-| Правила швидких модів | [modding/performance-rules.md](modding/performance-rules.md) | — |
-| Етапи і критерії виходу | [process/roadmap.md](process/roadmap.md) | — |
-| Бюджети продуктивності | [process/performance-budgets.md](process/performance-budgets.md) | — |
-| Стиль коду | [process/coding-standards.md](process/coding-standards.md) | — |
-| Тести і бенчмарки | [process/testing-and-benchmarks.md](process/testing-and-benchmarks.md) | — |
-| Юридичні обмеження | [legal.md](legal.md) | — |
-| Відкриті питання | [open-questions.md](open-questions.md) | — |
-| Терміни | [glossary.md](glossary.md) | — |
-| Рісьорч і бенчмарки етапу «до коду» | [research/](research/) | `../research/bench` |
+| How to write mods | [modding/writing-mods.md](modding/writing-mods.md) | `mod-sdk`, `engine-cli` |
+| Rules for fast mods | [modding/performance-rules.md](modding/performance-rules.md) | — |
+| Stages and exit criteria | [process/roadmap.md](process/roadmap.md) | — |
+| Performance budgets | [process/performance-budgets.md](process/performance-budgets.md) | — |
+| Code style | [process/coding-standards.md](process/coding-standards.md) | — |
+| Tests and benchmarks | [process/testing-and-benchmarks.md](process/testing-and-benchmarks.md) | — |
+| Legal restrictions | [legal.md](legal.md) | — |
+| Open questions | [open-questions.md](open-questions.md) | — |
+| Terms | [glossary.md](glossary.md) | — |
+| Research and benchmarks of the pre-code stage | [research/](research/) | `../research/bench` |
 
-## Правило джерела правди
+## Source-of-truth rule
 
-- Рішення — в ADR. PRD і специфікації посилаються на ADR, а не дублюють аргументацію.
-- Числа (бюджети, цілі) — у [`process/performance-budgets.md`](process/performance-budgets.md). Якщо число змінюється, міняйте його там і в PRD однаково.
-- Якщо специфікація суперечить коду, неправий хтось один: виправте або код, або специфікацію в тому ж PR.
+- Decisions live in ADRs. The PRD and specifications refer to ADRs rather than duplicating the reasoning.
+- Numbers (budgets, targets) live in [`process/performance-budgets.md`](process/performance-budgets.md). If a number changes, change it there and in the PRD identically.
+- If a specification contradicts the code, one of them is wrong: fix either the code or the specification in the same PR.

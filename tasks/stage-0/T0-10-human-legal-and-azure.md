@@ -1,28 +1,28 @@
-# T0-10. Юрист і доступ до Minecraft API
+# T0-10. Lawyer and Minecraft API access
 
-- **Статус:** todo
-- **Залежить від:** —
-- **Виконавець:** людина (не агент)
+- **Status:** todo
+- **Depends on:** —
+- **Owner:** human (not an agent)
 
-## Мета
+## Goal
 
-Зареєструвати Azure-застосунок, подати форму на доступ до Minecraft API; отримати юридичну консультацію за списком питань.
+Register an Azure application and submit a form for Minecraft API access; obtain legal advice on the list of questions.
 
-## Специфікації
+## Specs
 
 - [docs/legal.md](../../docs/legal.md)
 - [docs/architecture/auth-and-assets.md](../../docs/architecture/auth-and-assets.md)
 - [docs/open-questions.md](../../docs/open-questions.md)
 
-## Результат
+## Deliverables
 
-- Схвалений client id (зберігається в секретах, не в репозиторії).
-- Висновок юриста щодо питань з docs/legal.md.
+- Approved client id (stored in secrets, not in the repository).
+- Lawyer's opinion on the questions from docs/legal.md.
 
-## Критерії приймання
+## Acceptance criteria
 
-- [ ] Відкриті питання №4 і №5 закриті або переформульовані.
+- [ ] Open questions No. 4 and No. 5 are closed or reformulated.
 
-## Поза межами задачі
+## Out of scope
 
-Агент цю задачу не виконує; може лише підготувати чернетку листа юристу.
+The agent does not perform this task; it may only prepare a draft letter to the lawyer.

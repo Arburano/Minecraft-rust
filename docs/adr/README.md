@@ -1,26 +1,26 @@
 # Architecture Decision Records
 
-Кожне архітектурне рішення, яке дорого змінити, фіксується тут. ADR не редагуються після прийняття: нове рішення — новий ADR зі статусом «Замінює ADR-NNNN», а старий отримує статус «Замінено».
+Every architectural decision that is costly to change is recorded here. ADRs are not edited after acceptance: a new decision is a new ADR with the status "Supersedes ADR-NNNN", and the old one gets the status "Superseded".
 
-Коли потрібен ADR:
+An ADR is needed when:
 
-- новий зв'язок між крейтами проти напряму залежностей;
-- зміна формату на диску чи в мережі, ламка зміна WIT;
-- `unsafe`, нова важка залежність, зміна стеку;
-- рішення, що суперечить PRD чи існуючому ADR.
+- a new link between crates goes against the dependency direction;
+- a change of on-disk or network format, or a breaking WIT change;
+- `unsafe`, a new heavy dependency, or a stack change;
+- a decision that conflicts with the PRD or an existing ADR.
 
-Шаблон — [0000-template.md](0000-template.md).
+Template — [0000-template.md](0000-template.md).
 
-| № | Рішення | Статус |
+| No. | Decision | Status |
 | --- | --- | --- |
-| [0001](0001-own-engine-not-port.md) | Власний рушій, а не порт Minecraft | Прийнято |
-| [0002](0002-bevy-ecs-only.md) | `bevy_ecs` без решти Bevy | Прийнято |
-| [0003](0003-wgpu-own-renderer.md) | Власний рендер на wgpu з трьома шляхами | Прийнято |
-| [0004](0004-sections-16-palette.md) | Секції 16³ з палітрою | Прийнято |
-| [0005](0005-mesh-chunk-32-with-batches.md) | Меш-чанк 32³ + рендер-пакети 2×2×2 | Прийнято |
-| [0006](0006-wasm-component-model-epoch.md) | WASM Component Model, epoch, стан у хості | Прийнято |
-| [0007](0007-quic-own-protocol.md) | QUIC і власний протокол | Прийнято |
-| [0008](0008-region-threading.md) | Регіональна багатопотоковість | Прийнято |
-| [0009](0009-sharding-ownership-number.md) | Шарди з номером власності | Прийнято |
-| [0010](0010-in-game-launcher-and-updater.md) | Меню-лаунчер у грі + окремий апдейтер | Прийнято |
-| [0011](0011-client-light-server-lod.md) | Світло на клієнті, LOD із сервера | Прийнято |
+| [0001](0001-own-engine-not-port.md) | Own engine, not a port of Minecraft | Accepted |
+| [0002](0002-bevy-ecs-only.md) | `bevy_ecs` without the rest of Bevy | Accepted |
+| [0003](0003-wgpu-own-renderer.md) | Own renderer on wgpu with three paths | Accepted |
+| [0004](0004-sections-16-palette.md) | 16³ sections with a palette | Accepted |
+| [0005](0005-mesh-chunk-32-with-batches.md) | 32³ mesh chunk + 2×2×2 render batches | Accepted |
+| [0006](0006-wasm-component-model-epoch.md) | WASM Component Model, epoch, host-side state | Accepted |
+| [0007](0007-quic-own-protocol.md) | QUIC and own protocol | Accepted |
+| [0008](0008-region-threading.md) | Regional multithreading | Accepted |
+| [0009](0009-sharding-ownership-number.md) | Sharding with ownership number | Accepted |
+| [0010](0010-in-game-launcher-and-updater.md) | In-game launcher menu + separate updater | Accepted |
+| [0011](0011-client-light-server-lod.md) | Light on the client, LOD from the server | Accepted |

@@ -1,33 +1,32 @@
-# Стандарти коду
+# Coding standards
 
-## Мова
+## Language
 
-- Код, ідентифікатори, коментарі в коді, повідомлення комітів — англійською.
-- Документація в `docs/` — українською. Назви крейтів, типів і функцій у документах — як у коді.
+- Everything in the repository — code, identifiers, comments in code, commit messages, documentation in `docs/`, tasks — is written in English. Names of crates, types and functions in documents are as in the code.
 
 ## Rust
 
-- Edition 2024, toolchain з `rust-toolchain.toml`. `cargo fmt` і `cargo clippy --workspace --all-targets` без попереджень (CI має `-D warnings`).
-- `unsafe` заборонено на рівні workspace. Виняток: модуль з `#![allow(unsafe_code)]`, коментар `// SAFETY:` біля кожного блоку і посилання на ADR. Кандидати: пакування квадив, SIMD, FFI.
-- Помилки: `thiserror` у бібліотеках, `anyhow` лише в бінарниках і тестах. Жодного `unwrap()` у бібліотечному коді поза тестами (лінт `unwrap_used`); `expect("причина")` — лише для інваріантів, які неможливо порушити.
-- Паніка в рушії — баг. Сервер не панікує на вході з мережі чи від мода.
-- Публічні елементи мають `///` документацію (лінт `missing_docs`).
+- Edition 2024, toolchain from `rust-toolchain.toml`. `cargo fmt` and `cargo clippy --workspace --all-targets` without warnings (CI has `-D warnings`).
+- `unsafe` is forbidden at the workspace level. Exception: a module with `#![allow(unsafe_code)]`, a `// SAFETY:` comment next to each block and a reference to an ADR. Candidates: quad packing, SIMD, FFI.
+- Errors: `thiserror` in libraries, `anyhow` only in binaries and tests. No `unwrap()` in library code outside tests (the `unwrap_used` lint); `expect("reason")` — only for invariants that cannot be violated.
+- A panic in the engine is a bug. The server does not panic on input from the network or from a mod.
+- Public items have `///` documentation (the `missing_docs` lint).
 
-## Продуктивність
+## Performance
 
-- Гарячий цикл (тік, мешинг, світло, рендер-кадр) — без алокацій: пули, арени, `Vec::clear()` замість нового `Vec`.
-- Жодних `Mutex`/`RwLock` навколо світу чи регіону. Володіння, канали, знімки. Лок допустимий для рідкісних глобальних структур (реєстр при завантаженні).
-- Кожна оптимізація, що ускладнює код, — з бенчмарком до і після в описі PR.
-- Не додавати SIMD, `unsafe`, mimalloc, PGO без виміряного виграшу (пороги — `docs/research/optimization-analysis.md` §13.11).
+- The hot loop (tick, meshing, lighting, render frame) — no allocations: pools, arenas, `Vec::clear()` instead of a new `Vec`.
+- No `Mutex`/`RwLock` around the world or a region. Ownership, channels, snapshots. A lock is acceptable for rare global structures (the registry at load time).
+- Every optimization that complicates the code comes with a before and after benchmark in the PR description.
+- Do not add SIMD, `unsafe`, mimalloc, PGO without a measured gain (thresholds — `docs/research/optimization-analysis.md` §13.11).
 
-## Залежності
+## Dependencies
 
-- Версії — лише в `[workspace.dependencies]` кореневого `Cargo.toml`. Крейт підключає `foo = { workspace = true }`.
-- Нова залежність: перевірити ліцензію (MIT/Apache-2.0/BSD/Zlib — ок; GPL — ні), активність підтримки, розмір дерева. Важку залежність (> 50 транзитивних крейтів) — обґрунтувати в PR.
-- `bevy_ecs` і `wgpu` оновлюються планово, не за дорогою (ризик з PRD §10).
+- Versions — only in `[workspace.dependencies]` of the root `Cargo.toml`. A crate pulls in `foo = { workspace = true }`.
+- A new dependency: check the license (MIT/Apache-2.0/BSD/Zlib — ok; GPL — no), maintenance activity, tree size. A heavy dependency (> 50 transitive crates) — justify in the PR.
+- `bevy_ecs` and `wgpu` are updated on schedule, not on the fly (risk from PRD §10).
 
-## Архітектурні межі
+## Architectural boundaries
 
-- Напрям залежностей між крейтами — як у [`../architecture/overview.md`](../architecture/overview.md). Порушення — через ADR.
-- Код рушія не знає про конкретні блоки (`stone`, `zombie`). Усе конкретне — у `mods/core`.
-- Механіки не копіюються з декомпільованого коду Mojang ([`../legal.md`](../legal.md)).
+- The direction of dependencies between crates is as in [`../architecture/overview.md`](../architecture/overview.md). A violation — through an ADR.
+- Engine code does not know specific blocks (`stone`, `zombie`). Everything specific is in `mods/core`.
+- Mechanics are not copied from decompiled Mojang code ([`../legal.md`](../legal.md)).
