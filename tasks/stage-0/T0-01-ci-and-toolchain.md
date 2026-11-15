@@ -1,8 +1,9 @@
 # T0-01. CI green and reproducible
 
-- **Status:** todo
+- **Status:** done
 - **Depends on:** —
 - **Owner:** human + agent
+- **Evidence:** [CI run #3 on `main`](https://github.com/Arburano/Minecraft-rust/actions/runs/43750180060) (commit `4257ec8`) — green; reproduced locally on 2026-11-15 (fmt, clippy with `-D warnings`, test, `bench --no-run`, all pass; sandbox toolchain stable 1.100, the pinned 1.97 was not downloadable there — `rust-toolchain.toml` unchanged).
 
 ## Goal
 
@@ -20,8 +21,8 @@ Make sure GitHub Actions passes on `main`: fmt, clippy with `-D warnings`, test,
 
 ## Acceptance criteria
 
-- [ ] Workflow `.github/workflows/ci.yml` passes on a clean clone.
-- [ ] `cargo test --workspace` gives the same result locally and in CI.
+- [x] Workflow `.github/workflows/ci.yml` passes on a clean clone.
+- [x] `cargo test --workspace` gives the same result locally and in CI.
 
 ## Out of scope
 
