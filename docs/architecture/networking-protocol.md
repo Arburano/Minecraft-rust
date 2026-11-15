@@ -1,56 +1,56 @@
-# Мережевий протокол
+# Network protocol
 
-Крейти: `protocol` (типи повідомлень), `net` (транспорт). ADR: 0007 (QUIC + власний протокол).
+Crates: `protocol` (message types), `net` (transport). ADR: 0007 (QUIC + custom protocol).
 
-## Транспорт
+## Transport
 
-- Одне QUIC-з'єднання на клієнта (`quinn` 0.11), TLS 1.3, ALPN `vxl/1`.
-- Канали:
+- One QUIC connection per client (`quinn` 0.11), TLS 1.3, ALPN `vxl/1`.
+- Channels:
 
-| Канал | Тип QUIC | Вміст | Пріоритет |
+| Channel | QUIC type | Content | Priority |
 | --- | --- | --- | --- |
-| control | двонапрямлений потік | вхід, версії, таблиця ID, маніфест модів, kick | найвищий |
-| input | датаграми | наміри гравця з номером тіку (дублюються в 2–3 датаграмах проти втрат) | високий |
-| entities | датаграми | дельти сутностей відносно підтвердженого знімка, 20 Гц біля гравця, 5–10 Гц далі | високий |
-| chunks | однонапрямлені потоки, по одному на колону/пачку | палітрові секції + zstd 1 | за відстанню (`SendStream::set_priority`) |
-| lod | однонапрямлені потоки | LOD-секції | нижче за chunks |
-| events | двонапрямлений потік | чат, інвентар, UI, повідомлення модів | середній |
+| control | bidirectional stream | login, versions, ID table, mod manifest, kick | highest |
+| input | datagrams | player intents with a tick number (duplicated in 2–3 datagrams against loss) | high |
+| entities | datagrams | entity deltas relative to the acknowledged snapshot, 20 Hz near the player, 5–10 Hz farther | high |
+| chunks | unidirectional streams, one per column/batch | palette sections + zstd 1 | by distance (`SendStream::set_priority`) |
+| lod | unidirectional streams | LOD sections | lower than chunks |
+| events | bidirectional stream | chat, inventory, UI, mod messages | medium |
 
-- Датаграма ≤ ~1 200 байт; більше — у потік.
-- Обмеження на клієнта: максимум одночасних потоків чанків (напр. 16), щоб не забивати чергу контролю перевантаження.
+- A datagram is ≤ ~1,200 bytes; anything larger goes into a stream.
+- Per-client limit: a maximum of concurrent chunk streams (e.g. 16) so as not to clog the congestion control queue.
 
-## Версіонування
+## Versioning
 
-- Повідомлення — Rust-енуми в `protocol`, серіалізація `bitcode`.
-- `PROTOCOL_VERSION: u32` в рукостисканні. Несумісна версія → зрозуміла помилка з пропозицією оновитися (апдейтер).
-- Реплікація мод-компонентів — схема з маніфесту мода; хеш схеми входить у рукостискання.
+- Messages are Rust enums in `protocol`, serialized with `bitcode`.
+- `PROTOCOL_VERSION: u32` in the handshake. An incompatible version → a clear error suggesting an update (the updater).
+- Replication of mod components uses the schema from the mod manifest; the schema hash is part of the handshake.
 
-## Рукостискання
+## Handshake
 
 ```text
-клієнт ─ Hello { protocol, client_version, session_jwt } ─► шлюз/сервер
-сервер ─ Welcome { server_info, mod_manifest_hash } ──────► клієнт
-клієнт: якщо маніфест модів відрізняється — докачати через меню (див. client-menu-and-updater.md)
-сервер ─ Registry { id_table, component_schemas } ────────► клієнт
-сервер ─ Spawn { pos, tick } + перші колони 3×3 ──────────► клієнт   (керування гравцем)
-далі фоном: решта колон за відстанню, потім LOD
+client ─ Hello { protocol, client_version, session_jwt } ─► gateway/server
+server ─ Welcome { server_info, mod_manifest_hash } ──────► client
+client: if the mod manifest differs — download via the menu (see client-menu-and-updater.md)
+server ─ Registry { id_table, component_schemas } ────────► client
+server ─ Spawn { pos, tick } + first 3×3 columns ─────────► client   (player control)
+then in the background: the remaining columns by distance, then LOD
 ```
 
-Метрика «вхід ≤ 5 с» рахується до моменту керування персонажем (колони 3–4 навколо), решта докачується фоном.
+The "login ≤ 5 s" metric is counted up to the moment of controlling the character (columns 3–4 around); the rest is downloaded in the background.
 
-## Дельти сутностей
+## Entity deltas
 
-- Сервер тримає для кожного клієнта номер останнього підтвердженого знімка; дельта = зміни відносно нього.
-- Квантування: позиції 1/32 блоку у відносних координатах, кути 8 біт.
-- Interest management: лише сутності в зоні видимості; далекі — рідше.
+- For each client the server keeps the number of the last acknowledged snapshot; a delta = changes relative to it.
+- Quantization: positions 1/32 block in relative coordinates, angles 8 bits.
+- Interest management: only entities in the visibility zone; distant ones less often.
 
-## Оцінки трафіку (з PRD §8)
+## Traffic estimates (from PRD §8)
 
-- 20 рухомих сутностей поруч при 20 Гц ≈ 48 Кбіт/с, 50 ≈ 105 Кбіт/с. Ціль 50 Кбіт/с у стабільному стані тримається з рідшими оновленнями далеких.
-- Вхід на 12 чанків: 625 колон × 4–16 КБ ≈ 2,4–9,8 МБ (припущення про розмір колони, міряти).
+- 20 moving entities nearby at 20 Hz ≈ 48 kbit/s, 50 ≈ 105 kbit/s. The target of 50 kbit/s in steady state holds with less frequent updates for distant ones.
+- Login at 12 chunks: 625 columns × 4–16 KB ≈ 2.4–9.8 MB (assumption about column size, to be measured).
 
-## Тести
+## Tests
 
-- `tc netem` 2% втрат + RTT 100 мс: найближчі 3×3 колони з'являються ≤ 1 с.
-- 500 клієнтів-ботів на одну ноду: CPU мережевих потоків ≤ 1 ядро на 10 000 пакетів/с.
-- Фазз-тест декодування всіх повідомлень (сервер ніколи не панікує на сміттєвому вході).
+- `tc netem` 2% loss + RTT 100 ms: the nearest 3×3 columns appear in ≤ 1 s.
+- 500 bot clients per node: network thread CPU ≤ 1 core per 10,000 packets/s.
+- Fuzz test of decoding all messages (the server never panics on garbage input).

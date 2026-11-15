@@ -1,42 +1,42 @@
-# Симуляція, фізика, ШІ мобів
+# Simulation, physics, mob AI
 
-Крейт: `sim`. Пріоритети досвіду — PRD §14: плавність, відчуття Minecraft, розумні моби.
+Crate: `sim`. Experience priorities — PRD §14: smoothness, Minecraft feel, smart mobs.
 
-## Фізика гравця
+## Player physics
 
-- Відчуття руху як у Minecraft: швидкості, прискорення, стрибок, сповзання, плавання, драбини. Числа — в датапаку `core` (не хардкод у рушії), щоб їх можна було підлаштувати модами.
-- AABB-колізії з блоками (свіпінг по осях), колізійні форми блоків з реєстру.
-- Однаковий код на клієнті (передбачення) і сервері (авторитет).
+- Movement feel like Minecraft: speeds, acceleration, jumping, sliding, swimming, ladders. The numbers live in the `core` datapack (not hardcoded in the engine) so mods can tune them.
+- AABB collisions with blocks (axis-wise sweeping), block collision shapes from the registry.
+- The same code on the client (prediction) and the server (authority).
 
-## Передбачення і узгодження
+## Prediction and reconciliation
 
-- Клієнт шле наміри з номером тіку; застосовує їх локально відразу.
-- Сервер підтверджує номер останнього обробленого наміру і авторитетний стан.
-- Розбіжність → клієнт відкочується до стану сервера і переграє непідтверджені наміри. Поріг корекції — щоб дрібні розбіжності згладжувались, а не «телепортували».
-- Копання і встановлення блоків теж передбачаються; відмова сервера відкочує блок.
+- The client sends intents with a tick number; applies them locally right away.
+- The server acknowledges the number of the last processed intent and the authoritative state.
+- Divergence → the client rolls back to the server state and replays unacknowledged intents. A correction threshold makes small divergences smooth out rather than "teleport".
+- Digging and placing blocks are also predicted; a server rejection rolls the block back.
 
-## Сутності і ECS
+## Entities and ECS
 
-- Компоненти: `NetId`, `Transform`, `Velocity`, `Collider`, `Health`, `Ai*` тощо. Мод-компоненти зберігає хост (`components` у WIT).
-- Сутності блоків (скрині, печі) — окрема мапа в колоні, тікаються лише якщо мають тікову поведінку.
+- Components: `NetId`, `Transform`, `Velocity`, `Collider`, `Health`, `Ai*`, etc. Mod components are stored by the host (`components` in WIT).
+- Block entities (chests, furnaces) are a separate map in the column, ticked only if they have tick behavior.
 
-## ШІ мобів (не «тупі моби»)
+## Mob AI (not "dumb mobs")
 
-- Повний ШІ в радіусі ≈ 48 блоків від найближчого гравця (число підбирається плейтестом).
-- Далі частота рішень ШІ спадає з відстанню (LOD симуляції): кожен 2-й, 4-й, 8-й тік. Фізика і анімація лишаються, тож моб не «замерзає» на вигляд.
-- Пошук шляху — асинхронно в пулі задач (пріоритет `Visible` біля гравця), результат застосовується в наступному тіку. Ліміт задач на регіон за тік.
-- Спавн — лише в радіусі, де гравець може побачити моба (як у Minecraft: не ближче ~24 блоків, не далі дальності симуляції), за таблицями зони. Деспавн далеких — як у Minecraft.
-- Не робимо: спавн мобів «у повітрі з вимкненим ШІ» (PRD §14, № 4).
+- Full AI within a radius of ≈ 48 blocks of the nearest player (the number is tuned by playtesting).
+- Beyond that, the AI decision frequency falls with distance (simulation LOD): every 2nd, 4th, 8th tick. Physics and animation remain, so the mob does not visibly "freeze".
+- Pathfinding is asynchronous in the task pool (`Visible` priority near the player), and the result is applied in the next tick. A per-region task limit per tick.
+- Spawning only within the radius where a player can see the mob (as in Minecraft: no closer than ~24 blocks, no farther than the simulation distance), by zone tables. Despawning of distant ones — as in Minecraft.
+- We do not do: spawning mobs "in the air with AI turned off" (PRD §14, No. 4).
 
-## LOD симуляції
+## Simulation LOD
 
-| Відстань від гравця | Сутності | Блокова механіка |
+| Distance from player | Entities | Block mechanics |
 | --- | --- | --- |
-| ≤ дальність симуляції (6–8 чанків на сервері) | повний тік; ШІ спадає з відстанню | 20 TPS |
-| далі | не тікаються, зберігаються | не тікається |
+| ≤ simulation distance (6–8 chunks on the server) | full tick; AI falls with distance | 20 TPS |
+| farther | not ticked, stored | not ticked |
 
-Блокова механіка (ферми, механізми) в межах дальності симуляції ніколи не сповільнюється — інакше ферми ламаються (PRD §14, № 5). Мод може позначити систему «кожен тік».
+Block mechanics (farms, contraptions) within the simulation distance are never slowed down — otherwise farms break (PRD §14, No. 5). A mod can mark a system "every tick".
 
-## Глобальний стан
+## Global state
 
-Час доби, погода, таблиці — у глобальному регіоні. Регіони читають його знімок з попереднього тіку; змінюють — командами в `Exchange`.
+Time of day, weather, tables — in the global region. Regions read its snapshot from the previous tick; they change it with commands in `Exchange`.

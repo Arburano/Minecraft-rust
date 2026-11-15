@@ -1,42 +1,42 @@
-# Моди: огляд
+# Mods: overview
 
-Крейти: `modhost` (хост у рушії), `mod-sdk` (бібліотека для авторів). ADR: 0006. Контракт: [`../../wit/engine-api.wit`](../../wit/engine-api.wit).
+Crates: `modhost` (host in the engine), `mod-sdk` (library for authors). ADR: 0006. Contract: [`../../wit/engine-api.wit`](../../wit/engine-api.wit).
 
-## Три рівні
+## Three levels
 
-| Рівень | Що | Хто | Ціна |
+| Level | What | Who | Cost |
 | --- | --- | --- | --- |
-| 1. Датапак | TOML/JSON + асети: блоки, предмети, рецепти, лут, біоми, структури, зони, моделі, звуки, локалізація | дизайнери, художники | нуль у рантаймі (компілюється в реєстри) |
-| 2. WASM-мод | компонент WebAssembly: системи, ШІ, механіки, команди, UI, стадії генерації | модери | ≈ 0,4 мкс на виклик компонента; пакетні API обов'язкові |
-| 3. Нативний плагін | Rust-крейт у workspace: проходи рендера, формати світу, фізика | лише команда | як у рушія |
+| 1. Datapack | TOML/JSON + assets: blocks, items, recipes, loot, biomes, structures, zones, models, sounds, localization | designers, artists | zero at runtime (compiled into registries) |
+| 2. WASM mod | a WebAssembly component: systems, AI, mechanics, commands, UI, generation stages | modders | ≈ 0.4 µs per component call; batched APIs are mandatory |
+| 3. Native plugin | a Rust crate in the workspace: render passes, world formats, physics | team only | same as the engine |
 
-Сторонні нативні `.dll`/`.so` не підтримуємо: немає стабільного ABI і немає пісочниці.
+Third-party native `.dll`/`.so` are not supported: there is no stable ABI and no sandbox.
 
-## Як рушій виконує WASM-моди
+## How the engine runs WASM mods
 
-- Один `wasmtime::Engine` на процес, `Component` компілюється один раз і кешується на диску.
-- `InstancePre` + pooling allocator: екземпляр мода **на робочий потік** (не на регіон: інакше 1–15 ГБ). Store не можна викликати з двох потоків одночасно.
-- **Стан мода живе в хості** (компоненти ECS через інтерфейс `components`). Лінійна пам'ять — чернетка на один виклик. Тому гаряче перезавантаження і переїзд між потоками не губить стан.
-- Хуки пакетні: `on-events(list<event>)` раз на тік на тип події; `run-system(index)` раз на тік на систему (або раз на N тіків).
-- Зміни світу (`set-blocks`) застосовуються, лише якщо виклик завершився успішно. Переривання (epoch, паніка, вихід за бюджет) → уся пачка відкидається.
-- Epoch-переривання увімкнене завжди (0–9% ціни). Fuel — лише в `engine-cli test` і реплеях (+50–90%).
-- Доступ лише до свого регіону; далеко — `send-to`. Глобальні дані — знімок минулого тіку.
+- One `wasmtime::Engine` per process; a `Component` is compiled once and cached on disk.
+- `InstancePre` + pooling allocator: a mod instance **per worker thread** (not per region: otherwise 1–15 GB). A Store cannot be called from two threads at once.
+- **Mod state lives in the host** (ECS components via the `components` interface). Linear memory is scratch for a single call. Therefore hot reload and moving between threads do not lose state.
+- Hooks are batched: `on-events(list<event>)` once per tick per event type; `run-system(index)` once per tick per system (or once per N ticks).
+- World changes (`set-blocks`) are applied only if the call finished successfully. An interruption (epoch, panic, budget overrun) → the whole batch is discarded.
+- Epoch interruption is always on (0–9% cost). Fuel — only in `engine-cli test` and replays (+50–90%).
+- Access only to its own region; for anything far away — `send-to`. Global data is a snapshot of the previous tick.
 
-## Бік виконання
+## Execution side
 
-`side = server | client | both` у маніфесті. Клієнт ніколи не отримує серверний `.wasm`. Реплікація компонентів (`replicate = true`) — лише для модів `both`; схема входить у хеш рукостискання.
+`side = server | client | both` in the manifest. The client never receives a server `.wasm`. Component replication (`replicate = true`) is only for `both` mods; the schema is part of the handshake hash.
 
-## Безпека
+## Security
 
-- Дозволи в маніфесті; без дозволу — немає імпорту (компонент не лінкується).
-- Клієнтські моди за замовчуванням без мережі і файлів.
-- Моди публічних серверів підписані ed25519; клієнт перевіряє підпис і SHA-256.
-- Ліміт лінійної пам'яті на мод; ліміт часу на тік (soft — попередження, hard — epoch).
+- Permissions in the manifest; without a permission there is no import (the component is not linked).
+- Client mods have no network or files by default.
+- Mods of public servers are signed with ed25519; the client verifies the signature and SHA-256.
+- A linear memory limit per mod; a per-tick time limit (soft — warning, hard — epoch).
 
-## Документи
+## Documents
 
 - [mod-manifest.md](mod-manifest.md) — `mod.toml`.
-- [datapacks.md](datapacks.md) — формат даних.
-- [wasm-api.md](wasm-api.md) — WIT-контракт і правила еволюції API.
-- [writing-mods.md](writing-mods.md) — гайд для автора мода.
-- [performance-rules.md](performance-rules.md) — правила швидких модів.
+- [datapacks.md](datapacks.md) — data format.
+- [wasm-api.md](wasm-api.md) — the WIT contract and API evolution rules.
+- [writing-mods.md](writing-mods.md) — guide for the mod author.
+- [performance-rules.md](performance-rules.md) — rules for fast mods.

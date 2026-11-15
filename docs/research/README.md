@@ -1,16 +1,16 @@
-# Рісьорч
+# Research
 
-Матеріали, з яких виросли PRD і ADR (листопад 2026).
+Materials from which the PRD and ADRs grew (November 2026).
 
-| Файл | Що це | Мова |
+| File | What it is | Language |
 | --- | --- | --- |
-| [optimization-search.md](optimization-search.md) | Веб-рісьорч підходів оптимізації воксельних ігор з посиланнями | англ. |
-| [optimization-tests.md](optimization-tests.md) | Результати бенчмарків з `research/bench` (VM 2 vCPU, ±30%) | англ. |
-| [optimization-analysis.md](optimization-analysis.md) | Аналіз і рекомендації (те саме, що PRD §13) | укр. |
-| [review-budget.py](review-budget.py) | Розрахунки рецензента: пам'ять, VRAM, трафік, час входу | Python |
+| [optimization-search.md](optimization-search.md) | Web research on voxel game optimization approaches, with references | English |
+| [optimization-tests.md](optimization-tests.md) | Benchmark results from `research/bench` (VM 2 vCPU, ±30%) | English |
+| [optimization-analysis.md](optimization-analysis.md) | Analysis and recommendations (the same as PRD §13) | English |
+| [review-budget.py](review-budget.py) | Reviewer calculations: memory, VRAM, traffic, login time | Python |
 
-Правила:
+Rules:
 
-- Нові вимірювання кладіть сюди окремими файлами `<тема>-<дата>.md` з описом машини, версій і методики.
-- Дампи можливостей GPU (задача T0-06) — у `gpu/`.
-- Якщо нове вимірювання змінює ціль, оновіть `docs/process/performance-budgets.md` і PRD.
+- Put new measurements here as separate files `<topic>-<date>.md`, describing the machine, versions and methodology.
+- GPU capability dumps (task T0-06) go in `gpu/`.
+- If a new measurement changes a target, update `docs/process/performance-budgets.md` and the PRD.

@@ -1,14 +1,14 @@
-# Правила швидких модів
+# Rules for fast mods
 
-1. Усе, що можна описати даними, описуйте даними.
-2. Жодного глобального стану в моді: дані — у компонентах і ресурсах хоста.
-3. Один виклик хоста на систему, а не на блок чи сутність. Пакети: `get-blocks`, `set-blocks`, `components.get/set` списками.
-4. Рідкісна робота — `every_n_ticks(n)`, а не перевірка кожен тік.
-5. Важкі обчислення (патфайндінг, генерація) — через задачі хоста; результат повертається подією.
-6. До сусіднього регіону — лише `send-to`; не будуйте логіку, що чекає відповідь у тому ж тіку.
-7. Не тримайте великі буфери в лінійній пам'яті між викликами — вона чернетка.
-8. Клієнтський код не приймає геймплейних рішень: вирішує сервер.
-9. Не покладайтесь на порядок подій між різними регіонами; усередині регіону порядок стабільний.
-10. Системи, що мусять тікати кожен тік навіть далеко від гравця (рідко!), позначайте явно; інакше рушій може знизити їх частоту поза дальністю симуляції.
+1. Everything that can be described by data, describe by data.
+2. No global state in a mod: data lives in host components and resources.
+3. One host call per system, not per block or entity. Batches: `get-blocks`, `set-blocks`, `components.get/set` with lists.
+4. Rare work — `every_n_ticks(n)`, not a check every tick.
+5. Heavy computation (pathfinding, generation) — through host tasks; the result comes back as an event.
+6. To a neighboring region — only `send-to`; do not build logic that waits for a response within the same tick.
+7. Do not keep large buffers in linear memory between calls — it is scratch.
+8. Client code does not make gameplay decisions: the server decides.
+9. Do not rely on event order between different regions; within a region the order is stable.
+10. Systems that must tick every tick even far from a player (rarely!) are marked explicitly; otherwise the engine may lower their frequency outside the simulation distance.
 
-Перевірка: `engine-cli bench` падає, якщо мод виходить за `[budget].tick_ms`; сервер у проді попереджає, потім вимикає мод.
+Check: `engine-cli bench` fails if the mod exceeds `[budget].tick_ms`; in production the server warns, then disables the mod.

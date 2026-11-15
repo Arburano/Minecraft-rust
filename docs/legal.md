@@ -1,19 +1,19 @@
-# Юридичні обмеження
+# Legal restrictions
 
-Це не юридична консультація. Це список правил, які команда виконує до висновку юриста (задача T0-10, людська), і питань для юриста.
+This is not legal advice. It is a list of rules the team follows until a lawyer's conclusion (task T0-10, human) and questions for the lawyer.
 
-## Правила для розробки (обов'язкові вже зараз)
+## Development rules (mandatory right now)
 
-1. **Жодного коду з клієнта чи сервера Mojang.** Не декомпілювати, не копіювати логіку з декомпільованого коду, не підглядати в mappings під час написання механік. Механіки реалізуються з власного дизайну і публічних описів поведінки.
-2. **Жодних асетів Mojang у репозиторії, збірках, CI чи на наших серверах.** Асети завантажує сам гравець на свою машину після перевірки володіння.
-3. **Гра працює на власних запасних асетах.** Повний власний набір асетів — до відкритого релізу.
-4. **Назва і бренд** не містять «Minecraft» і не імітують логотип. Формула «Не є офіційним продуктом Minecraft. Не схвалено і не пов'язано з Mojang або Microsoft» — у меню «Про гру» і на сайті.
-5. **Токени Microsoft** не зберігаються на наших серверах.
-6. **Монетизація** — лише після консультації (правила Mojang щодо серверів обмежують продаж ігрових переваг).
+1. **No code from the Mojang client or server.** Do not decompile, do not copy logic from decompiled code, do not peek at mappings while writing mechanics. Mechanics are implemented from our own design and public descriptions of behavior.
+2. **No Mojang assets in the repository, builds, CI or on our servers.** The player downloads the assets to their own machine after ownership is verified.
+3. **The game runs on our own fallback assets.** A complete own asset set — before the public release.
+4. **Name and brand** do not contain "Minecraft" and do not imitate the logo. The formula "Not an official Minecraft product. Not approved by or associated with Mojang or Microsoft" — in the "About" menu and on the website.
+5. **Microsoft tokens** are not stored on our servers.
+6. **Monetization** — only after consultation (Mojang's server rules restrict selling gameplay advantages).
 
-## Питання до юриста
+## Questions for the lawyer
 
-- Чи дозволяють EULA і Usage Guidelines завантаження і локальну конвертацію асетів Minecraft для стороннього рушія власником гри?
-- Чи дозволяють умови Microsoft передавати токен Minecraft нашому сервісу входу для перевірки володіння?
-- Що з монетизацією серверів на власному рушії, якщо асети Mojang використовуються локально?
-- Чи потрібна окрема реєстрація торговельної марки для назви проєкту?
+- Do the EULA and Usage Guidelines allow the owner of the game to download and locally convert Minecraft assets for a third-party engine?
+- Do Microsoft's terms allow passing a Minecraft token to our login service to verify ownership?
+- What about monetizing servers on a custom engine if Mojang assets are used locally?
+- Is a separate trademark registration needed for the project name?

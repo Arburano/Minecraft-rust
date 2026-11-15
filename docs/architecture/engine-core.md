@@ -1,61 +1,61 @@
-# Ядро: тік, фази, планувальник, бюджети
+# Core: tick, phases, scheduler, budgets
 
-Крейт: `engine-core`. ADR: 0002 (bevy_ecs), 0008 (регіони).
+Crate: `engine-core`. ADR: 0002 (bevy_ecs), 0008 (regions).
 
-## Тік
+## Tick
 
-- Фіксований крок, 20 TPS за замовчуванням (`DEFAULT_TPS`), налаштовується на світ.
-- Клієнт рендерить з інтерполяцією між двома останніми станами. Поворот камери береться з останнього вводу на частоті кадрів, а не інтерполюється (інакше +50 мс відчутної затримки).
-- Якщо тік не встиг: сервер не «наздоганяє» пачкою тіків, а пропускає і логує (Minecraft-поведінка «сервер відстає»), бо наздоганяння лавиноподібно погіршує ситуацію.
+- Fixed step, 20 TPS by default (`DEFAULT_TPS`), configurable per world.
+- The client renders with interpolation between the two latest states. Camera rotation is taken from the latest input at frame rate rather than interpolated (otherwise +50 ms of perceptible latency).
+- If a tick overruns: the server does not "catch up" with a burst of ticks but skips and logs (the Minecraft "server is lagging" behavior), because catching up makes the situation worse like an avalanche.
 
-## Фази
+## Phases
 
 ```text
 PreTick ─► Simulate ─► Exchange ─► PostTick
 ```
 
-| Фаза | Що відбувається | Паралельність |
+| Phase | What happens | Parallelism |
 | --- | --- | --- |
-| `PreTick` | прийом намірів з мережі, команди, запланові задачі | послідовно |
-| `Simulate` | тік кожного регіону: системи рушія і модів | регіони паралельно; системи всередині — за декларованим доступом |
-| `Exchange` | доставка повідомлень між регіонами і в глобальний регіон | послідовно; повідомлення сортуються |
-| `PostTick` | збереження, дельти клієнтам, злиття/розділення регіонів, черги світла і LOD | IO асинхронно |
+| `PreTick` | receiving intents from the network, commands, scheduled tasks | sequential |
+| `Simulate` | tick of each region: engine and mod systems | regions in parallel; systems within — by declared access |
+| `Exchange` | delivering messages between regions and to the global region | sequential; messages are sorted |
+| `PostTick` | saving, deltas to clients, region merge/split, lighting and LOD queues | IO asynchronous |
 
-Інваріанти:
+Invariants:
 
-1. Повідомлення, надіслане в `Simulate` тіку N, обробляється в `Simulate` тіку N+1. Відповідь — не раніше N+2.
-2. У `Exchange` повідомлення сортуються за `(tick, sender_region_stable_id, sender_pos, counter)`, а не в порядку приходу з черги.
-3. Усередині регіону системи обходять сутності в порядку стабільного ID.
-4. Повторюваність гарантується для того самого входу і того самого розбиття на регіони. Побітового детермінізму між запусками сервера немає (див. open-questions.md).
+1. A message sent in `Simulate` of tick N is processed in `Simulate` of tick N+1. The reply comes no earlier than N+2.
+2. In `Exchange` messages are sorted by `(tick, sender_region_stable_id, sender_pos, counter)`, not in queue arrival order.
+3. Within a region, systems iterate entities in stable ID order.
+4. Reproducibility is guaranteed for the same input and the same region partitioning. There is no bit-exact determinism between server runs (see open-questions.md).
 
-## Планувальник задач
+## Task scheduler
 
-Окремий від ECS пул для важкої роботи: мешинг, світло, генерація, LOD, патфайндінг, декодування.
+A pool separate from the ECS for heavy work: meshing, lighting, generation, LOD, pathfinding, decoding.
 
-- Пріоритети (від вищого): `Interactive` (перемешування після правки гравця, світло біля гравця) → `Visible` (нові чанки в кадрі) → `Prefetch` (за напрямком руху) → `Background` (LOD, збереження).
-- Пріоритет черги чанків рахується з відстані, кута до напрямку погляду і швидкості гравця (PRD §14, № 4).
-- Задача працює на знімку даних (`Arc`-знімок секцій), результат повертається в головний світ через канал і застосовується в наступній відповідній фазі. Задачі ніколи не мутують живий світ.
-- Скасування: задача має токен; якщо чанк вивантажився, результат відкидається без застосування.
-- Реалізація: `rayon::ThreadPool` + власні черги за пріоритетами (не `rayon::spawn` напряму, бо там немає пріоритетів).
+- Priorities (highest first): `Interactive` (re-meshing after a player edit, lighting near the player) → `Visible` (new chunks in frame) → `Prefetch` (along the movement direction) → `Background` (LOD, saving).
+- Chunk queue priority is computed from distance, angle to the view direction, and player speed (PRD §14, No. 4).
+- A task works on a data snapshot (an `Arc` snapshot of sections); the result returns to the main world through a channel and is applied in the next appropriate phase. Tasks never mutate the live world.
+- Cancellation: a task has a token; if the chunk has been unloaded, the result is discarded without being applied.
+- Implementation: `rayon::ThreadPool` + own priority queues (not `rayon::spawn` directly, as it has no priorities).
 
-## Бюджети
+## Budgets
 
 `Budget { soft, hard }`:
 
-- `soft` — перевищення фіксує профайлер (метрика + попередження в лозі з обмеженням частоти).
-- `hard` — перевищення перериває роботу: для модів — epoch-переривання і відкидання пачки змін; для систем рушія — лише алерт (ми не перериваємо власний код).
+- `soft` — exceeding is recorded by the profiler (metric + a rate-limited warning in the log).
+- `hard` — exceeding interrupts the work: for mods, an epoch interruption and discarding the batch of changes; for engine systems, only an alert (we do not interrupt our own code).
 
-Значення бюджетів — у [`../process/performance-budgets.md`](../process/performance-budgets.md).
+Budget values are in [`../process/performance-budgets.md`](../process/performance-budgets.md).
 
 ## ECS
 
-- `bevy_ecs` без решти Bevy, версія відкріплена у workspace (ADR-0002).
-- Кожен регіон сервера — окремий `World` (ADR-0008). Сутність має стабільний `NetId` (u64), що переживає перенесення між `World`, злиття регіонів і передачу між нодами.
-- Компоненти — дані без логіки; системи — функції. Ніяких трейтів-ієрархій типу `Mob: Entity`.
-- Компоненти, що реплікуються клієнтам, позначені (`Replicate`) і мають версіоновану схему.
+- `bevy_ecs` without the rest of Bevy, version pinned in the workspace (ADR-0002).
+- Each server region is a separate `World` (ADR-0008). An entity has a stable `NetId` (u64) that survives transfer between `World`s, region merges, and handoff between nodes.
+- Components are data without logic; systems are functions. No trait hierarchies like `Mob: Entity`.
+- Components replicated to clients are marked (`Replicate`) and have a versioned schema.
 
-## Профілювання
+## Profiling
 
-- `tracing` зони на кожну фазу, кожен регіон, кожну систему і кожен мод.
-- Tracy (`tracy-client`) за feature-прапором `profiling`.
-- Команда сервера `/profile` (тік, регіони) і `/profile mods`.
+- `tracing` zones for each phase, each region, each system, and each mod.
+- Tracy (`tracy-client`) behind the `profiling` feature flag.
+- Server commands `/profile` (tick, regions) and `/profile mods`.

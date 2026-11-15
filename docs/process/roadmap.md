@@ -1,29 +1,29 @@
-# Роадмап
+# Roadmap
 
-Повний опис етапів і ризиків — PRD §9–10. Тут — робочий вигляд: що входить, критерій виходу, задачі.
+The full description of stages and risks is PRD §9–10. Here is the working view: what is included, the exit criterion, tasks.
 
-**Поточний етап: 0.** Задачі — [`../../tasks/stage-0/`](../../tasks/stage-0/).
+**Current stage: 0.** Tasks — [`../../tasks/stage-0/`](../../tasks/stage-0/).
 
-| Етап | Тривалість (оцінка) | Результат | Критерій виходу |
+| Stage | Duration (estimate) | Result | Exit criterion |
 | --- | --- | --- | --- |
-| 0. Дослідження і прототипи | 2–3 міс. | бенчмарки, прототип рендера, WIT 0.1, ADR | усі числа з performance-budgets підтверджені або скориговані; ADR зафіксовані |
-| 1. Ядро і одиночний світ | 6 міс. | ECS-ядро, секції, генерація, світло, рендер, фізика, меню, асети | 60 FPS на iGPU при 12 чанках (1% low ≥ 45), RAM ≤ 1,5 ГБ без LOD (внутрішній бюджет 1 ГіБ), 30 хв без стрибків > 33 мс, старт до меню ≤ 5 с |
-| 2. Мережа і сервер | 4–5 міс. | QUIC-протокол, реплікація, передбачення, регіони, боти | 200 ботів на 8 ядрах, тік ≤ 25 мс p99, ≤ 50 Кбіт/с на гравця; виміряна ємність регіону |
-| 3. Модовий API v1 і меню-лаунчер | 4 міс. | WASM-хост, SDK, engine-cli, вхід Microsoft, синхронізація модів, апдейтер, реєстр | тестові моди ставляться автоматично; хук ≤ 1 мкс з epoch; завислий мод не зупиняє сервер |
-| 4. Геймплей як мод `core` | 6 міс. | блоки, предмети, інвентар, крафт, моби з ШІ, біоми, зони, механізми, журнал дій | закрита альфа на 50 гравців; `core` без приватного API |
-| 5. LOD і слабке залізо | 3–4 міс. | кільця LOD, серверний LOD, автопрофіль | 64 чанки при 60 FPS на GTX 1050; RAM ≤ 2 ГБ |
-| 6. Шарди | 6 міс. | шлюз, координатор, handoff, глобальні сервіси, власне залізо і тюнінг | 5 000 ботів на 10 нодах, ≈ 500 на ноду; 0 дюпів у 10 000 автотестах |
-| 7. Бета і відкритий SDK | постійно | документація, друга мова SDK, античит, модерація | сторонні моди без допомоги команди |
+| 0. Research and prototypes | 2–3 months | benchmarks, renderer prototype, WIT 0.1, ADRs | all numbers from performance-budgets confirmed or adjusted; ADRs recorded |
+| 1. Core and single-player world | 6 months | ECS core, sections, generation, lighting, rendering, physics, menu, assets | 60 FPS on iGPU at 12 chunks (1% low ≥ 45), RAM ≤ 1.5 GB without LOD (internal budget 1 GiB), 30 min without stutters > 33 ms, start to menu ≤ 5 s |
+| 2. Network and server | 4–5 months | QUIC protocol, replication, prediction, regions, bots | 200 bots on 8 cores, tick ≤ 25 ms p99, ≤ 50 kbit/s per player; measured region capacity |
+| 3. Mod API v1 and in-game launcher menu | 4 months | WASM host, SDK, engine-cli, Microsoft login, mod sync, updater, registry | test mods install automatically; hook ≤ 1 µs with epoch; a hung mod does not stop the server |
+| 4. Gameplay as the `core` mod | 6 months | blocks, items, inventory, crafting, mobs with AI, biomes, zones, contraptions, action log | closed alpha for 50 players; `core` without private API |
+| 5. LOD and low-end hardware | 3–4 months | LOD rings, server LOD, auto-profile | 64 chunks at 60 FPS on GTX 1050; RAM ≤ 2 GB |
+| 6. Shards | 6 months | gateway, coordinator, handoff, global services, own hardware and tuning | 5,000 bots on 10 nodes, ≈ 500 per node; 0 dupes in 10,000 automated tests |
+| 7. Beta and open SDK | ongoing | documentation, second SDK language, anti-cheat, moderation | third-party mods without the team's help |
 
-Сума етапів 0–6 — 31–34 міс. для команди з 3–5 інженерів.
+The sum of stages 0–6 is 31–34 months for a team of 3–5 engineers.
 
-## Що додано з розбору старих ідей (PRD §14)
+## What was added from the review of old ideas (PRD §14)
 
-- Етап 1: черга завантаження з пріоритетами (напрям руху, висота, швидкість), ліниве завантаження асетів, рендер-пакети 2×2×2, старт ≤ 5 с.
-- Етап 2: LOD симуляції сутностей, асинхронний патфайндінг.
-- Етап 4: ігрові зони, журнал дій з відкатом, приховування гравців (аватар, чат, голос).
-- Етап 6: власне залізо, pinning важких регіонів, тюнінг ОС.
+- Stage 1: a loading queue with priorities (direction of movement, height, speed), lazy asset loading, 2×2×2 render batches, start ≤ 5 s.
+- Stage 2: entity simulation LOD, asynchronous pathfinding.
+- Stage 4: game zones, an action log with rollback, hiding players (avatar, chat, voice).
+- Stage 6: own hardware, pinning of heavy regions, OS tuning.
 
-## Паралельний трек
+## Parallel track
 
-Поки йдуть етапи 0–3, спільнота може жити на сервері Fabric + Folia, де перевіряються ідеї модів (PRD §9). Це окремий репозиторій.
+While stages 0–3 are underway, the community can live on a Fabric + Folia server where mod ideas are tested (PRD §9). This is a separate repository.

@@ -1,80 +1,80 @@
-# Світ: координати, секції, палітра, збереження
+# World: coordinates, sections, palette, storage
 
-Крейт: `world`. ADR: 0004 (секції 16³ з палітрою).
+Crate: `world`. ADR: 0004 (16³ sections with a palette).
 
-## Координати
+## Coordinates
 
-| Тип | Розмір | Обчислення з блоку |
+| Type | Size | Computed from block |
 | --- | --- | --- |
-| `BlockPos` | 1 блок | — |
+| `BlockPos` | 1 block | — |
 | `SectionPos` | 16³ | `div_euclid(16)` |
 | `MeshChunkPos` | 32³ | `div_euclid(32)` |
-| Колона | 16 × висота × 16 | `(x.div_euclid(16), z.div_euclid(16))` |
-| Клітина шарду | 512 × висота × 512 (налаштовується) | `div_euclid(512)` |
+| Column | 16 × height × 16 | `(x.div_euclid(16), z.div_euclid(16))` |
+| Shard cell | 512 × height × 512 (configurable) | `div_euclid(512)` |
 
-Завжди `div_euclid`/`rem_euclid`, ніколи `/` і `%` для координат: блок −1 лежить у секції −1. Індекс у секції — порядок YZX (`(y*16 + z)*16 + x`). Реалізовано в `crates/world/src/coords.rs` з тестами.
+Always `div_euclid`/`rem_euclid`, never `/` and `%` for coordinates: block −1 lies in section −1. The index within a section is YZX order (`(y*16 + z)*16 + x`). Implemented in `crates/world/src/coords.rs` with tests.
 
-## Секція
+## Section
 
 ```text
 enum SectionBlocks {
-    Single(BlockStateId),                       // однорідна: 2 байти + тег
-    Paletted { palette: Vec<BlockStateId>,      // 2..=256 станів
+    Single(BlockStateId),                       // uniform: 2 bytes + tag
+    Paletted { palette: Vec<BlockStateId>,      // 2..=256 states
                bits: u8,                         // 1,2,3,4,5,6,7,8
-               data: Vec<u64>,                   // індекси без перетину меж слова
-               reverse: Option<HashMap<BlockStateId, u8>> }, // лише якщо palette.len() > 16
-    Direct(Box<[BlockStateId; 4096]>),          // > 256 станів
+               data: Vec<u64>,                   // indices that do not cross word boundaries
+               reverse: Option<HashMap<BlockStateId, u8>> }, // only if palette.len() > 16
+    Direct(Box<[BlockStateId; 4096]>),          // > 256 states
 }
 ```
 
-Правила:
+Rules:
 
-- Індекси не перетинають межу `u64` (формат MC 1.16+): у слові `64 / bits` індексів, решта бітів порожня. Простіший і швидший доступ (тест: `get` ≈ 3,8 нс).
-- Зростання бітності при переповненні палітри; стискання (перепакування) — лише в `PostTick` або при збереженні, не на кожен `set`.
-- Зворотний хеш-індекс для палітр > 16 записів. Без нього `set` у 8-бітній секції — 67 нс через лінійний пошук; ціль — ≤ 10 нс на будь-якій бітності.
-- Масове розпакування (`unpack_into(&mut [BlockStateId; 4096])`) пословно — основа швидкого gather для мешингу. Ціль: gather + маски ≤ 100 мкс на меш-чанк 32³ (розрахунок з 62³ ≤ 0,5 мс, див. analysis §13.2).
-- Лічильник непрозорих блоків і прапорці `all_air`/`all_opaque` оновлюються при `set`: так мешер пропускає порожні і суцільні меш-чанки без розпакування.
+- Indices do not cross a `u64` boundary (MC 1.16+ format): a word holds `64 / bits` indices, the remaining bits are empty. Simpler and faster access (test: `get` ≈ 3.8 ns).
+- Bit width grows when the palette overflows; compaction (repacking) happens only in `PostTick` or on save, not on every `set`.
+- A reverse hash index for palettes > 16 entries. Without it, `set` in an 8-bit section takes 67 ns due to linear search; the target is ≤ 10 ns at any bit width.
+- Bulk unpacking (`unpack_into(&mut [BlockStateId; 4096])`) word by word is the basis of fast gather for meshing. Target: gather + masks ≤ 100 µs per 32³ mesh chunk (estimate from 62³ ≤ 0.5 ms, see analysis §13.2).
+- The opaque block counter and the `all_air`/`all_opaque` flags are updated on `set`: this lets the mesher skip empty and solid mesh chunks without unpacking.
 
-Виміряні розміри (тест, `docs/research/optimization-tests.md`):
+Measured sizes (test, `docs/research/optimization-tests.md`):
 
-| Секція | Байт |
+| Section | Bytes |
 | --- | --- |
-| Single | 56 (з накладними витратами) |
-| Поверхня, 3 біт | 1 640 |
-| Підземелля, 4 біт | 2 124 |
-| 8 біт | 4 664 |
-| Найгірша, пряма | 6 616 (8 192 для плаского u16) |
+| Single | 56 (with overhead) |
+| Surface, 3 bit | 1,640 |
+| Dungeon, 4 bit | 2,124 |
+| 8 bit | 4,664 |
+| Worst case, direct | 6,616 (8,192 for a flat u16) |
 
-## Світло в секції
+## Light in a section
 
-Окремо від блоків: `SectionLight { block: Nibbles, sky: Nibbles }`, кожен — `Single(u8)` або 2 048 байт. Детально — [lighting.md](lighting.md).
+Separate from blocks: `SectionLight { block: Nibbles, sky: Nibbles }`, each is `Single(u8)` or 2,048 bytes. Details in [lighting.md](lighting.md).
 
-## Реєстри і таблиця ID
+## Registries and the ID table
 
-- Кожен блок, предмет, сутність має рядковий ID `namespace:path`.
-- На старті сервер будує реєстр з усіх модів (детермінований порядок: мод за id, потім за порядком оголошення) і призначає числові `BlockStateId`. `AIR = 0` завжди.
-- Клієнт отримує таблицю при вході; числові ID на клієнті ніколи не «вгадуються».
-- Збережений світ містить таблицю `рядковий ID стану → число`, з якою записані секції. При завантаженні з іншим набором модів секції перекодовуються через цю таблицю. Відсутній стан → `core:missing` (видимий блок-заглушка, дані блоку зберігаються, щоб повернути мод без втрат).
+- Every block, item, entity has a string ID `namespace:path`.
+- At startup the server builds a registry from all mods (deterministic order: mod by id, then by declaration order) and assigns numeric `BlockStateId`s. `AIR = 0` always.
+- The client receives the table on login; numeric IDs on the client are never "guessed".
+- A saved world contains a `string state ID → number` table with which its sections were written. When loading with a different set of mods, sections are re-encoded through this table. A missing state → `core:missing` (a visible placeholder block; the block data is preserved so the mod can be restored without loss).
 
-## Колона і завантаження
+## Column and loading
 
-- Колона: масив секцій по висоті + карта висот (для неба і LOD) + сутності блоків (block entities) окремою мапою.
-- Стани завантаження колони: `Requested → Generating/Loading → Lit → Ready → Unloading`. Мешинг і симуляція — лише `Ready`.
+- Column: an array of sections by height + a height map (for sky and LOD) + block entities in a separate map.
+- Column loading states: `Requested → Generating/Loading → Lit → Ready → Unloading`. Meshing and simulation only for `Ready`.
 
-## Збереження на диску
+## On-disk storage
 
-- Один файл на регіон-файл 32×32 колони (`r.X.Z.bin`).
-- Заголовок: таблиця зсувів колон, версія формату, таблиця ID.
-- Колона: палітрові секції (як у пам'яті) + світло + сутності, стиснення zstd рівня 3. Бекапи — рівень 9.
-- Запис копією (copy-on-write): нова версія колони пишеться в вільне місце, зсув оновлюється атомарно; тік не зупиняється.
-- Індекс і метадані світу — `redb`.
-- Формат версіонується; міграції — окремі функції `vN → vN+1` з тестами на золотих файлах.
+- One file per region file of 32×32 columns (`r.X.Z.bin`).
+- Header: column offset table, format version, ID table.
+- Column: palette sections (as in memory) + light + entities, zstd level 3 compression. Backups — level 9.
+- Copy-on-write writes: the new column version is written to free space, the offset is updated atomically; the tick does not stop.
+- World index and metadata — `redb`.
+- The format is versioned; migrations are separate `vN → vN+1` functions with tests on golden files.
 
-## Мережевий формат
+## Network format
 
-Ті самі палітрові секції + zstd рівня 1. Словник zstd — лише після тесту на реальних світах (синтетичні тести показали, що на цілих колонах він шкодить).
+The same palette sections + zstd level 1. A zstd dictionary only after a test on real worlds (synthetic tests showed it hurts on whole columns).
 
-## Відкриті числа
+## Open numbers
 
-- Реальна гістограма бітності на справжньому світі (зараз 17 МіБ на 15 000 секцій — припущений мікс). Задача етапу 1.
-- Реальний розмір стисненої колони (від цього залежить час входу і трафік).
+- The real bit-width histogram on a real world (currently 17 MiB per 15,000 sections — an assumed mix). A stage 1 task.
+- The real compressed column size (login time and traffic depend on it).

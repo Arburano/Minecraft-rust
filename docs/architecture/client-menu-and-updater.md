@@ -1,60 +1,60 @@
-# Меню-лаунчер і апдейтер
+# In-game launcher menu and updater
 
-Крейти: `client` (меню всередині гри), `updater` (окремий бінарник). ADR: 0010.
+Crates: `client` (the in-game menu), `updater` (separate binary). ADR: 0010.
 
-Рішення: окремого лаунчера (Tauri тощо) немає. Головне меню гри виконує роль лаунчера, а крихітний апдейтер оновлює файли і запускає гру. Мета — від кліку до меню ≤ 5 с.
+Decision: there is no separate launcher (Tauri etc.). The game's main menu acts as the launcher, and a tiny updater updates files and starts the game. Target: from click to menu ≤ 5 s.
 
-## Процес запуску
+## Launch process
 
 ```text
-ярлик ─► updater
-          ├─ перевірити маніфест версії (підписаний ed25519)
-          ├─ є оновлення? завантажити бінарні дельти (zstd --patch-from), перевірити SHA-256
-          ├─ атомарно замінити теку версії; при помилці — відкат на попередню
-          └─ запустити client з прапорцем --launched-by-updater
+shortcut ─► updater
+          ├─ check the version manifest (signed with ed25519)
+          ├─ update available? download binary deltas (zstd --patch-from), verify SHA-256
+          ├─ atomically replace the version directory; on error, roll back to the previous one
+          └─ start client with the --launched-by-updater flag
 client
-          ├─ вікно відкривається одразу (ще до завантаження асетів), меню на egui поверх wgpu
-          ├─ фоном: перевірка входу (refresh-токен), асети, кеш шейдерів
-          └─ «Грати» → вибір сервера / світу → синхронізація модів → вхід
+          ├─ the window opens immediately (before assets load), menu on egui over wgpu
+          ├─ in the background: login check (refresh token), assets, shader cache
+          └─ "Play" → pick server / world → mod sync → login
 ```
 
-Чому апдейтер окремий: запущений бінарник не може надійно замінити сам себе (особливо на Windows), а падіння посеред оновлення не має лишити гру зламаною.
+Why the updater is separate: a running binary cannot reliably replace itself (especially on Windows), and a crash in the middle of an update must not leave the game broken.
 
-## Апдейтер
+## Updater
 
-- Розмір — мінімальний: без GUI-фреймворку (консольне вікно або нативний прогрес-бар ОС), без async-рантайму, якщо можна.
-- Розкладка на диску:
+- Minimal size: no GUI framework (console window or the OS's native progress bar), no async runtime if possible.
+- On-disk layout:
 
 ```text
 <install>/updater(.exe)
 <install>/versions/<version>/client(.exe), ...
-<install>/current -> versions/<version>      (або файл current.txt на Windows)
+<install>/current -> versions/<version>      (or a current.txt file on Windows)
 <data>/cache/assets/   <data>/cache/mods/   <data>/cache/shaders/   <data>/cache/lod/
 ```
 
-- Канали: stable / beta. Відкат — попередня тека версії зберігається до наступного успішного запуску.
-- Апдейтер оновлює і себе: нова версія апдейтера кладеться поруч і підміняється при наступному запуску.
+- Channels: stable / beta. Rollback: the previous version directory is kept until the next successful launch.
+- The updater also updates itself: the new updater version is placed alongside and swapped in on the next launch.
 
-## Меню (у клієнті)
+## Menu (in the client)
 
-Екрани: вхід (Microsoft), список серверів, одиночна гра, профілі модів, налаштування (профіль якості, дальність ≥ 8), каталог модів, про гру.
+Screens: login (Microsoft), server list, single-player, mod profiles, settings (quality profile, render distance ≥ 8), mod catalog, about.
 
-Обов'язки меню (колишні обов'язки лаунчера):
+Menu responsibilities (formerly the launcher's responsibilities):
 
-1. Вхід і оновлення сесії — [auth-and-assets.md](auth-and-assets.md).
-2. Асети Mojang і конвертація — там само.
-3. Синхронізація модів під сервер: сервер шле маніфест (моди, версії, SHA-256, підписи); меню докачує відсутнє в content-addressed кеш і перевіряє підписи.
-4. Звіти про краші — лише за згодою гравця.
+1. Login and session refresh — [auth-and-assets.md](auth-and-assets.md).
+2. Mojang assets and conversion — same place.
+3. Mod sync for the server: the server sends a manifest (mods, versions, SHA-256, signatures); the menu downloads what is missing into a content-addressed cache and verifies signatures.
+4. Crash reports — only with the player's consent.
 
-## Швидкий старт (≤ 5 с до меню)
+## Fast start (≤ 5 s to menu)
 
-- Вікно і меню показуються до завантаження світу; важкі асети — ліниво (PRD §14, № 3, № 9).
-- Кеш скомпільованих шейдерів/пайплайнів wgpu на диску.
-- Асети конвертуються один раз після завантаження, далі читаються через mmap (`rkyv`).
-- Реєстри завантажуються повністю (кілобайти), моделі/звуки — за потребою з заглушкою, щоб не було фризу.
+- The window and menu are shown before the world loads; heavy assets load lazily (PRD §14, No. 3, No. 9).
+- Compiled shader/pipeline cache of wgpu on disk.
+- Assets are converted once after download, then read via mmap (`rkyv`).
+- Registries are loaded fully (kilobytes); models/sounds on demand with a placeholder so there is no freeze.
 
-## Тести
+## Tests
 
-- Обрив мережі посеред оновлення → гра запускається на старій версії.
-- Підроблений маніфест (неправильний підпис) → оновлення відхиляється.
-- Холодний старт до меню на референсному ноутбуці ≤ 5 с.
+- Network drop in the middle of an update → the game starts on the old version.
+- Forged manifest (wrong signature) → the update is rejected.
+- Cold start to menu on the reference laptop ≤ 5 s.

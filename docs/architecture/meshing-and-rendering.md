@@ -1,83 +1,83 @@
-# Мешинг і рендер
+# Meshing and rendering
 
-Крейти: `mesh`, `render`. ADR: 0003 (власний рендер на wgpu), 0005 (меш-чанк 32³ + пакети 2×2×2).
+Crates: `mesh`, `render`. ADR: 0003 (own renderer on wgpu), 0005 (32³ mesh chunk + 2×2×2 batches).
 
-## Конвеєр
+## Pipeline
 
 ```text
-правка блоку ─► маски (інкрементно) ─► черга перемешування (пріоритет Interactive)
-новий чанк  ─► gather 34³ + маски   ─► черга (Visible / Prefetch)
+block edit ─► masks (incremental) ─► re-mesh queue (Interactive priority)
+new chunk  ─► gather 34³ + masks  ─► queue (Visible / Prefetch)
                         │
                         ▼
               fast_mesh 32³ (binary-greedy-meshing 0.6.4)
-                        │  квади u64, 6 списків за напрямком грані
+                        │  u64 quads, 6 lists by face direction
                         ▼
-        копія у рендер-пакет 64³ (зсув +0/+32 по кожній осі)
+        copy into the 64³ render batch (offset +0/+32 on each axis)
                         │
                         ▼
-         slab-алокатор у великому GPU-буфері ─► draw
+         slab allocator in a large GPU buffer ─► draw
 ```
 
-## Мешинг
+## Meshing
 
-- Крейт: `binary-greedy-meshing` 0.6.4, `Mesher<32>`, метод `fast_mesh` з готовими масками.
-- Вхід: буфер 34³ (32³ + паддінг 1 блок з кожного боку від сусідів). Gather — пословне розпакування секцій (див. world-storage.md), не `get()` по блоку.
-- Маски непрозорості й прозорості підтримуються інкрементно при `set_block` (ціль ≤ 20 нс на правку). Побудова з нуля — лише при завантаженні чанка.
-- Порожні й суцільні меш-чанки пропускаються за прапорцями секцій, мешер не викликається.
-- Правка на межі меш-чанка зачіпає сусідів (паддінг): до 4 меш-чанків (до 8 з AO по діагоналі).
-- Некубічні моделі (сходи, паркани, рослини) — окремий шлях: передобчислені шаблони моделей, інстанси. Не жадібне злиття.
+- Crate: `binary-greedy-meshing` 0.6.4, `Mesher<32>`, the `fast_mesh` method with precomputed masks.
+- Input: a 34³ buffer (32³ + 1 block of padding on each side from neighbors). Gather is word-by-word section unpacking (see world-storage.md), not a per-block `get()`.
+- Opacity and transparency masks are maintained incrementally on `set_block` (target ≤ 20 ns per edit). Building from scratch happens only on chunk load.
+- Empty and solid mesh chunks are skipped by section flags; the mesher is not called.
+- An edit on a mesh chunk border affects neighbors (padding): up to 4 mesh chunks (up to 8 with diagonal AO).
+- Non-cubic models (stairs, fences, plants) take a separate path: precomputed model templates, instances. No greedy merging.
 
-Виміряно (VM 2 vCPU, ±30%, юніт 62³): `fast_mesh` 0,27 мс, маски з нуля 0,35 мс, `mesh()` 1,1 мс. Для 32³ очікуємо ≈ 1/7 часу на юніт — підтвердити бенчмарком T0-04.
+Measured (VM 2 vCPU, ±30%, 62³ unit): `fast_mesh` 0.27 ms, masks from scratch 0.35 ms, `mesh()` 1.1 ms. For 32³ we expect ≈ 1/7 of the per-unit time — to be confirmed by the T0-04 benchmark.
 
-## Рендер-пакети (рішення ADR-0005)
+## Render batches (ADR-0005 decision)
 
-- Меш-чанк 32³ дає квади з координатами 0..31. При копіюванні в пакет 64³ додаємо зсув 0 або 32 по кожній осі. 6 біт крейта (0..63) вміщають увесь пакет.
-- Пакет = 8 меш-чанків, один діапазон у GPU-буфері на напрям грані. Перемешування одного меш-чанка → перекопіювання пакета (ціль ≤ 50 мкс) або підтримка 8 піддіапазонів з власними лічильниками (вирішить бенчмарк T0-05).
-- Кількість draw-команд: ≈ як для юніта 62³ (≈ 600 при 12 чанках без indirect), а не ≈ 4 500 для окремих 32³.
+- A 32³ mesh chunk produces quads with coordinates 0..31. When copying into a 64³ batch we add an offset of 0 or 32 on each axis. The crate's 6 bits (0..63) fit the entire batch.
+- A batch = 8 mesh chunks, one range in the GPU buffer per face direction. Re-meshing one mesh chunk → re-copying the batch (target ≤ 50 µs) or supporting 8 sub-ranges with their own counters (the T0-05 benchmark will decide).
+- Number of draw commands: ≈ as for a 62³ unit (≈ 600 at 12 chunks without indirect), not ≈ 4,500 for separate 32³ ones.
 
-## Формат квада (8 байт)
+## Quad format (8 bytes)
 
-| Біти | Поле |
+| Bits | Field |
 | --- | --- |
-| 0–5, 6–11, 12–17 | x, y, z у пакеті (0..63) |
-| 18–23, 24–29 | ширина, висота − 1 |
-| 32–47 | тип блоку / індекс текстури (16 біт) |
-| 48–55 | пласке світло грані (резерв, якщо 3D-текстура світла недоступна) |
-| решта | резерв (AO-прапорці, анімація) |
+| 0–5, 6–11, 12–17 | x, y, z in the batch (0..63) |
+| 18–23, 24–29 | width, height − 1 |
+| 32–47 | block type / texture index (16 bits) |
+| 48–55 | flat face light (reserve, if the 3D light texture is unavailable) |
+| rest | reserved (AO flags, animation) |
 
-Напрям грані не зберігається в квади — він задається списком (6 діапазонів). Згладжене світло й AO не кладемо в квад: жадібне злиття розривало б квади на кожній зміні світла. Шейдер читає світло з 3D-текстури світла секцій.
+The face direction is not stored in the quad — it is given by the list (6 ranges). Smooth light and AO are not put into the quad: greedy merging would break quads on every light change. The shader reads light from the sections' 3D light texture.
 
-## Пробник можливостей (на старті клієнта)
+## Capability probe (at client start)
 
-Читаємо `adapter.features()`, `limits()`, `get_downlevel_capabilities()` і обираємо шлях:
+We read `adapter.features()`, `limits()`, `get_downlevel_capabilities()` and choose a path:
 
-| Шлях | Умова | Що робимо |
+| Path | Condition | What we do |
 | --- | --- | --- |
-| A. GPU-driven | `INDIRECT_EXECUTION` + compute + `MULTI_DRAW_INDIRECT_COUNT` (DX12, Vulkan 1.2+) | compute-кулінг пише indirect-аргументи, 1–3 виклики на прохід |
-| B. Vertex pulling | `DownlevelFlags::VERTEX_STORAGE` | CPU-кулінг, draw на рендер-пакет × напрям, квади зі storage-буфера, вершина з `vertex_index` (квад = `vertex_index / 6`), `first_instance` не потрібен |
-| C. Fallback | немає storage у вершинному шейдері (GL ES 3.0, старі драйвери) | ті самі 8 байт як per-instance атрибут `Uint32x2`, 4 вершини на інстанс |
+| A. GPU-driven | `INDIRECT_EXECUTION` + compute + `MULTI_DRAW_INDIRECT_COUNT` (DX12, Vulkan 1.2+) | compute culling writes indirect arguments, 1–3 calls per pass |
+| B. Vertex pulling | `DownlevelFlags::VERTEX_STORAGE` | CPU culling, a draw per render batch × direction, quads from a storage buffer, vertex from `vertex_index` (quad = `vertex_index / 6`), `first_instance` not needed |
+| C. Fallback | no storage in the vertex shader (GL ES 3.0, old drivers) | the same 8 bytes as a per-instance `Uint32x2` attribute, 4 vertices per instance |
 
-Етапи 0–1 будують B і C; A — з етапу 2, лише після вимірювань (analysis §13.3). Дамп можливостей на iGPU і GTX 1050 (Vulkan, DX12, GL) — задача T0-06.
+Stages 0–1 build B and C; A comes from stage 2, only after measurements (analysis §13.3). Capability dump on an iGPU and GTX 1050 (Vulkan, DX12, GL) — task T0-06.
 
-## Кулінг
+## Culling
 
-1. Frustum: CPU, по рендер-пакетах (AABB), потім по меш-чанках.
-2. Напрями граней: малюємо лише ≤ 3 напрями, звернені до камери (по кожному пакету).
-3. Cave culling: граф видимості між гранями меш-чанка (які грані з'єднані повітрям); обхід BFS від камери. Ціль ≥ 50% відкинутих юнітів у печері.
-4. Hi-Z occlusion — лише на шляху A і лише після вимірювань; з другим проходом для відкинутого за минулим кадром.
+1. Frustum: CPU, by render batches (AABB), then by mesh chunks.
+2. Face directions: draw only ≤ 3 directions facing the camera (per batch).
+3. Cave culling: a visibility graph between mesh chunk faces (which faces are connected by air); BFS traversal from the camera. Target ≥ 50% of units discarded in a cave.
+4. Hi-Z occlusion — only on path A and only after measurements; with a second pass for what was rejected by the previous frame.
 
-## Текстури
+## Textures
 
-- Масиви текстур (`texture_2d_array`) замість атласу; окремий масив на кожен розмір текстури (16, 32, 64…). Ліміт wgpu за замовчуванням — 256 шарів; більше — кілька масивів або вищий ліміт, якщо адаптер дає.
-- Міпмапи генеруються при конвертації асетів (не в рантаймі). Це і є «менша текстура далі від гравця» (PRD §14, № 5).
-- Стиснення BC7 — лише для HD-паків.
+- Texture arrays (`texture_2d_array`) instead of an atlas; a separate array for each texture size (16, 32, 64…). The default wgpu limit is 256 layers; more — several arrays or a higher limit if the adapter allows.
+- Mipmaps are generated during asset conversion (not at runtime). This is the "smaller texture farther from the player" (PRD §14, No. 5).
+- BC7 compression — only for HD packs.
 
-## Рендер-граф і профілі
+## Render graph and profiles
 
-Проходи: непрозорі → прозорі (відсортовані по пакетах від дальніх) → вода → сутності → частинки → UI. Опційні: тіні, SSAO, хмари, туман. Профіль Low вимикає опційні проходи першими; дальність прорисовки не нижче 8 чанків на жодному профілі (PRD §14).
+Passes: opaque → transparent (sorted by batches from farthest) → water → entities → particles → UI. Optional: shadows, SSAO, clouds, fog. The Low profile turns optional passes off first; render distance is not below 8 chunks on any profile (PRD §14).
 
-## Бюджети
+## Budgets
 
-- 60 FPS на iGPU / GTX 1050 при 12 чанках; кадр GPU ≤ 8 мс на геометрію (T0-06).
-- CPU запису команд ≤ 1 мс на кадр.
-- Головний невиміряний ризик: пропускна здатність вершин на iGPU (≈ 0,5 млн квадив = 3 млн вершин на кадр, оцінка).
+- 60 FPS on an iGPU / GTX 1050 at 12 chunks; GPU frame ≤ 8 ms for geometry (T0-06).
+- Command recording CPU ≤ 1 ms per frame.
+- The main unmeasured risk: vertex throughput on an iGPU (≈ 0.5 million quads = 3 million vertices per frame, estimate).

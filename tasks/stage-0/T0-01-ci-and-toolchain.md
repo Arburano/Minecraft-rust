@@ -1,28 +1,28 @@
-# T0-01. CI зелений і відтворюваний
+# T0-01. CI green and reproducible
 
-- **Статус:** todo
-- **Залежить від:** —
-- **Виконавець:** людина + агент
+- **Status:** todo
+- **Depends on:** —
+- **Owner:** human + agent
 
-## Мета
+## Goal
 
-Переконатися, що GitHub Actions проходить на `main`: fmt, clippy з `-D warnings`, test, `bench --no-run`. Тулчейн відкріплений у `rust-toolchain.toml` (1.97).
+Make sure GitHub Actions passes on `main`: fmt, clippy with `-D warnings`, test, `bench --no-run`. The toolchain is pinned in `rust-toolchain.toml` (1.97).
 
-## Специфікації
+## Specs
 
 - [docs/process/testing-and-benchmarks.md](../../docs/process/testing-and-benchmarks.md)
 - [docs/process/coding-standards.md](../../docs/process/coding-standards.md)
 
-## Результат
+## Deliverables
 
-- Перший прогін CI зелений.
-- Бейдж CI у README.
+- First CI run is green.
+- CI badge in README.
 
-## Критерії приймання
+## Acceptance criteria
 
-- [ ] Workflow `.github/workflows/ci.yml` проходить на чистому клоні.
-- [ ] `cargo test --workspace` локально і в CI дає однаковий результат.
+- [ ] Workflow `.github/workflows/ci.yml` passes on a clean clone.
+- [ ] `cargo test --workspace` gives the same result locally and in CI.
 
-## Поза межами задачі
+## Out of scope
 
-Не додавати нових перевірок, яких немає в coding-standards.md.
+Do not add new checks that are not in coding-standards.md.

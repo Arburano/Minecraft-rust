@@ -1,37 +1,37 @@
-# Вхід і асети
+# Login and assets
 
-Крейти: `auth`, `assets`. Юридичні застереження — [../legal.md](../legal.md).
+Crates: `auth`, `assets`. Legal caveats: [../legal.md](../legal.md).
 
-## Вхід через Microsoft
+## Microsoft login
 
-Ланцюжок: Microsoft OAuth (Device Code Flow або Auth Code + PKCE) → Xbox Live → XSTS → токен Minecraft → профіль і перевірка володіння грою.
+Chain: Microsoft OAuth (Device Code Flow or Auth Code + PKCE) → Xbox Live → XSTS → Minecraft token → profile and game ownership check.
 
-Передумова: зареєстрований Azure-застосунок, **схвалений Microsoft** через форму доступу до Minecraft API. Без схвалення `api.minecraftservices.com` повертає 403. Задача T0-10 (людська, не для агента).
+Prerequisite: a registered Azure application **approved by Microsoft** via the Minecraft API access form. Without approval `api.minecraftservices.com` returns 403. Task T0-10 (human task, not for an agent).
 
 ```text
-клієнт ── токен Minecraft ──► наш сервіс входу
-                                ├─ перевіряє профіль і володіння через api.minecraftservices.com
-                                ├─ не зберігає токен Minecraft
-                                └─ видає сесійний JWT (Ed25519, 15–60 хв) + refresh
-ігрові сервери/шлюз перевіряють лише наш JWT (публічний ключ)
+client ── Minecraft token ──► our login service
+                                ├─ checks profile and ownership via api.minecraftservices.com
+                                ├─ does not store the Minecraft token
+                                └─ issues a session JWT (Ed25519, 15–60 min) + refresh
+game servers/gateway verify only our JWT (public key)
 ```
 
-- Токени Microsoft ніколи не потрапляють на ігрові сервери.
-- Refresh-токен — у системному сховищі секретів (`keyring`: Keychain, Credential Manager, libsecret). Ніколи у відкритих файлах.
-- Короткий JWT потрібен, щоб бан і крадіжка сесії діяли швидко.
-- Запасний вхід (власні акаунти) — на випадок відмови Microsoft (ризик з PRD §10). Не в етапі 1.
-- Довідка: [wiki.vg MSA](https://www.wiki.vg/MSA), Rust-приклад: `lighty-auth`.
+- Microsoft tokens never reach game servers.
+- The refresh token lives in the OS secret store (`keyring`: Keychain, Credential Manager, libsecret). Never in plain files.
+- A short-lived JWT is needed so that bans and session theft take effect quickly.
+- Fallback login (own accounts) is for the case of a Microsoft outage (PRD §10 risk). Not in stage 1.
+- Reference: [wiki.vg MSA](https://www.wiki.vg/MSA), Rust example: `lighty-auth`.
 
-## Асети
+## Assets
 
-- Джерело: офіційний маніфест версій Mojang і asset index. Завантажуються **на машині гравця** після перевірки володіння. Ми їх не роздаємо і не кладемо в репозиторій.
-- Конвертація (локально): текстури → масиви текстур з міпмапами; моделі → запечені шаблони; звуки → формат аудіо-рушія. Результат — у `<data>/cache/assets/<версія>/`.
-- Ключ кешу — хеш вихідного файлу + версія конвертера.
-- **Запасні асети** (`core:fallback/*`): власні мінімальні текстури, моделі, звуки. Гра і всі тести мають працювати без асетів Mojang. CI ніколи не завантажує асети Mojang.
-- Ліниве завантаження: при старті — лише необхідне для меню і найближчих блоків; моделі/звуки мобів і зон — при наближенні.
+- Source: the official Mojang version manifest and asset index. They are downloaded **on the player's machine** after the ownership check. We do not distribute them or put them in the repository.
+- Conversion (local): textures → texture arrays with mipmaps; models → baked templates; sounds → the audio engine format. The result goes to `<data>/cache/assets/<version>/`.
+- Cache key: hash of the source file + converter version.
+- **Fallback assets** (`core:fallback/*`): our own minimal textures, models, sounds. The game and all tests must work without Mojang assets. CI never downloads Mojang assets.
+- Lazy loading: at startup only what is needed for the menu and nearest blocks; mob and zone models/sounds on approach.
 
-## Тести
+## Tests
 
-- Повний цикл входу — ручний тест (потрібен реальний акаунт); в CI — мок-сервер з тими самими відповідями.
-- Конвертація: золоті тести на запасних асетах.
-- Гра запускається, якщо асетів Mojang немає зовсім.
+- The full login cycle is a manual test (needs a real account); in CI, a mock server with the same responses.
+- Conversion: golden tests on fallback assets.
+- The game starts even if there are no Mojang assets at all.

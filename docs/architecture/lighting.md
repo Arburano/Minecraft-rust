@@ -1,35 +1,35 @@
-# Світло
+# Lighting
 
-Крейт: `light`. ADR: 0011.
+Crate: `light`. ADR: 0011.
 
-## Дані
+## Data
 
-- Два канали по 4 біти: блокове світло і небесне. `Nibbles` = `Single(u8)` для однорідних секцій (усе небо 15 / усе темне 0) або 2 048 байт.
-- Світло лежить окремо від блоків, у тому ж ключі `SectionPos`.
+- Two 4-bit channels: block light and sky light. `Nibbles` = `Single(u8)` for uniform sections (all sky 15 / all dark 0) or 2,048 bytes.
+- Light is stored separately from blocks, under the same `SectionPos` key.
 
-## Хто рахує
+## Who computes it
 
-- **Клієнт** рахує світло для рендера (сервер не шле світло — менше трафіку).
-- **Сервер** рахує світло лише там, де воно впливає на геймплей (спавн мобів, ріст рослин), ліниво, з тим самим кодом.
-- Однаковий код + однакові входи → однаковий результат. Тест: хеш світла клієнт = сервер (T1).
+- The **client** computes light for rendering (the server does not send light — less traffic).
+- The **server** computes light only where it affects gameplay (mob spawn, plant growth), lazily, with the same code.
+- Same code + same inputs → same result. Test: client light hash = server light hash (T1).
 
-## Алгоритм
+## Algorithm
 
-- Додавання: BFS-черга від джерела, рівень −1 на крок, з урахуванням прозорості блоку.
-- Видалення: зворотний BFS — прибрати все, що світило від видаленого джерела, зібрати межу з іншими джерелами, потім повторне заповнення від межі.
-- Небо: старт з карти висот колони, далі той самий BFS під навіси і в печери.
-- Початкове освітлення згенерованих чанків — групами 2×2 колони, щоб межі рахувались один раз.
-- Задачі світла працюють на знімку секцій (3×3×3 навколо), результат застосовує регіон у наступному тіку. Світло сягає ≤ 15 блоків, тож за буфера регіону ≥ 1 секції воно не виходить за регіон.
+- Add: a BFS queue from the source, level −1 per step, taking block transparency into account.
+- Remove: reverse BFS — clear everything lit by the removed source, collect the boundary with other sources, then refill from the boundary.
+- Sky: start from the column's height map, then the same BFS under overhangs and into caves.
+- Initial lighting of generated chunks is done in 2×2 column groups so that borders are computed once.
+- Light tasks work on a section snapshot (3×3×3 around), and the region applies the result on the next tick. Light reaches ≤ 15 blocks, so with a region buffer of ≥ 1 section it does not leave the region.
 
-## Ліміти
+## Limits
 
-- Ліміт світлових оновлень за тік. Надлишок (TNT, масове будівництво) відкладається на наступні тіки; клієнт тимчасово показує старе світло.
-- Цілі: інкрементне додавання ≤ 100 мкс p95 на правку, видалення ≤ 200 мкс p95 (T1).
+- A per-tick limit on light updates. The excess (TNT, mass building) is deferred to later ticks; the client temporarily shows the old light.
+- Targets: incremental add ≤ 100 µs p95 per edit, removal ≤ 200 µs p95 (T1).
 
-Виміряно (повний перерахунок, VM): одна секція 25–45 мкс; 3×3×3 секцій з 8 факелами — 1,4–2,2 мс; небо 3×3×3 — 0,55 мс; 10–35 нс на крок черги.
+Measured (full recompute, VM): one section 25–45 µs; 3×3×3 sections with 8 torches — 1.4–2.2 ms; sky 3×3×3 — 0.55 ms; 10–35 ns per queue step.
 
-## Тести
+## Tests
 
-- Факел на межі секцій: інкрементний результат побітово дорівнює повному перерахунку.
-- Видалення факела і зламаний блок під небом: побітова рівність з повним перерахунком.
-- Проптест: випадкові правки, порівняння з наївним повним BFS.
+- Torch on a section boundary: the incremental result is bit-for-bit equal to a full recompute.
+- Torch removal and a broken block under the sky: bit-for-bit equality with a full recompute.
+- Property test: random edits, compared with a naive full BFS.

@@ -1,16 +1,16 @@
-# Відкриті питання
+# Open questions
 
-Питання, які не можна вирішувати без власника продукту (або юриста). Агент не вирішує їх сам: використовує значення за замовчуванням з колонки «Поки що» і позначає місце в коді `// OPEN-QUESTION: <номер>`.
+Questions that cannot be decided without the product owner (or a lawyer). An agent does not decide them itself: it uses the default from the "For now" column and marks the place in the code `// OPEN-QUESTION: <number>`.
 
-| № | Питання | Поки що | Хто вирішує | Коли |
+| No. | Question | For now | Who decides | When |
 | --- | --- | --- | --- | --- |
-| 1 | Чи потрібен веб-клієнт (WebGL2)? | Ні. Шлях C (GL ES) — мінімальний, лише для старих десктопних GPU | власник | до кінця етапу 1 |
-| 2 | Чи потрібні реплеї сервера з побітовим збігом? | Ні. Повторюваність лише при тому самому розбитті регіонів; fuel — лише в тестах | власник | до етапу 4 |
-| 3 | Джерело правди власника сутності між шардами: JetStream чи PostgreSQL з версією запису? | Не реалізуємо до етапу 6 | архітектор | етап 6 |
-| 4 | Чи можна передавати токен Minecraft нашому сервісу входу? | Реалізуємо за схемою з auth-and-assets.md, але не запускаємо публічно | юрист | етап 0 |
-| 5 | Асети Mojang у власному рушії: завантаження і конвертація на машині гравця | Код готуємо, гра і CI працюють на запасних асетах | юрист | етап 0 |
-| 6 | Ємність одного регіону (гравців при тіку ≤ 25 мс) | Невідомо | бенчмарк | етап 2 |
-| 7 | Реальний розмір стисненої колони і RAM сервера на 500 гравців | Оцінки з PRD §8 | бенчмарк на реальному світі | етап 1–2 |
-| 8 | Перекопіювання рендер-пакета цілком чи 8 піддіапазонів | Перекопіювання цілком | бенчмарк T0-05 | етап 0 |
-| 9 | Назва проєкту і торговельна марка | Робоча назва репозиторію | власник + юрист | до відкритої бети |
-| 10 | Приховування будівель інших гравців у спеціальних режимах (творчі ділянки) | Не робимо в спільному світі | власник | етап 4 |
+| 1 | Is a web client (WebGL2) needed? | No. Path C (GL ES) is minimal, only for old desktop GPUs | owner | before the end of stage 1 |
+| 2 | Are bit-exact server replays needed? | No. Repeatability only with the same region partitioning; fuel only in tests | owner | before stage 4 |
+| 3 | Source of truth for entity ownership between shards: JetStream or PostgreSQL with a record version? | Not implemented until stage 6 | architect | stage 6 |
+| 4 | Can the Minecraft token be passed to our login service? | Implement per the scheme in auth-and-assets.md, but do not launch publicly | lawyer | stage 0 |
+| 5 | Mojang assets in a custom engine: download and conversion on the player's machine | Prepare the code, the game and CI run on fallback assets | lawyer | stage 0 |
+| 6 | Capacity of one region (players at tick ≤ 25 ms) | Unknown | benchmark | stage 2 |
+| 7 | Real compressed column size and server RAM for 500 players | Estimates from PRD §8 | benchmark on a real world | stage 1–2 |
+| 8 | Re-copy a render batch entirely or 8 sub-ranges | Re-copy entirely | benchmark T0-05 | stage 0 |
+| 9 | Project name and trademark | Working name of the repository | owner + lawyer | before the open beta |
+| 10 | Hiding other players' builds in special modes (creative plots) | Not done in the shared world | owner | stage 4 |

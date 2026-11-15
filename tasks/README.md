@@ -1,34 +1,34 @@
-# Задачі
+# Tasks
 
-Беклог розбитий по етапах роадмапу ([docs/process/roadmap.md](../docs/process/roadmap.md)). Кожна задача — окремий файл з метою, посиланнями на специфікації, результатом і критеріями приймання.
+The backlog is split by stage of the roadmap ([docs/process/roadmap.md](../docs/process/roadmap.md)). Each task is a separate file with its goal, links to specifications, deliverables and acceptance criteria.
 
-## Як працювати із задачами
+## How to work with tasks
 
-1. Беріть задачу зі статусом `todo`, у якої всі залежності `done`.
-2. Змініть статус на `in-progress` у файлі задачі і в таблиці нижче в тому ж PR, що й код (або окремим першим комітом гілки).
-3. Задача закрита, коли всі критерії приймання відмічені і CI зелений. Статус → `done`, у файлі — посилання на PR.
-4. Знайшли нову роботу — додайте файл `T<етап>-<NN>-<slug>.md` за тим самим шаблоном, не розширюйте чужу задачу.
-5. Задача суперечить специфікації чи ADR — зупиніться і запишіть питання в [docs/open-questions.md](../docs/open-questions.md), не вирішуйте мовчки.
+1. Take a task with status `todo` whose dependencies are all `done`.
+2. Change the status to `in-progress` in the task file and in the table below, in the same PR as the code (or in a separate first commit on the branch).
+3. A task is closed when all acceptance criteria are checked and CI is green. Status → `done`; the file links to the PR.
+4. Found new work? Add a file `T<stage>-<NN>-<slug>.md` using the same template; do not expand someone else's task.
+5. If a task contradicts a specification or ADR, stop and record the question in [docs/open-questions.md](../docs/open-questions.md); do not resolve it silently.
 
-## Етап 0
+## Stage 0
 
-| Задача | Назва | Залежить від | Виконавець | Статус |
+| Task | Name | Depends on | Owner | Status |
 | --- | --- | --- | --- | --- |
-| [T0-01](stage-0/T0-01-ci-and-toolchain.md) | CI зелений і відтворюваний | — | людина + агент | todo |
-| [T0-02](stage-0/T0-02-core-job-scheduler.md) | Планувальник задач з пріоритетами і скасуванням | T0-01 | агент | todo |
-| [T0-03](stage-0/T0-03-world-palette-section.md) | Секція 16³ з палітрою | T0-01 | агент | todo |
-| [T0-04](stage-0/T0-04-mesh-chunk-32.md) | Gather, інкрементні маски і fast_mesh для меш-чанка 32³ | T0-03 | агент | todo |
-| [T0-05](stage-0/T0-05-mesh-render-batches.md) | Рендер-пакети 2×2×2 меш-чанки | T0-04 | агент | todo |
-| [T0-06](stage-0/T0-06-render-capability-probe.md) | Пробник можливостей GPU і прототип vertex pulling | T0-04 | агент пише, людина запускає на залізі | todo |
-| [T0-07](stage-0/T0-07-wit-and-modhost-spike.md) | WIT 0.1 і спайк хоста модів | T0-01 | агент | todo |
-| [T0-08](stage-0/T0-08-light-incremental-bfs.md) | Інкрементальне світло add/remove | T0-03 | агент | todo |
-| [T0-09](stage-0/T0-09-sim-region-prototype.md) | Прототип регіонів сервера | T0-02 | агент | todo |
-| [T0-10](stage-0/T0-10-human-legal-and-azure.md) | Юрист і доступ до Minecraft API | — | людина (не агент) | todo |
-| [T0-11](stage-0/T0-11-net-quic-spike.md) | Спайк QUIC-транспорту | T0-01 | агент | todo |
-| [T0-12](stage-0/T0-12-worldgen-test-corpus.md) | Детермінований тестовий рельєф | T0-03 | агент | todo |
+| [T0-01](stage-0/T0-01-ci-and-toolchain.md) | CI green and reproducible | — | human + agent | todo |
+| [T0-02](stage-0/T0-02-core-job-scheduler.md) | Job scheduler with priorities and cancellation | T0-01 | agent | todo |
+| [T0-03](stage-0/T0-03-world-palette-section.md) | 16³ section with palette | T0-01 | agent | todo |
+| [T0-04](stage-0/T0-04-mesh-chunk-32.md) | Gather, incremental masks and fast_mesh for the 32³ mesh chunk | T0-03 | agent | todo |
+| [T0-05](stage-0/T0-05-mesh-render-batches.md) | Render batches of 2×2×2 mesh chunks | T0-04 | agent | todo |
+| [T0-06](stage-0/T0-06-render-capability-probe.md) | GPU capability probe and vertex pulling prototype | T0-04 | agent writes, human runs on hardware | todo |
+| [T0-07](stage-0/T0-07-wit-and-modhost-spike.md) | WIT 0.1 and mod host spike | T0-01 | agent | todo |
+| [T0-08](stage-0/T0-08-light-incremental-bfs.md) | Incremental light add/remove | T0-03 | agent | todo |
+| [T0-09](stage-0/T0-09-sim-region-prototype.md) | Server regions prototype | T0-02 | agent | todo |
+| [T0-10](stage-0/T0-10-human-legal-and-azure.md) | Lawyer and Minecraft API access | — | human (not an agent) | todo |
+| [T0-11](stage-0/T0-11-net-quic-spike.md) | QUIC transport spike | T0-01 | agent | todo |
+| [T0-12](stage-0/T0-12-worldgen-test-corpus.md) | Deterministic test terrain | T0-03 | agent | todo |
 
-Рекомендований порядок для одного агента: T0-01 → T0-03 → T0-12 → T0-04 → T0-05 → T0-08 → T0-02 → T0-09 → T0-07 → T0-11 → T0-06.
+Recommended order for a single agent: T0-01 → T0-03 → T0-12 → T0-04 → T0-05 → T0-08 → T0-02 → T0-09 → T0-07 → T0-11 → T0-06.
 
-## Наступні етапи
+## Next stages
 
-Задачі етапу 1 створюються наприкінці етапу 0, коли числа з бенчмарків підтверджені (критерій виходу етапу 0).
+Stage 1 tasks are created at the end of stage 0, once the benchmark numbers are confirmed (stage 0 exit criterion).

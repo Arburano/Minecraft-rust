@@ -1,28 +1,28 @@
-# T0-11. Спайк QUIC-транспорту
+# T0-11. QUIC transport spike
 
-- **Статус:** todo
-- **Залежить від:** T0-01
-- **Виконавець:** агент
+- **Status:** todo
+- **Depends on:** T0-01
+- **Owner:** agent
 
-## Мета
+## Goal
 
-У крейті `net`: сервер і клієнт на `quinn` з каналами з networking-protocol.md: датаграми для намірів і дельт, пріоритетні потоки для колон. Тест з емуляцією втрат (у тесті — штучні втрати на рівні транспорту або `tc netem` у CI-скрипті).
+In the `net` crate: a server and client on `quinn` with the channels from networking-protocol.md: datagrams for intents and deltas, priority streams for columns. Test with loss emulation (in the test, artificial loss at the transport level, or `tc netem` in a CI script).
 
-## Специфікації
+## Specs
 
 - [docs/architecture/networking-protocol.md](../../docs/architecture/networking-protocol.md)
 - [docs/adr/0007-quic-own-protocol.md](../../docs/adr/0007-quic-own-protocol.md)
 
-## Результат
+## Deliverables
 
-- Приклад: сервер шле 625 «колон» по 8 КБ за відстанню і 20 Гц дельти; клієнт міряє час до першої колони 3×3 і затримку дельт.
-- Інтеграційний тест у `crates/net/tests/`.
+- Example: the server sends 625 "columns" of 8 KB each, ordered by distance, and 20 Hz deltas; the client measures time to the first 3×3 columns and delta latency.
+- Integration test in `crates/net/tests/`.
 
-## Критерії приймання
+## Acceptance criteria
 
-- [ ] За 2% втрат і RTT 100 мс найближчі 3×3 колони приходять ≤ 1 с; дельти не блокуються стрімінгом колон.
-- [ ] Числа в docs/research/.
+- [ ] At 2% loss and RTT 100 ms, the nearest 3×3 columns arrive ≤ 1 s; deltas are not blocked by column streaming.
+- [ ] Numbers in docs/research/.
 
-## Поза межами задачі
+## Out of scope
 
-Без реального формату колон (беремо випадкові байти потрібного розміру).
+No real column format (use random bytes of the required size).

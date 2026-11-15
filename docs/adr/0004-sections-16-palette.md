@@ -1,27 +1,27 @@
-# 0004. Секції 16³ з палітрою
+# 0004. 16³ sections with a palette
 
-Статус: Прийнято (2026-11-15)
+Status: Accepted (2026-11-15)
 
-## Контекст
+## Context
 
-Пам'ять клієнта ≤ 2 ГБ, сервера — ≤ 16 ГБ на 500 гравців. Плаский u16 на блок — 8 КБ на секцію; тест показав 1,6–2,1 КБ для типового рельєфу з палітрою і 56 байт для однорідних.
+Client memory ≤ 2 GB, server ≤ 16 GB for 500 players. A flat u16 per block — 8 KB per section; a test showed 1.6–2.1 KB for typical terrain with a palette and 56 B for uniform sections.
 
-## Рішення
+## Decision
 
-Одиниця зберігання — секція 16³: `Single`, `Paletted` (1–8 біт, індекси без перетину меж u64, зворотний хеш для палітр > 16) або `Direct`. Світло — окремо, ніблами, з варіантом `Single`. Збереження і мережа — той самий палітровий формат + zstd.
+The storage unit is a 16³ section: `Single`, `Paletted` (1–8 bits, indices without crossing u64 boundaries, reverse hash for palettes > 16), or `Direct`. Light is stored separately, as nibbles, with a `Single` variant. Storage and networking use the same palette format + zstd.
 
-## Наслідки
+## Consequences
 
-- 15 000 секцій ≈ 17 МіБ (припущений мікс) замість 117 МіБ.
-- `get` ≈ 3,8 нс замість 1 нс — компенсується пословним розпакуванням для мешингу.
-- Потрібні проптести на зростання/стискання палітри.
+- 15 000 sections ≈ 17 MiB (assumed mix) instead of 117 MiB.
+- `get` ≈ 3.8 ns instead of 1 ns — offset by word-by-word unpacking for meshing.
+- Property tests for palette growth/shrinking are needed.
 
-## Розглянуті альтернативи
+## Alternatives considered
 
-- Плаский масив — у 4–7 разів більше пам'яті.
-- Октодерева/SVO — повільне редагування, складніший мешинг.
-- Секції 32³ — гірша гранулярність для світла, мережі й однорідних зон.
+- Flat array — 4–7× more memory.
+- Octrees/SVO — slow editing, more complex meshing.
+- 32³ sections — worse granularity for light, networking, and uniform zones.
 
-## Посилання
+## References
 
 docs/architecture/world-storage.md; docs/research/optimization-tests.md.

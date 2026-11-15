@@ -1,41 +1,41 @@
-# Маніфест мода (`mod.toml`)
+# Mod manifest (`mod.toml`)
 
 ```toml
 [mod]
-id = "copper_pipes"          # [a-z0-9_], унікальний; простір імен усіх ID мода
+id = "copper_pipes"          # [a-z0-9_], unique; namespace of all the mod's IDs
 version = "0.3.1"            # semver
-api = "^0.1"                 # версія engine:api (WIT-пакет)
+api = "^0.1"                 # engine:api version (WIT package)
 side = "both"                # server | client | both
 authors = ["Hi"]
-description = "Мідні труби для рідин"
+description = "Copper pipes for fluids"
 license = "MIT"
 
 [dependencies]
 core = "^0.1"
 fluids = { version = "^0.5", optional = true }
 
-[permissions]                # без запису — немає доступу
-filesystem = "mod_data"      # лише власна тека даних мода
-network = false              # клієнтські моди: заборонено за замовчуванням
+[permissions]                # no entry — no access
+filesystem = "mod_data"      # only the mod's own data folder
+network = false              # client mods: forbidden by default
 
 [budget]
-tick_ms = 0.5                # очікуваний час на тік на регіон (soft); hard = 4× або серверний ліміт
-memory_mb = 32               # ліміт лінійної пам'яті
+tick_ms = 0.5                # expected time per tick per region (soft); hard = 4× or the server limit
+memory_mb = 32               # linear memory limit
 
-[wasm]                       # якщо є код
+[wasm]                       # if there is code
 server = "build/server.wasm"
 client = "build/client.wasm"
 
-[[component]]                # мод-компоненти з реплікацією (лише side = both)
+[[component]]                # mod components with replication (only side = both)
 name = "copper_pipes:flow"
 replicate = true
-schema = "u16"               # опис схеми для хешу рукостискання
+schema = "u16"               # schema description for the handshake hash
 ```
 
-## Правила валідації (`modhost` при завантаженні, `engine-cli` при збиранні)
+## Validation rules (`modhost` at load time, `engine-cli` at build time)
 
-- `id` не збігається з іншим модом; усі ID у датапаку мають префікс `id:` (крім явних перевизначень з `override = true`, лише для залежностей).
-- `api` сумісна з рушієм (поточна або попередня мажорна через адаптер).
-- Граф залежностей без циклів; порядок завантаження — топологічний, рівні — за `id`.
-- Компонент WASM імпортує лише інтерфейси, дозволені `[permissions]`; інакше — помилка лінкування з поясненням.
-- `side = client` не може мати `[wasm].server`, і навпаки.
+- `id` does not coincide with another mod; all IDs in a datapack have the prefix `id:` (except explicit overrides with `override = true`, only for dependencies).
+- `api` is compatible with the engine (current or previous major via an adapter).
+- The dependency graph has no cycles; load order is topological, ties are broken by `id`.
+- A WASM component imports only the interfaces allowed by `[permissions]`; otherwise — a linking error with an explanation.
+- `side = client` cannot have `[wasm].server`, and vice versa.

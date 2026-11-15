@@ -1,30 +1,30 @@
-# T0-09. Прототип регіонів сервера
+# T0-09. Server regions prototype
 
-- **Статус:** todo
-- **Залежить від:** T0-02
-- **Виконавець:** агент
+- **Status:** todo
+- **Depends on:** T0-02
+- **Owner:** agent
 
-## Мета
+## Goal
 
-У крейті `sim`: регіон = `bevy_ecs::World`, `NetId` для сутностей, злиття і розділення з буфером ≥ 1 секції, фази тіку, повідомлення між регіонами з сортуванням. Бенчмарк: N простих ботів (рух + колізії з пласким світом) на 1 і на 8 регіонах.
+In the `sim` crate: a region = `bevy_ecs::World`, `NetId` for entities, merge and split with a buffer of ≥ 1 section, tick phases, inter-region messages with sorting. Benchmark: N simple bots (movement + collisions with a flat world) on 1 and on 8 regions.
 
-## Специфікації
+## Specs
 
 - [docs/architecture/server-regions.md](../../docs/architecture/server-regions.md)
 - [docs/architecture/engine-core.md](../../docs/architecture/engine-core.md)
 - [docs/adr/0008-region-threading.md](../../docs/adr/0008-region-threading.md)
 
-## Результат
+## Deliverables
 
-- `sim::region` з тестами злиття/розділення і доставки повідомлень (N → N+1).
-- Бенчмарк тіку для 100/500/2 000 ботів, 1 і 8 регіонів; результат у docs/research/.
-- Перші дані для відкритого питання №6 (ємність регіону).
+- `sim::region` with tests for merge/split and message delivery (N → N+1).
+- Benchmark of a tick for 100/500/2 000 bots, 1 and 8 regions; results in docs/research/.
+- First data for open question No. 6 (region capacity).
 
-## Критерії приймання
+## Acceptance criteria
 
-- [ ] Проптест: випадкові переміщення ботів, злиття і розділення — жодна сутність не губиться і не дублюється.
-- [ ] Повторюваність: однаковий вхід і розбиття → однаковий хеш стану.
+- [ ] Proptest: random bot movement, merging and splitting — no entity is lost or duplicated.
+- [ ] Repeatability: same input and partitioning → same state hash.
 
-## Поза межами задачі
+## Out of scope
 
-Без мережі і без модів.
+No networking and no mods.

@@ -1,71 +1,71 @@
 # AGENTS.md
 
-Інструкції для AI-агентів (Claude Code, Codex, Cursor та ін.) і людей, які працюють у цьому репозиторії.
+Instructions for AI agents (Claude Code, Codex, Cursor, etc.) and humans working in this repository.
 
-## Що це за проєкт
+## What this project is
 
-Власний воксельний рушій на Rust у стилі Minecraft: ECS, багатопотоковість за замовчуванням, нативні моди на WebAssembly, сервер з регіонами і шардами. Це **не** порт Minecraft і **не** клієнт для ванільних серверів (ADR-0001). Весь геймплей — мод `mods/core` на публічному API.
+A custom voxel engine in Rust in the style of Minecraft: ECS, multithreading by default, native mods on WebAssembly, a server with regions and shards. It is **not** a port of Minecraft and **not** a client for vanilla servers (ADR-0001). All gameplay is the `mods/core` mod on the public API.
 
-Пріоритет рішень (PRD §14): коли оптимізація конфліктує з відчуттям гри — виграє відчуття. Плавність без фризів, відчуття Minecraft, розумні моби, повна дальність прорисовки не нижче 8 чанків.
+Decision priority (PRD §14): when an optimization conflicts with game feel, feel wins. Smoothness without stutters, the Minecraft feel, smart mobs, full render distance of no less than 8 chunks.
 
-## Перед будь-якою роботою
+## Before any work
 
-1. Прочитайте [`docs/README.md`](docs/README.md) і [`docs/architecture/overview.md`](docs/architecture/overview.md).
-2. Знайдіть свою задачу в [`tasks/`](tasks/README.md). Поточний етап — **0** ([`docs/process/roadmap.md`](docs/process/roadmap.md)).
-3. Прочитайте специфікації, на які посилається задача, і відповідні ADR у [`docs/adr/`](docs/adr/README.md).
-4. Не починайте задачу, якщо її залежності не `done`.
+1. Read [`docs/README.md`](docs/README.md) and [`docs/architecture/overview.md`](docs/architecture/overview.md).
+2. Find your task in [`tasks/`](tasks/README.md). The current stage is **0** ([`docs/process/roadmap.md`](docs/process/roadmap.md)).
+3. Read the specifications the task refers to and the relevant ADRs in [`docs/adr/`](docs/adr/README.md).
+4. Do not start a task if its dependencies are not `done`.
 
-## Команди
+## Commands
 
 ```bash
-cargo fmt --all                                 # форматування
-cargo clippy --workspace --all-targets          # лінти; CI запускає з RUSTFLAGS="-D warnings"
-cargo test --workspace                          # тести
-cargo bench -p <crate>                          # бенчмарки (criterion)
-cargo bench --workspace --no-run                # перевірка, що бенчмарки компілюються (є в CI)
-wasm-tools component wit wit/engine-api.wit     # валідація контракту модів
+cargo fmt --all                                 # formatting
+cargo clippy --workspace --all-targets          # lints; CI runs with RUSTFLAGS="-D warnings"
+cargo test --workspace                          # tests
+cargo bench -p <crate>                          # benchmarks (criterion)
+cargo bench --workspace --no-run                # check that benchmarks compile (runs in CI)
+wasm-tools component wit wit/engine-api.wit     # validate the mod contract
 ```
 
-Тулчейн відкріплений у `rust-toolchain.toml`. Якщо rustup не може його завантажити (закрита мережа), тимчасово `RUSTUP_TOOLCHAIN=stable`, але не змінюйте файл без ADR.
+The toolchain is pinned in `rust-toolchain.toml`. If rustup cannot download it (closed network), temporarily use `RUSTUP_TOOLCHAIN=stable`, but do not change the file without an ADR.
 
-Бенчмарки з етапу «до коду» лежать в окремому workspace `research/bench` і в основну збірку не входять.
+Benchmarks from the pre-code stage live in a separate workspace `research/bench` and are not part of the main build.
 
-## Структура
+## Structure
 
 ```text
-crates/        крейти рушія (див. таблицю в docs/architecture/overview.md)
-wit/           контракт модів engine:api (WIT)
-mods/core/     базовий геймплей як мод
-docs/          PRD, специфікації, ADR, процес, рісьорч
-tasks/         беклог задач по етапах
-research/      бенчмарки, що обґрунтували рішення
+crates/        engine crates (see the table in docs/architecture/overview.md)
+wit/           engine:api mod contract (WIT)
+mods/core/     base gameplay as a mod
+docs/          PRD, specifications, ADRs, process, research
+tasks/         task backlog by stage
+research/      benchmarks that justified decisions
 ```
 
-## Правила, які не можна порушувати
+## Rules that must not be broken
 
-1. **Юридичні** ([`docs/legal.md`](docs/legal.md)): жодного коду, декомпільованого з Minecraft; жодних асетів Mojang у репозиторії, тестах, CI чи збірках. Гра і всі тести працюють на запасних асетах. Не пишіть «Minecraft» у назвах крейтів, типів і UI.
-2. **Архітектурні межі**: напрям залежностей між крейтами — як в overview.md. Рушій не знає конкретних блоків і мобів — вони в `mods/core`. Код регіону не читає чужий регіон (ADR-0008). Моди — лише через WIT-контракт (ADR-0006).
-3. **Продуктивність**: без алокацій у гарячому циклі; без `Mutex`/`RwLock` навколо світу; оптимізації — з бенчмарком до/після; числа — в [`docs/process/performance-budgets.md`](docs/process/performance-budgets.md).
-4. **Якість**: `unsafe` заборонено (виняток — модуль з `// SAFETY:` і ADR); без `unwrap()` у бібліотеках; публічне API документоване; нова логіка — з тестами, оптимізована реалізація — з еталонною для порівняння.
-5. **Залежності**: версії лише в `[workspace.dependencies]`; нова важка залежність — з обґрунтуванням у PR.
-6. **Рішення**: не переглядайте прийняті ADR мовчки. Не згодні — новий ADR зі статусом «Запропоновано» і питання власнику. Питання продукту — у [`docs/open-questions.md`](docs/open-questions.md); до відповіді використовуйте значення «Поки що» звідти і позначайте код `// OPEN-QUESTION: <номер>`.
-7. **Чесні числа**: не вигадуйте результати бенчмарків. Вкажіть машину і кількість прогонів; числа з VM позначайте як такі.
+1. **Legal** ([`docs/legal.md`](docs/legal.md)): no code decompiled from Minecraft; no Mojang assets in the repository, tests, CI or builds. The game and all tests run on fallback assets. Do not write "Minecraft" in crate names, types and UI.
+2. **Architectural boundaries**: the direction of dependencies between crates is as in overview.md. The engine does not know specific blocks and mobs — they are in `mods/core`. Region code does not read another region (ADR-0008). Mods only through the WIT contract (ADR-0006).
+3. **Performance**: no allocations in the hot loop; no `Mutex`/`RwLock` around the world; optimizations come with a before/after benchmark; numbers live in [`docs/process/performance-budgets.md`](docs/process/performance-budgets.md).
+4. **Quality**: `unsafe` is forbidden (exception — a module with `// SAFETY:` and an ADR); no `unwrap()` in libraries; public API is documented; new logic comes with tests, an optimized implementation comes with a reference one for comparison.
+5. **Dependencies**: versions only in `[workspace.dependencies]`; a new heavy dependency comes with a justification in the PR.
+6. **Decisions**: do not silently revisit accepted ADRs. If you disagree, write a new ADR with status "Proposed" and ask the owner. Product questions go in [`docs/open-questions.md`](docs/open-questions.md); until answered, use the "For now" value from there and mark the code `// OPEN-QUESTION: <number>`.
+7. **Honest numbers**: do not invent benchmark results. State the machine and the number of runs; mark numbers from a VM as such.
 
-## Як закривати задачу
+## How to close a task
 
-1. Гілка `t0-03-world-palette-section` (id задачі + slug).
-2. Код + тести + бенчмарк (якщо в задачі є числа) + оновлені документи (специфікація, performance-budgets, open-questions — що змінилось).
-3. Статус задачі `done` у файлі задачі і в `tasks/README.md`.
-4. Коміт-повідомлення англійською, у форматі `T0-03: implement palette section storage`. Один логічний крок — один коміт.
-5. PR з описом: що зроблено, числа до/після, що лишилось. CI має бути зеленим.
+1. Branch `t0-03-world-palette-section` (task id + slug).
+2. Code + tests + benchmark (if the task has numbers) + updated documents (specification, performance-budgets, open-questions — whatever changed).
+3. Task status `done` in the task file and in `tasks/README.md`.
+4. Commit message in English, in the format `T0-03: implement palette section storage`. One logical step — one commit.
+5. A PR with a description: what was done, before/after numbers, what remains. CI must be green.
 
-## Мова
+## Language
 
-Код, коментарі в коді, коміти — англійською. Документація в `docs/`, задачі — українською.
+Everything in the repository — code, comments in code, commits, documentation in `docs/`, tasks — is written in English.
 
-## Коли зупинитись і спитати людину
+## When to stop and ask a human
 
-- Задача вимагає порушити одне з правил вище.
-- Специфікація суперечить ADR або іншій специфікації.
-- Потрібні облікові дані, ключі, доступ до заліза (GPU, сервери) чи юридичне рішення.
-- Бенчмарк показує, що ціль з performance-budgets недосяжна з поточною архітектурою.
+- The task requires breaking one of the rules above.
+- A specification contradicts an ADR or another specification.
+- Credentials, keys, access to hardware (GPU, servers) or a legal decision are needed.
+- A benchmark shows that a target from performance-budgets is unreachable with the current architecture.

@@ -1,26 +1,26 @@
-# 0008. Регіональна багатопотоковість
+# 0008. Regional multithreading
 
-Статус: Прийнято (2026-11-15)
+Status: Accepted (2026-11-15)
 
-## Контекст
+## Context
 
-Головне вузьке місце Minecraft-серверів — один потік тіку. Folia довела, що регіони з власними тік-циклами масштабуються, але зламала сумісність усіх плагінів. У нас немає легасі API.
+The main bottleneck of Minecraft servers is the single tick thread. Folia showed that regions with their own tick cycles scale, but it broke compatibility with all plugins. We have no legacy API.
 
-## Рішення
+## Decision
 
-Сервер ділить світ на динамічні регіони (окремий `bevy_ecs::World` на регіон) з буфером ≥ 1 секції. Регіони тікають паралельно у фазі `Simulate`; між регіонами — лише повідомлення, доставлені в `Exchange` з сортуванням. Злиття/розділення — в `PostTick`. Моди мають доступ лише до свого регіону.
+The server splits the world into dynamic regions (a separate `bevy_ecs::World` per region) with a buffer of ≥ 1 section. Regions tick in parallel during the `Simulate` phase; between regions there are only messages, delivered in `Exchange` with sorting. Merging/splitting happens in `PostTick`. Mods have access only to their own region.
 
-## Наслідки
+## Consequences
 
-- Масштаб на ядрах, якщо гравці розкидані (≥ 8 регіонів для 500 гравців).
-- Натовп в одному місці — один потік; потрібна ціль «ємність регіону» і черги/інстанси.
-- Побітового детермінізму між запусками немає.
+- Scales across cores if players are spread out (≥ 8 regions for 500 players).
+- A crowd in one place — one thread; a "region capacity" target and queues/instances are needed.
+- There is no bit-level determinism between runs.
 
-## Розглянуті альтернативи
+## Alternatives considered
 
-- Один потік тіку + паралельні системи — упирається в один світ і синхронізацію.
-- Статична сітка потоків — погано з нерівномірним розподілом гравців.
+- One tick thread + parallel systems — limited by a single world and synchronization.
+- A static grid of threads — poor with uneven player distribution.
 
-## Посилання
+## References
 
 docs/architecture/server-regions.md.

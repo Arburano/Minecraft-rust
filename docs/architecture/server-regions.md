@@ -1,46 +1,46 @@
-# Сервер: регіони і потоки
+# Server: regions and threads
 
-Крейти: `sim` (регіони), `server` (бінарник). ADR: 0008 (регіональна багатопотоковість).
+Crates: `sim` (regions), `server` (binary). ADR: 0008 (regional multithreading).
 
-## Регіон
+## Region
 
-- Регіон = окремий `bevy_ecs::World` з набором секцій і сутностей, який один потік тікає за раз.
-- Регіони утворюються навколо гравців і активних сутностей, зливаються, коли зближуються, і розділяються, коли розходяться.
-- Інваріант буфера: навколо зайнятих секцій — ≥ 1 секція буфера, що належить тому ж регіону. Два регіони ніколи не межують упритул, тож локальні взаємодії (сусідній блок, світло ≤ 15 блоків, моб поруч) не виходять за регіон.
-- Злиття з регіоном, що зараз тікає, відкладається до кінця його тіку; розділення перевіряється в `PostTick`.
-- Перенесення сутностей між `World` — копіювання компонентів за стабільним `NetId` (ціль ≤ 5 мкс на сутність).
+- A region = a separate `bevy_ecs::World` with a set of sections and entities, ticked by one thread at a time.
+- Regions form around players and active entities, merge when they get close, and split when they move apart.
+- Buffer invariant: around occupied sections there is a buffer of ≥ 1 section belonging to the same region. Two regions never border each other directly, so local interactions (a neighboring block, light ≤ 15 blocks, a nearby mob) do not leave the region.
+- A merge with a region that is currently ticking is deferred until the end of its tick; splitting is checked in `PostTick`.
+- Transferring entities between `World`s is copying components by stable `NetId` (target ≤ 5 µs per entity).
 
-## Доступ
+## Access
 
-- Код регіону (рушій і моди) читає і пише лише свій регіон.
-- Далекі дії (телепорт, снаряд за межею буфера, команда іншому гравцю) — повідомлення через `send_to`, доставка в `Exchange`, обробка в наступному тіку.
-- Глобальний регіон — час, погода, таблиці; читання — знімок минулого тіку.
+- Region code (engine and mods) reads and writes only its own region.
+- Distant actions (teleport, a projectile beyond the buffer, a command to another player) are messages via `send_to`, delivered in `Exchange`, processed in the next tick.
+- The global region holds time, weather, tables; reads use a snapshot of the previous tick.
 
-## Потоки ноди
+## Node threads
 
-| Пул | Розмір (16 ядер) | Робота |
+| Pool | Size (16 cores) | Work |
 | --- | --- | --- |
-| Мережа | 2–4 | quinn, кодування дельт |
-| IO чанків | 2–3 | читання/запис регіон-файлів |
-| Генерація | 2+ (0, якщо світ передгенеровано) | worldgen |
-| Тік регіонів | ≈ 80% ядер, що лишились | `Simulate` регіонів |
-| Задачі | решта | світло, патфайндінг, LOD |
+| Network | 2–4 | quinn, delta encoding |
+| Chunk IO | 2–3 | reading/writing region files |
+| Generation | 2+ (0 if the world is pre-generated) | worldgen |
+| Region tick | ≈ 80% of remaining cores | region `Simulate` |
+| Tasks | the rest | lighting, pathfinding, LOD |
 
-Розміри підбираються автоматично за метриками; стартові значення — з досвіду Folia (≈ 330 гравців на 16 ядрах на їхньому тесті).
+Sizes are tuned automatically from metrics; starting values come from Folia experience (≈ 330 players on 16 cores in their test).
 
-## Що погано ділиться і як з цим жити (PRD §14, № 6)
+## What parallelizes poorly and how to live with it (PRD §14, No. 6)
 
-- Тік одного щільного регіону (натовп у одному місці, великі механізми, ланцюги оновлень блоків) послідовний за природою. Від цього залежить вибір CPU: висока частота ядра важливіша за кількість ядер понад 16.
-- Найважчі регіони — на найшвидші ядра (pinning, P-ядра на гібридних CPU); вмикається на етапі 6.
-- Окремого ядра «для модів» немає: моди виконуються в тіку свого регіону з бюджетом, інакше кожен хук ставав би міжпотоковою синхронізацією.
-- Ємність одного регіону — окрема ціль: максимум гравців в одному регіоні при тіку ≤ 25 мс. Понад неї — черга або інстанс. Число визначає бенчмарк етапу 2.
+- The tick of a single dense region (a crowd in one place, large contraptions, block update chains) is sequential by nature. CPU choice depends on this: high core clock matters more than core count beyond 16.
+- The heaviest regions go to the fastest cores (pinning, P-cores on hybrid CPUs); enabled in stage 6.
+- There is no dedicated core "for mods": mods run in the tick of their region with a budget, otherwise every hook would become cross-thread synchronization.
+- The capacity of a single region is a separate target: the maximum number of players in one region at tick ≤ 25 ms. Beyond that — a queue or an instance. The number is determined by the stage 2 benchmark.
 
-## Пам'ять
+## Memory
 
-500 розкиданих гравців × 15 000 секцій — ≈ 8,9 ГБ лише вокселів (оцінка). Тому: дальність симуляції 6–8 чанків, решта радіусу видимості — LRU-кеш стиснених колон для відправки; світло — лише там, де потрібне геймплею.
+500 scattered players × 15,000 sections — ≈ 8.9 GB of voxels alone (estimate). Therefore: simulation distance 6–8 chunks, the rest of the view radius is an LRU cache of compressed columns for sending; light only where gameplay needs it.
 
-## Тести
+## Tests
 
-- 500 ботів на 8 і на 1 регіоні, 16 ядер: p99 тіку ≤ 25 мс на 8 регіонах; знайти максимум для 1 регіону.
-- Злиття/розділення з 1 000 сутностей: жодна не губиться і не дублюється (проптест).
-- Повторюваність: той самий вхід і те саме розбиття → однаковий хеш стану.
+- 500 bots on 8 regions and on 1 region, 16 cores: tick p99 ≤ 25 ms on 8 regions; find the maximum for 1 region.
+- Merge/split with 1,000 entities: none is lost or duplicated (property test).
+- Reproducibility: the same input and the same partitioning → the same state hash.

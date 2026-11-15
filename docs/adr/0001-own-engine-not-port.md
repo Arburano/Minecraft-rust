@@ -1,27 +1,27 @@
-# 0001. Власний рушій, а не порт Minecraft
+# 0001. Own engine, not a port of Minecraft
 
-Статус: Прийнято (2026-11-15)
+Status: Accepted (2026-11-15)
 
-## Контекст
+## Context
 
-Мета — гра, яку можна повністю переробити модами, з 60 FPS на слабкому ПК і тисячами гравців. Переписування Minecraft «як є» на Rust перенесло б однопотоковий тік, ієрархії класів сутностей і протокол, що змінюється з кожною версією. Сумісність із Java-модами неможлива в принципі: вони змінюють Java-класи гри.
+The goal is a game that can be fully reworked by mods, running at 60 FPS on a weak PC and with thousands of players. Rewriting Minecraft "as is" in Rust would carry over the single-threaded tick, the entity class hierarchies, and a protocol that changes with every version. Compatibility with Java mods is impossible in principle: they modify the game's Java classes.
 
-## Рішення
+## Decision
 
-Будуємо власний воксельний рушій. Сумісний з асетами Minecraft (завантажує гравець), але не з протоколом ванільних серверів і не з Java-модами. Увесь геймплей — мод `core` на публічному API. Механіки реалізуються з власного дизайну, без коду Mojang.
+We are building our own voxel engine. It is compatible with Minecraft assets (loaded by the player), but not with the vanilla server protocol or with Java mods. All gameplay is the `core` mod built on the public API. Mechanics are implemented from our own design, without Mojang code.
 
-## Наслідки
+## Consequences
 
-- Оптимізації рушія працюють для всіх модів; API перевіряється на власному контенті.
-- Обсяг — роки (PRD §9); потрібні жорсткі критерії виходу етапів.
-- Ванільні клієнти не можуть зайти на наш сервер; наш клієнт — на ванільний.
+- Engine optimizations apply to all mods; the API is validated against our own content.
+- The scope is years (PRD §9); strict exit criteria for stages are required.
+- Vanilla clients cannot join our server; our client cannot join a vanilla server.
 
-## Розглянуті альтернативи
+## Alternatives considered
 
-- Порт клієнта Minecraft на Rust — переносить архітектурні вузькі місця, юридично ризиковано.
-- Fabric + оптимізаційні моди (Sodium, Lithium, C2ME, Distant Horizons) — реалістично зараз, але стеля продуктивності і модової моделі низька. Лишається паралельним треком для спільноти.
-- Azalea/Valence як фундамент — прив'язують до протоколу Minecraft; беремо як референс коду.
+- Porting the Minecraft client to Rust — carries over the architectural bottlenecks, and is legally risky.
+- Fabric + optimization mods (Sodium, Lithium, C2ME, Distant Horizons) — realistic right now, but the ceiling for performance and for the modding model is low. Remains a parallel track for the community.
+- Azalea/Valence as a foundation — they tie us to the Minecraft protocol; we take them as code references.
 
-## Посилання
+## References
 
 PRD §1–2.

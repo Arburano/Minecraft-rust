@@ -1,27 +1,27 @@
-# 0007. QUIC і власний протокол
+# 0007. QUIC and own protocol
 
-Статус: Прийнято (2026-11-15)
+Status: Accepted (2026-11-15)
 
-## Контекст
+## Context
 
-Протокол Minecraft — TCP (head-of-line блокування), змінюється з кожною версією і не знає про моди, LOD і шарди.
+The Minecraft protocol runs over TCP (head-of-line blocking), changes with every version, and knows nothing about mods, LOD, and shards.
 
-## Рішення
+## Decision
 
-Одне QUIC-з'єднання (`quinn`): датаграми для намірів і дельт сутностей, пріоритетні однонапрямлені потоки для колон і LOD, двонапрямлені для контролю і подій. Повідомлення — енуми в `protocol`, серіалізація `bitcode`, версія протоколу в рукостисканні.
+One QUIC connection (`quinn`): datagrams for intents and entity deltas, prioritized unidirectional streams for columns and LOD, bidirectional streams for control and events. Messages are enums in `protocol`, serialized with `bitcode`, with the protocol version in the handshake.
 
-## Наслідки
+## Consequences
 
-- Втрата пакета з чанком не блокує рух сутностей.
-- Контроль перевантаження QUIC діє і на датаграми — потрібні явні пріоритети.
-- Сумісності з ванільними клієнтами немає (ADR-0001).
+- Loss of a packet carrying a chunk does not block entity movement.
+- QUIC congestion control also applies to datagrams — explicit priorities are needed.
+- There is no compatibility with vanilla clients (ADR-0001).
 
-## Розглянуті альтернативи
+## Alternatives considered
 
-- TCP + власне мультиплексування — head-of-line.
-- Голий UDP з власною надійністю — роки на те, що QUIC дає готовим.
-- Протокол Minecraft — див. контекст.
+- TCP + our own multiplexing — head-of-line blocking.
+- Bare UDP with our own reliability — years of work on what QUIC provides ready-made.
+- The Minecraft protocol — see context.
 
-## Посилання
+## References
 
 docs/architecture/networking-protocol.md.

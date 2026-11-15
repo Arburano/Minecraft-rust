@@ -1,29 +1,29 @@
-# T0-02. Планувальник задач з пріоритетами і скасуванням
+# T0-02. Job scheduler with priorities and cancellation
 
-- **Статус:** todo
-- **Залежить від:** T0-01
-- **Виконавець:** агент
+- **Status:** todo
+- **Depends on:** T0-01
+- **Owner:** agent
 
-## Мета
+## Goal
 
-Реалізувати в `engine-core` пул задач поверх `rayon::ThreadPool` з чотирма пріоритетами (`Interactive`, `Visible`, `Prefetch`, `Background`), токенами скасування і поверненням результату через канал. Задачі працюють лише на знімках даних.
+Implement in `engine-core` a job pool on top of `rayon::ThreadPool` with four priorities (`Interactive`, `Visible`, `Prefetch`, `Background`), cancellation tokens, and returning results via a channel. Jobs operate only on data snapshots.
 
-## Специфікації
+## Specs
 
 - [docs/architecture/engine-core.md](../../docs/architecture/engine-core.md)
 
-## Результат
+## Deliverables
 
-- `engine_core::jobs` з API: `submit(priority, cancel_token, FnOnce) -> JobHandle`, `drain_completed()`.
-- Тести: порядок за пріоритетом під навантаженням, скасування до/після старту, відсутність втрат результатів.
-- Бенчмарк: накладні витрати на задачу (ціль ≤ 2 мкс на submit+complete, гіпотеза — записати фактичне число в performance-budgets.md).
+- `engine_core::jobs` with API: `submit(priority, cancel_token, FnOnce) -> JobHandle`, `drain_completed()`.
+- Tests: priority order under load, cancellation before/after start, no lost results.
+- Benchmark: per-job overhead (target ≤ 2 µs for submit+complete; hypothesis: record the measured number in performance-budgets.md).
 
-## Критерії приймання
+## Acceptance criteria
 
-- [ ] Високопріоритетна задача, подана в чергу з 10 000 фонових, стартує раніше за них (тест).
-- [ ] Скасована задача не викликає колбек застосування.
-- [ ] Жодного `Mutex` на гарячому шляху submit (можна lock-free черги crossbeam).
+- [ ] A high-priority job submitted behind 10 000 background jobs starts before them (test).
+- [ ] A cancelled job does not invoke the apply callback.
+- [ ] No `Mutex` on the hot submit path (lock-free queues such as crossbeam are fine).
 
-## Поза межами задачі
+## Out of scope
 
-Не інтегрувати з ECS — це етап 1.
+Do not integrate with ECS — that is stage 1.

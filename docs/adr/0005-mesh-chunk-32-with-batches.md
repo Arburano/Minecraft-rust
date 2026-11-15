@@ -1,28 +1,28 @@
-# 0005. Меш-чанк 32³ + рендер-пакети 2×2×2
+# 0005. 32³ mesh chunk + 2×2×2 render batches
 
-Статус: Прийнято (2026-11-15, рішення власника)
+Status: Accepted (2026-11-15, owner decision)
 
-## Контекст
+## Context
 
-`binary-greedy-meshing` 0.6.4 підтримує розмір до 62. Юніт 62³ не ділиться на секції 16³ (межі мешів і даних не збігаються); юніт 32³ збігається з 2×2×2 секціями, але дає ≈ 7× більше юнітів і draw-команд (≈ 4 500 при 12 чанках без indirect, оцінка). Квад крейта кодує координати 6 бітами (0..63).
+`binary-greedy-meshing` 0.6.4 supports sizes up to 62. A 62³ unit does not divide into 16³ sections (mesh and data boundaries do not line up); a 32³ unit lines up with 2×2×2 sections, but yields ≈ 7× more units and draw commands (≈ 4 500 with 12 chunks without indirect, estimate). The crate's quad encodes coordinates in 6 bits (0..63).
 
-## Рішення
+## Decision
 
-Мешимо меш-чанками 32³ (`Mesher<32>`, `fast_mesh`, інкрементні маски). Квади восьми сусідніх меш-чанків копіюються в рендер-пакет 64³ зі зсувом 0/32 по кожній осі і малюються однією командою на напрям грані. На шляху A (multi_draw_indirect) пакети не обов'язкові.
+We mesh in 32³ mesh chunks (`Mesher<32>`, `fast_mesh`, incremental masks). The quads of eight neighboring mesh chunks are copied into a 64³ render batch with an offset of 0/32 along each axis, and drawn with one command per face direction. On path A (multi_draw_indirect) batches are not required.
 
-## Наслідки
+## Consequences
 
-- Перемешування після правки — у ≈ 7 разів менше вокселів, ніж у 62³.
-- Кількість draw-команд — як у 62³ (≈ 600).
-- Додається крок копіювання в пакет (ціль ≤ 50 мкс) — бенчмарк T0-05.
-- Компіляційна перевірка: `MESH_CHUNK_SIZE * RENDER_BATCH_MESH_CHUNKS <= 64` у `crates/world`.
+- Remeshing after an edit — ≈ 7× fewer voxels than with 62³.
+- Number of draw commands — same as with 62³ (≈ 600).
+- A copy step into the batch is added (target ≤ 50 µs) — benchmark T0-05.
+- Compile-time check: `MESH_CHUNK_SIZE * RENDER_BATCH_MESH_CHUNKS <= 64` in `crates/world`.
 
-## Розглянуті альтернативи
+## Alternatives considered
 
-- 62³ — неузгоджені межі з секціями, складніший gather і правки.
-- 48³ — теж не кратне розміру пакета 64, ті самі проблеми меж.
-- 16³ — забагато юнітів і draw.
+- 62³ — mismatched boundaries with sections, more complex gather and edits.
+- 48³ — also not a multiple of the 64 batch size, same boundary problems.
+- 16³ — too many units and draws.
 
-## Посилання
+## References
 
 PRD §4, §14; docs/architecture/meshing-and-rendering.md.

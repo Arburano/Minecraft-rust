@@ -1,26 +1,26 @@
-# 0010. Меню-лаунчер у грі + окремий апдейтер
+# 0010. In-game launcher menu + separate updater
 
-Статус: Прийнято (2026-11-15, рішення власника)
+Status: Accepted (2026-11-15, owner decision)
 
-## Контекст
+## Context
 
-Ціль — від кліку до гри за секунди, у тому самому вікні. Окремий лаунчер (Tauri) — другий застосунок, другий UI-стек і перемикання вікон. Запущений бінарник не може надійно замінити сам себе.
+Target — from click to game in seconds, in the same window. A separate launcher (Tauri) is a second application, a second UI stack, and window switching. A running binary cannot reliably replace itself.
 
-## Рішення
+## Decision
 
-Окремого лаунчера немає. Головне меню клієнта (egui на wgpu) робить вхід, асети, синхронізацію модів і вибір сервера. Крихітний окремий `updater` перевіряє підписаний маніфест, ставить бінарні дельти в нову теку версії, атомарно перемикає її, відкочує при помилці і запускає клієнт.
+There is no separate launcher. The client's main menu (egui on wgpu) handles sign-in, assets, mod sync, and server selection. A tiny separate `updater` verifies the signed manifest, installs binary deltas into a new version folder, atomically switches to it, rolls back on error, and launches the client.
 
-## Наслідки
+## Consequences
 
-- Один UI-стек, вікно гри відкривається відразу.
-- Апдейтер лишається мінімальним і рідко змінюється.
-- Меню має бути готове раніше за світ: асети і світ вантажаться після показу меню.
+- One UI stack; the game window opens immediately.
+- The updater stays minimal and rarely changes.
+- The menu must be ready before the world: assets and the world load after the menu is shown.
 
-## Розглянуті альтернативи
+## Alternatives considered
 
-- Tauri-лаунчер — див. контекст.
-- Самооновлення клієнта без апдейтера — ризик зламаної установки.
+- Tauri launcher — see context.
+- Client self-update without an updater — risk of a broken installation.
 
-## Посилання
+## References
 
-PRD §7, §14 № 9; docs/architecture/client-menu-and-updater.md.
+PRD §7, §14 No. 9; docs/architecture/client-menu-and-updater.md.
