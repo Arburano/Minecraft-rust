@@ -1,0 +1,93 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+# Research benchmarks live in their own workspace and are not part of the build.
+exclude = ["research/bench"]
+
+[workspace.package]
+version = "0.0.1"
+edition = "2024"
+rust-version = "1.85"
+license = "UNLICENSED"
+
+# Versions checked on crates.io on 2026-11-15. Add a dependency to a crate with
+# `foo = { workspace = true }`; never pin a different version inside a crate.
+# Before adding a heavy dependency, check docs/process/coding-standards.md.
+[workspace.dependencies]
+# ECS and core
+bevy_ecs = "0.20"
+rayon = "1.12"
+crossbeam-channel = "0.5"
+glam = { version = "0.34", features = ["bytemuck"] }
+bytemuck = { version = "1.25", features = ["derive"] }
+thiserror = "2"
+anyhow = "1"
+
+# World, meshing, storage
+binary-greedy-meshing = "0.6.4"
+noise = "0.9"
+zstd = "0.14"
+rkyv = "0.8"
+bitcode = "0.6"
+redb = "4"
+
+# Rendering, window, input, audio, UI
+wgpu = "30"
+winit = "0.30"
+gilrs = "0.11"
+kira = "0.12"
+egui = "0.37"
+egui-wgpu = "0.37"   # must match the wgpu major used above; bump together
+egui-winit = "0.37"
+
+# Networking and async
+quinn = "0.11"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync", "time"] }
+reqwest = { version = "0.13", default-features = false, features = ["rustls", "json"] }
+
+# Mods
+wasmtime = "50"       # 51 is still a release candidate; tests in docs/research used 50.0.1
+wit-bindgen = "0.63"
+
+# Config, serialization, security
+serde = { version = "1", features = ["derive"] }
+toml = "1"
+ed25519-dalek = "3"
+sha2 = "0.11"
+keyring = "4"
+
+# Tooling, diagnostics, tests
+clap = { version = "4", features = ["derive"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracy-client = "0.19"
+mimalloc = "0.1"
+criterion = "0.8"
+proptest = "1"
+
+[workspace.lints.rust]
+unsafe_code = "deny"          # allow per-module with a SAFETY comment and an ADR reference
+missing_docs = "warn"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+dbg_macro = "warn"
+todo = "warn"
+unwrap_used = "warn"
+
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 3
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+debug = "line-tables-only"
+
+# Release builds that ship to players: `cargo build --profile dist`.
+[profile.dist]
+inherits = "release"
+lto = "fat"
+panic = "abort"

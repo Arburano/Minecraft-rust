@@ -1,0 +1,14 @@
+[package]
+name = "worldgen"
+description = "World generation pipeline (terrain -> biomes -> caves -> structures -> decorations), heightmap pre-pass, LOD source data."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+world = { path = "../world" }
+
+[lints]
+workspace = true

@@ -1,0 +1,15 @@
+# The base game is a mod on the public API (PRD §2). Nothing in `core` may use a
+# private engine API; if something is missing, extend the API (ADR first).
+[mod]
+id = "core"
+version = "0.0.1"
+api = "^0.1"
+side = "both"
+authors = ["project team"]
+
+[dependencies]
+
+[permissions]
+
+[budget]
+tick_ms = 2.0

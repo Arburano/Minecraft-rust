@@ -1,0 +1,77 @@
+wasmtime crate version: 0.1.0 (bench crate); see Cargo.lock for wasmtime
+
+== Core module: per-call overhead (ns, median / p95 of 21 reps) ==
+-- round 1 (forward order) --
+[baseline  ] (a) empty call              :     21.7 /     24.9 ns
+[baseline  ]     add(i32,i32)->i32       :     22.3 /     26.9 ns
+[baseline  ] (b1) 1000 updates as 1000 calls:  18240.1 /  20146.8 ns per 1000-batch  = 18.2 ns/update
+[baseline  ] (b2) 1000 updates, 1 batched call (memcpy 16KB + call):    918.9 /   1016.3 ns per 1000-batch = 0.92 ns/update
+[epoch     ] (a) empty call              :     28.3 /     28.7 ns
+[epoch     ]     add(i32,i32)->i32       :     32.8 /     33.7 ns
+[epoch     ] (b1) 1000 updates as 1000 calls:  19087.0 /  21764.9 ns per 1000-batch  = 19.1 ns/update
+[epoch     ] (b2) 1000 updates, 1 batched call (memcpy 16KB + call):   1343.2 /   1466.2 ns per 1000-batch = 1.34 ns/update
+[epoch     ]     empty call incl. per-call set_fuel/set_epoch_deadline:     16.6 /     17.1 ns
+[fuel      ] (a) empty call              :     26.5 /     28.9 ns
+[fuel      ]     add(i32,i32)->i32       :     32.0 /     33.1 ns
+[fuel      ] (b1) 1000 updates as 1000 calls:  33101.2 /  34368.2 ns per 1000-batch  = 33.1 ns/update
+[fuel      ] (b2) 1000 updates, 1 batched call (memcpy 16KB + call):   2627.7 /   2838.1 ns per 1000-batch = 2.63 ns/update
+[fuel      ]     empty call incl. per-call set_fuel/set_epoch_deadline:     30.0 /     31.4 ns
+[epoch+fuel] (a) empty call              :     28.6 /     29.5 ns
+[epoch+fuel]     add(i32,i32)->i32       :     32.7 /     34.3 ns
+[epoch+fuel] (b1) 1000 updates as 1000 calls:  33730.7 /  35515.4 ns per 1000-batch  = 33.7 ns/update
+[epoch+fuel] (b2) 1000 updates, 1 batched call (memcpy 16KB + call):   2886.1 /   3268.9 ns per 1000-batch = 2.89 ns/update
+[epoch+fuel]     empty call incl. per-call set_fuel/set_epoch_deadline:     31.1 /     33.1 ns
+-- round 2 (reverse order, to expose warm-up/ordering effects) --
+[epoch+fuel] (a) empty call              :     29.0 /     31.5 ns
+[epoch+fuel]     add(i32,i32)->i32       :     32.3 /     33.7 ns
+[epoch+fuel] (b1) 1000 updates as 1000 calls:  27550.8 /  43238.7 ns per 1000-batch  = 27.6 ns/update
+[epoch+fuel] (b2) 1000 updates, 1 batched call (memcpy 16KB + call):   1896.5 /   2329.0 ns per 1000-batch = 1.90 ns/update
+[epoch+fuel]     empty call incl. per-call set_fuel/set_epoch_deadline:     19.2 /     36.9 ns
+[fuel      ] (a) empty call              :     28.7 /     33.5 ns
+[fuel      ]     add(i32,i32)->i32       :     30.7 /     32.5 ns
+[fuel      ] (b1) 1000 updates as 1000 calls:  35375.7 /  39056.5 ns per 1000-batch  = 35.4 ns/update
+[fuel      ] (b2) 1000 updates, 1 batched call (memcpy 16KB + call):   2352.2 /   2715.8 ns per 1000-batch = 2.35 ns/update
+[fuel      ]     empty call incl. per-call set_fuel/set_epoch_deadline:     31.2 /     33.5 ns
+[epoch     ] (a) empty call              :     29.9 /     37.8 ns
+[epoch     ]     add(i32,i32)->i32       :     34.1 /     36.3 ns
+[epoch     ] (b1) 1000 updates as 1000 calls:  34192.8 /  37550.1 ns per 1000-batch  = 34.2 ns/update
+[epoch     ] (b2) 1000 updates, 1 batched call (memcpy 16KB + call):   2862.1 /   3145.5 ns per 1000-batch = 2.86 ns/update
+[epoch     ]     empty call incl. per-call set_fuel/set_epoch_deadline:     29.3 /     30.3 ns
+[baseline  ] (a) empty call              :     24.1 /     27.7 ns
+[baseline  ]     add(i32,i32)->i32       :     30.8 /     34.2 ns
+[baseline  ] (b1) 1000 updates as 1000 calls:  31018.1 /  31714.3 ns per 1000-batch  = 31.0 ns/update
+[baseline  ] (b2) 1000 updates, 1 batched call (memcpy 16KB + call):   1916.0 /   2232.3 ns per 1000-batch = 1.92 ns/update
+
+== Guest -> host import call (ns per call; guest loop calling host.hook) ==
+[baseline] guest->host import call: 4.9 / 5.1 ns
+
+== Compute-heavy guest: epoch / fuel overhead (relative to baseline, median of 7 reps) ==
+tight loop spin(300M iters)    [baseline  ]     595.6 ms (p95 602.1)  +0.0% vs baseline
+tight loop spin(300M iters)    [epoch     ]     612.5 ms (p95 631.4)  +2.8% vs baseline
+tight loop spin(300M iters)    [fuel      ]     585.5 ms (p95 599.5)  -1.7% vs baseline
+tight loop spin(300M iters)    [epoch+fuel]     599.0 ms (p95 633.3)  +0.6% vs baseline
+call-heavy fib(35)             [baseline  ]      72.1 ms (p95 89.8)  +0.0% vs baseline
+call-heavy fib(35)             [epoch     ]      78.8 ms (p95 94.2)  +9.3% vs baseline
+call-heavy fib(35)             [fuel      ]     138.7 ms (p95 143.8)  +92.4% vs baseline
+call-heavy fib(35)             [epoch+fuel]     127.1 ms (p95 127.8)  +76.3% vs baseline
+
+== Epoch interrupt actually works? (ticker thread + deadline trap) ==
+spin(i32::MAX) interrupted after 20.6 ms (expected ~20): trapped OK
+
+== Instantiation cost (InstancePre), baseline config ==
+compile tiny module: 4.85 ms
+new Store + instantiate(pre): 4.16 us median / 4.53 us p95
+
+== Component Model (hand-written component in WAT, wasmtime::component) ==
+[comp baseline  ] (a) empty call:    398.1 /    404.5 ns
+[comp baseline  ]     add(u32,u32)->u32:    402.2 /    523.2 ns
+[comp baseline  ] (b1) 1000 updates as 1000 calls: 523334.6 / 666829.9 ns per batch = 523.3 ns/update
+[comp baseline  ] (b2) 1000 updates, 1 call with list<u32> (clone+lower 16KB):   3647.5 /   3882.7 ns per batch = 3.65 ns/update
+[comp epoch     ] (a) empty call:    450.4 /    547.4 ns
+[comp epoch     ]     add(u32,u32)->u32:    407.4 /    494.4 ns
+[comp epoch     ] (b1) 1000 updates as 1000 calls: 502991.3 / 608006.2 ns per batch = 503.0 ns/update
+[comp epoch     ] (b2) 1000 updates, 1 call with list<u32> (clone+lower 16KB):   2070.0 /   2238.0 ns per batch = 2.07 ns/update
+[comp epoch+fuel] (a) empty call:    402.4 /    417.3 ns
+[comp epoch+fuel]     add(u32,u32)->u32:    404.4 /    420.6 ns
+[comp epoch+fuel] (b1) 1000 updates as 1000 calls: 422947.6 / 583313.2 ns per batch = 422.9 ns/update
+[comp epoch+fuel] (b2) 1000 updates, 1 call with list<u32> (clone+lower 16KB):   3846.1 /   4167.3 ns per batch = 3.85 ns/update

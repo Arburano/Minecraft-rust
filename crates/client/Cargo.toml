@@ -1,0 +1,20 @@
+[package]
+name = "client"
+description = "Game client binary: window, in-game launcher menu, renderer, embedded server for singleplayer."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+engine-core = { path = "../engine-core" }
+world = { path = "../world" }
+render = { path = "../render" }
+net = { path = "../net" }
+sim = { path = "../sim" }
+assets = { path = "../assets" }
+auth = { path = "../auth" }
+
+[lints]
+workspace = true

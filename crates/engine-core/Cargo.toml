@@ -1,0 +1,14 @@
+[package]
+name = "engine-core"
+description = "Tick loop, tick phases, job scheduler, time budgets, common IDs."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+
+
+[lints]
+workspace = true

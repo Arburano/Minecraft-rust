@@ -1,0 +1,14 @@
+[package]
+name = "mesh"
+description = "Mesh chunks 32^3 (binary greedy meshing), incremental masks, 2x2x2 render batches."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+world = { path = "../world" }
+
+[lints]
+workspace = true

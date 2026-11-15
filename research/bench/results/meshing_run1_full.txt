@@ -1,0 +1,19 @@
+generated 256 chunks (62^3 padded to 64^3), cy=1 layer (world y 61..123), in 1.0s
+composition: air 59.4%  opaque 32.5%  transparent(water+leaves) 8.1%
+transparent share of non-air: 20.0%
+bgm::mesh (BTreeSet)             median   1082.7 us  p95   1539.7 us  mean   1111.5 us   quads/chunk 4962  (39 KB at 8B/quad)
+bgm::fast_mesh (masks given)     median    269.3 us  p95    456.8 us  mean    294.9 us   quads/chunk 4962  (39 KB at 8B/quad)
+naive per-face cull (no merge)   median   1372.6 us  p95   2237.6 us  mean   1493.4 us   quads/chunk 11762  (92 KB at 8B/quad)
+mask build from voxels (full rebuild, not needed per-mesh if maintained incrementally): median 341.2 us p95 546.6 us
+all-air: mesh median 207.5 us p95 240.5 ; fast_mesh median 54.0 us p95 67.8; quads 0
+all-stone (padded): mesh median 1422.2 us p95 2114.7 ; fast_mesh median 53.8 us p95 66.3; quads 0
+
+rayon scaling (256 chunks x 20 rounds, mesher per worker; machine has 2 logical CPUs)
+mesh       threads=1:      916 chunks/s (best of 3)  speedup 1.00x  -> 1091.8 us/chunk wall
+mesh       threads=2:     1813 chunks/s (best of 3)  speedup 1.98x  -> 551.7 us/chunk wall
+mesh       threads=4:     1814 chunks/s (best of 3)  speedup 1.98x  -> 551.2 us/chunk wall
+mesh       threads=8:     1761 chunks/s (best of 3)  speedup 1.92x  -> 567.8 us/chunk wall
+fast_mesh  threads=1:     3133 chunks/s (best of 3)  speedup 1.00x  -> 319.2 us/chunk wall
+fast_mesh  threads=2:     5768 chunks/s (best of 3)  speedup 1.84x  -> 173.4 us/chunk wall
+fast_mesh  threads=4:     6243 chunks/s (best of 3)  speedup 1.99x  -> 160.2 us/chunk wall
+fast_mesh  threads=8:     5943 chunks/s (best of 3)  speedup 1.90x  -> 168.3 us/chunk wall

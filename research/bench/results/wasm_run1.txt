@@ -1,0 +1,49 @@
+wasmtime crate version: 0.1.0 (bench crate); see Cargo.lock for wasmtime
+
+== Core module: per-call overhead (ns, median / p95 of 21 reps) ==
+[baseline  ] (a) empty call              :     29.4 /     31.6 ns
+[baseline  ]     add(i32,i32)->i32       :     29.5 /     32.3 ns
+[baseline  ] (b1) 1000 updates as 1000 calls:  18640.8 /  31827.0 ns per 1000-batch  = 18.6 ns/update
+[baseline  ] (b2) 1000 updates, 1 batched call (memcpy 16KB + call):    933.8 /   1096.4 ns per 1000-batch = 0.93 ns/update
+[epoch     ] (a) empty call              :     16.5 /     17.4 ns
+[epoch     ]     add(i32,i32)->i32       :     18.7 /     19.0 ns
+[epoch     ] (b1) 1000 updates as 1000 calls:  18770.3 /  19051.7 ns per 1000-batch  = 18.8 ns/update
+[epoch     ] (b2) 1000 updates, 1 batched call (memcpy 16KB + call):   1297.8 /   1524.4 ns per 1000-batch = 1.30 ns/update
+[epoch     ]     empty call incl. per-call set_fuel/set_epoch_deadline:     16.8 /     17.4 ns
+[fuel      ] (a) empty call              :     16.6 /     17.1 ns
+[fuel      ]     add(i32,i32)->i32       :     19.0 /     19.3 ns
+[fuel      ] (b1) 1000 updates as 1000 calls:  19285.6 /  21880.3 ns per 1000-batch  = 19.3 ns/update
+[fuel      ] (b2) 1000 updates, 1 batched call (memcpy 16KB + call):   1371.8 /   1513.4 ns per 1000-batch = 1.37 ns/update
+[fuel      ]     empty call incl. per-call set_fuel/set_epoch_deadline:     17.4 /     18.3 ns
+[epoch+fuel] (a) empty call              :     23.6 /     24.3 ns
+[epoch+fuel]     add(i32,i32)->i32       :     27.6 /     28.3 ns
+[epoch+fuel] (b1) 1000 updates as 1000 calls:  28550.7 /  30485.9 ns per 1000-batch  = 28.6 ns/update
+[epoch+fuel] (b2) 1000 updates, 1 batched call (memcpy 16KB + call):   2445.0 /   2557.9 ns per 1000-batch = 2.44 ns/update
+[epoch+fuel]     empty call incl. per-call set_fuel/set_epoch_deadline:     26.4 /     26.8 ns
+
+== Guest -> host import call (ns per call; guest loop calling host.hook) ==
+[baseline] guest->host import call: 3.7 / 3.8 ns
+
+== Compute-heavy guest: epoch / fuel overhead (relative to baseline, median of 7 reps) ==
+tight loop spin(300M iters)    [baseline  ]     570.0 ms (p95 579.7)  +0.0% vs baseline
+tight loop spin(300M iters)    [epoch     ]     569.0 ms (p95 590.1)  -0.2% vs baseline
+tight loop spin(300M iters)    [fuel      ]     575.0 ms (p95 577.1)  +0.9% vs baseline
+tight loop spin(300M iters)    [epoch+fuel]     584.1 ms (p95 605.6)  +2.5% vs baseline
+call-heavy fib(35)             [baseline  ]      86.7 ms (p95 91.3)  +0.0% vs baseline
+call-heavy fib(35)             [epoch     ]      86.7 ms (p95 89.7)  +0.0% vs baseline
+call-heavy fib(35)             [fuel      ]     132.5 ms (p95 134.2)  +52.9% vs baseline
+call-heavy fib(35)             [epoch+fuel]     132.4 ms (p95 140.9)  +52.7% vs baseline
+
+== Epoch interrupt actually works? (ticker thread + deadline trap) ==
+spin(i32::MAX) interrupted after 20.6 ms (expected ~20): trapped OK
+
+== Instantiation cost (InstancePre), baseline config ==
+compile tiny module: 3.54 ms
+new Store + instantiate(pre): 3.82 us median / 4.11 us p95
+
+== Component Model (hand-written component in WAT, wasmtime::component) ==
+COMPONENT BENCH FAILED: an export name must be written inside a nested reference: `(memory $i "name")` should be written `(memory (core memory $i "name"))` (or set WAST_STRICT_COMPONENT_INDICES=0 to accept the legacy syntax)
+     --> <anon>:29:95
+      |
+   29 |   (func (export "batch") (param "b" (list u32)) (canon lift (core func $i "batch") (memory $i "memory") (realloc (func $i "realloc"))))
+      |                                                                                               ^

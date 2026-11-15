@@ -1,0 +1,14 @@
+
+=== grid 16^3 (1 section) ===
+open air, 1 torch (lvl 14)                                 median      24.4 us  p95      35.1 us   queue pops    2610 / 4096 cells  (9.3 ns/pop)
+open air, 8 torches/section                                median      45.8 us  p95      69.0 us   queue pops    3987 / 4096 cells  (11.5 ns/pop)
+25% opaque, 8 torches/section                              median      27.4 us  p95      50.4 us   queue pops    2557 / 4096 cells  (10.7 ns/pop)
+43% opaque, 8 torches/section                              median      25.1 us  p95      61.6 us   queue pops    2235 / 4096 cells  (11.2 ns/pop)
+skylight: heightmap + roof patches (col pass + side BFS)   median      13.8 us  p95      15.0 us   queue pops      23 / 4096 cells  (599.0 ns/pop)
+
+=== grid 48^3 (27 sections: 3x3x3 neighbourhood) ===
+open air, 1 torch (lvl 14)                                 median      36.1 us  p95      60.4 us   queue pops    3303 / 110592 cells  (10.9 ns/pop)
+open air, 8 torches/section                                median    1415.3 us  p95    1599.6 us   queue pops  109490 / 110592 cells  (12.9 ns/pop)
+26% opaque, 8 torches/section                              median    2181.1 us  p95    2360.7 us   queue pops   81000 / 110592 cells  (26.9 ns/pop)
+45% opaque, 8 torches/section                              median    2061.5 us  p95    2654.4 us   queue pops   58714 / 110592 cells  (35.1 ns/pop)
+skylight: heightmap + roof patches (col pass + side BFS)   median     554.2 us  p95     605.6 us   queue pops   19945 / 110592 cells  (27.8 ns/pop)

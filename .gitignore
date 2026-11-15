@@ -1,0 +1,23 @@
+/target/
+/research/bench/target/
+**/*.rs.bk
+*.pdb
+*.profraw
+*.tracy
+
+# local game data
+/run/
+/saves/
+/cache/
+*.log
+
+# editors and OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# secrets: never commit keys or tokens
+*.pem
+*.key
+.env

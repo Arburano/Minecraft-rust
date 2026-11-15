@@ -1,0 +1,14 @@
+[package]
+name = "render"
+description = "wgpu renderer: capability probe, vertex pulling of 8-byte quads, GPU-driven and fallback paths, texture arrays, render graph."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+mesh = { path = "../mesh" }
+
+[lints]
+workspace = true

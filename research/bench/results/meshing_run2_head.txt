@@ -1,0 +1,9 @@
+generated 256 chunks (62^3 padded to 64^3), cy=1 layer (world y 61..123), in 0.9s
+composition: air 59.4%  opaque 32.5%  transparent(water+leaves) 8.1%
+transparent share of non-air: 20.0%
+bgm::mesh (BTreeSet)             median   1177.5 us  p95   1986.4 us  mean   1250.9 us   quads/chunk 4962  (39 KB at 8B/quad)
+bgm::fast_mesh (masks given)     median    278.4 us  p95    555.7 us  mean    311.3 us   quads/chunk 4962  (39 KB at 8B/quad)
+naive per-face cull (no merge)   median    897.8 us  p95   1425.5 us  mean    962.0 us   quads/chunk 11762  (92 KB at 8B/quad)
+mask build from voxels (full rebuild, not needed per-mesh if maintained incrementally): median 366.4 us p95 636.0 us
+all-air: mesh median 205.5 us p95 230.1 ; fast_mesh median 51.6 us p95 65.9; quads 0
+all-stone (padded): mesh median 1381.9 us p95 1483.0 ; fast_mesh median 51.6 us p95 64.2; quads 0

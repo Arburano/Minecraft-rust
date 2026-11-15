@@ -1,0 +1,40 @@
+//! Coordinates, block-state IDs, palette sections 16^3, chunk columns, registries and
+//! the persisted ID table.
+//!
+//! Spec:
+//! - `docs/architecture/world-storage.md`
+//!
+//! Status: skeleton. Coordinate types and constants are final; `Section` storage is
+//! task T0-03 in `tasks/stage-0/`.
+
+pub mod coords;
+
+/// Edge length of a storage section in blocks (16^3 = 4096 blocks).
+pub const SECTION_SIZE: i32 = 16;
+/// Blocks in one section.
+pub const SECTION_VOLUME: usize = 4096;
+/// Edge length of a mesh chunk in blocks (2x2x2 sections). Decided in ADR-0005.
+pub const MESH_CHUNK_SIZE: i32 = 32;
+/// Mesh chunks per render batch edge (2x2x2 mesh chunks = 64^3). Decided in ADR-0005.
+pub const RENDER_BATCH_MESH_CHUNKS: i32 = 2;
+/// Default world height in blocks (24 sections). Configurable per dimension.
+pub const DEFAULT_WORLD_HEIGHT: i32 = 384;
+
+/// Runtime numeric ID of a block state. Assigned by the server per session from the
+/// registry; persisted worlds store a string-ID table instead (see world-storage.md).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct BlockStateId(pub u16);
+
+impl BlockStateId {
+    /// Air is always 0 in every registry.
+    pub const AIR: BlockStateId = BlockStateId(0);
+}
+
+// Compile-time invariants (ADR-0004, ADR-0005).
+const _: () = assert!(SECTION_VOLUME == (SECTION_SIZE * SECTION_SIZE * SECTION_SIZE) as usize);
+const _: () = assert!(
+    MESH_CHUNK_SIZE % SECTION_SIZE == 0,
+    "mesh chunk must be whole sections"
+);
+// binary-greedy-meshing packs quad coordinates in 6 bits (0..=63).
+const _: () = assert!(MESH_CHUNK_SIZE * RENDER_BATCH_MESH_CHUNKS <= 64);

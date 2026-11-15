@@ -1,0 +1,94 @@
+// Draft mod API contract. Status: 0.1.0 draft — task T0-07 finalises it.
+// Rules (docs/modding/wasm-api.md):
+//  - every host call that touches many things takes a list (batching is mandatory);
+//  - events arrive as one list per event kind per tick, never one call per event;
+//  - mod state lives in host ECS components, linear memory is scratch for one call;
+//  - world access is limited to the calling region; far targets go through send-to.
+package engine:api@0.1.0;
+
+interface types {
+    record block-pos { x: s32, y: s32, z: s32 }
+    record vec3 { x: f32, y: f32, z: f32 }
+
+    /// Session-local numeric block state id (see world-storage.md, ID table).
+    type block-state = u16;
+    /// Stable network id of an entity (survives region merge/split and shard handoff).
+    type entity-id = u64;
+
+    record block-change { pos: block-pos, state: block-state }
+
+    variant event {
+        block-broken(tuple<entity-id, block-pos, block-state>),
+        block-placed(tuple<entity-id, block-pos, block-state>),
+        entity-damaged(tuple<entity-id, f32>),
+        player-joined(entity-id),
+        player-left(entity-id),
+        message(tuple<string, list<u8>>),
+    }
+
+    enum event-kind { block-broken, block-placed, entity-damaged, player-joined, player-left, message }
+
+    enum phase { pre-tick, simulate, post-tick }
+
+    enum side { server, client, both }
+
+    variant api-error { out-of-region(block-pos), unknown-id(string), denied(string), budget-exceeded }
+}
+
+/// World access for the region that is currently ticking.
+interface world-access {
+    use types.{block-pos, block-state, block-change, api-error};
+
+    get-blocks: func(positions: list<block-pos>) -> result<list<block-state>, api-error>;
+    /// Applied by the host only if the whole call returns successfully.
+    set-blocks: func(changes: list<block-change>) -> result<_, api-error>;
+    state-id: func(name: string) -> result<block-state, api-error>;
+    region-contains: func(pos: block-pos) -> bool;
+    /// Deliver a message to whichever region owns `pos`; it arrives next tick.
+    send-to: func(pos: block-pos, channel: string, payload: list<u8>);
+}
+
+/// Mod-defined components stored by the host (mod state lives here).
+interface components {
+    use types.{entity-id, api-error};
+
+    register: func(name: string, replicate: bool) -> result<u32, api-error>;
+    get: func(component: u32, entities: list<entity-id>) -> list<option<list<u8>>>;
+    set: func(component: u32, values: list<tuple<entity-id, list<u8>>>) -> result<_, api-error>;
+    query: func(component: u32) -> list<entity-id>;
+}
+
+interface host-log {
+    enum level { trace, debug, info, warn, error }
+    log: func(level: level, message: string);
+}
+
+/// What a mod exports.
+interface guest {
+    use types.{event, event-kind, phase};
+
+    record system-decl {
+        name: string,
+        phase: phase,
+        reads: list<string>,
+        writes: list<string>,
+        every-n-ticks: u32,
+    }
+
+    record mod-decl {
+        systems: list<system-decl>,
+        subscribes: list<event-kind>,
+    }
+
+    init: func() -> mod-decl;
+    on-events: func(events: list<event>);
+    run-system: func(index: u32);
+}
+
+world mod-world {
+    import types;
+    import world-access;
+    import components;
+    import host-log;
+    export guest;
+}

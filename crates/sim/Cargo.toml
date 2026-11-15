@@ -1,0 +1,15 @@
+[package]
+name = "sim"
+description = "Shared gameplay simulation: regions, entity ECS, player physics, prediction/reconciliation hooks."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+engine-core = { path = "../engine-core" }
+world = { path = "../world" }
+
+[lints]
+workspace = true

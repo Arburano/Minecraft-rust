@@ -1,0 +1,43 @@
+plain [u16;4096] = 8192 B
+air                        distinct=    1 bits= 0 bytes=   56  (0.7% of plain; incl. 'size_of::<Section>()'=56 B enum overhead, excl. Vec heap headers)
+stone                      distinct=    1 bits= 0 bytes=   56  (0.7% of plain; incl. 'size_of::<Section>()'=56 B enum overhead, excl. Vec heap headers)
+surface mixed              distinct=    8 bits= 3 bytes= 1640  (20.0% of plain; incl. 'size_of::<Section>()'=56 B enum overhead, excl. Vec heap headers)
+underground+caves+ores     distinct=   10 bits= 4 bytes= 2124  (25.9% of plain; incl. 'size_of::<Section>()'=56 B enum overhead, excl. Vec heap headers)
+256 distinct (8-bit)       distinct=  256 bits= 8 bytes= 4664  (56.9% of plain; incl. 'size_of::<Section>()'=56 B enum overhead, excl. Vec heap headers)
+worst: 4096 distinct       distinct= 4096 bits=12 bytes= 6616  (80.8% of plain; incl. 'size_of::<Section>()'=56 B enum overhead, excl. Vec heap headers)
+random with   2 palette entries -> bits 1 bytes 572
+random with   4 palette entries -> bits 2 bytes 1088
+random with   8 palette entries -> bits 3 bytes 1640
+random with  16 palette entries -> bits 4 bytes 2136
+random with  32 palette entries -> bits 5 bytes 2856
+random with  64 palette entries -> bits 6 bytes 3464
+random with 128 palette entries -> bits 7 bytes 3960
+random with 256 palette entries -> bits 8 bytes 4664
+
+get/set ns per op (median / p95 over 51 runs of 4096 ops; random index order; black_box'd)
+plain u16 array   get seq-random :   0.99 /   1.24
+plain u16 array   get sequential :   0.53 /   0.54
+plain u16 array   set random     :   0.74 /   0.96
+single(stone)  (bits  0) get random :   0.84 /   1.43
+single(stone)  (bits  0) get seq    :   0.95 /   1.60
+single(stone)  (bits  0) set random existing-palette-entry:   2.13 /   2.79
+surface mixed  (bits  3) get random :   3.75 /   4.84
+surface mixed  (bits  3) get seq    :   3.91 /   5.11
+surface mixed  (bits  3) set random existing-palette-entry:   6.94 /   8.24
+underground    (bits  4) get random :   3.79 /   4.43
+underground    (bits  4) get seq    :   3.93 /   5.12
+underground    (bits  4) set random existing-palette-entry:   6.37 /   8.27
+256 distinct   (bits  8) get random :   3.68 /   4.29
+256 distinct   (bits  8) get seq    :   3.81 /   4.34
+256 distinct   (bits  8) set random existing-palette-entry:  66.66 /  93.25
+direct 12-bit  (bits 12) get random :   2.81 /   3.72
+direct 12-bit  (bits 12) get seq    :   2.50 /   3.00
+direct 12-bit  (bits 12) set random existing-palette-entry:   5.14 /   5.81
+
+growth: Single -> 300 distinct values inserted one by one (all repacks 1..8 bit and direct): median 288.0 us total (~960 ns/set amortised)
+
+client RAM estimate: 25x25 columns x 24 sections = 15000 sections
+plain u16 everywhere: 117.2 MiB
+assumed per-column mix (8 air, 1.5 surface, 12 underground, 2.5 pure stone): 17.01 MiB
+worst case (all sections 4096-distinct 12-bit direct): 94.6 MiB
+all sections at 8 bit palette: 66.7 MiB
