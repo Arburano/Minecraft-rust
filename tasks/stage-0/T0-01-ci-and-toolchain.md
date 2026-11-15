@@ -1,6 +1,6 @@
 # T0-01. CI green and reproducible
 
-- **Status:** todo
+- **Status:** in-progress
 - **Depends on:** —
 - **Owner:** human + agent
 
