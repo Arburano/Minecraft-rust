@@ -10,5 +10,13 @@ publish = false
 [dependencies]
 engine-core = { path = "../engine-core" }
 
+[dev-dependencies]
+criterion = { workspace = true }
+proptest = { workspace = true }
+
+[[bench]]
+name = "section"
+harness = false
+
 [lints]
 workspace = true

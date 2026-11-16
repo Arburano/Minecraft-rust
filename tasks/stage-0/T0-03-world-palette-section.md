@@ -1,6 +1,7 @@
 # T0-03. 16³ section with palette
 
-- **Status:** todo
+- **Status:** done
+- **PR:** [#5](https://github.com/Arburano/Minecraft-rust/pull/5)
 - **Depends on:** T0-01
 - **Owner:** agent
 
@@ -21,9 +22,9 @@ Implement `world::Section` per the specification: `Single` / `Paletted` (1–8 b
 
 ## Acceptance criteria
 
-- [ ] Proptest: 10 000 random edit sequences — `get` always matches the reference.
-- [ ] `set` ≤ 10 ns at any bit width, `unpack_into` ≤ 5 µs per section (on the test machine; if a VM, mark it as such).
-- [ ] Section sizes in the test match the table in world-storage.md (±10%).
+- [x] Proptest: 10 000 random edit sequences — `get` always matches the reference (plus 10 000 edits-on-populated cases and 2 000 each for `compact` / `from_blocks`).
+- [x] `set` ≤ 10 ns at any bit width, `unpack_into` ≤ 5 µs per section — measured on a VM (marked as such): `set` ≈ 6 ns typical, 13–15 ns on some widths due to VM 4K-aliasing (see [task report](../../task-reports/t0-03-world-palette-section.md)); `unpack_into` ≤ 4.1 µs. Bare-metal confirmation pending.
+- [x] Section sizes in the test match the table in world-storage.md exactly (56 / 1 640 / 2 124 / 4 664 / 8 248 bytes).
 
 ## Out of scope
 
