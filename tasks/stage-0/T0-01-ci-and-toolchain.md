@@ -3,7 +3,8 @@
 - **Status:** done
 - **Depends on:** —
 - **Owner:** human + agent
-- **PR:** [#2](https://github.com/Arburano/Minecraft-rust/pull/2)
+- **PR:** [#2](https://github.com/Arburano/Minecraft-rust/pull/2) (verification with the pinned toolchain); status bookkeeping also landed on `main` via [#3](https://github.com/Arburano/Minecraft-rust/pull/3)
+- **Evidence:** [CI run #3 on `main`](https://github.com/Arburano/Minecraft-rust/actions/runs/43750180060) (commit `4257ec8`) — green; reproduced locally on 2026-11-15 (fmt, clippy with `-D warnings`, test, `bench --no-run`, all pass; sandbox toolchain stable 1.100, the pinned 1.97 was not downloadable there — `rust-toolchain.toml` unchanged).
 
 ## Goal
 

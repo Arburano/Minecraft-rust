@@ -3,8 +3,11 @@
 //! Spec:
 //! - `docs/architecture/engine-core.md`
 //!
-//! Status: skeleton. Only the shared vocabulary (phases, tick numbers, budgets)
-//! exists. The scheduler and region executor are tasks T0/T1 in `tasks/`.
+//! Status: the shared vocabulary (phases, tick numbers, budgets) and the job
+//! scheduler (`jobs`, task T0-02) are implemented. The region executor is a
+//! stage-1 task in `tasks/`.
+
+pub mod jobs;
 
 use std::time::Duration;
 
