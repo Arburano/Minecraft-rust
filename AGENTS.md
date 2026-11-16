@@ -38,6 +38,7 @@ wit/           engine:api mod contract (WIT)
 mods/core/     base gameplay as a mod
 docs/          PRD, specifications, ADRs, process, research
 tasks/         task backlog by stage
+task-reports/  report after each completed task (what was done, what went wrong, issues)
 research/      benchmarks that justified decisions
 ```
 
@@ -56,8 +57,22 @@ research/      benchmarks that justified decisions
 1. Branch `t0-03-world-palette-section` (task id + slug).
 2. Code + tests + benchmark (if the task has numbers) + updated documents (specification, performance-budgets, open-questions — whatever changed).
 3. Task status `done` in the task file and in `tasks/README.md`.
-4. Commit message in English, in the format `T0-03: implement palette section storage`. One logical step — one commit.
-5. A PR with a description: what was done, before/after numbers, what remains. CI must be green.
+4. Write a task report in [`task-reports/`](task-reports/README.md) (see "Task reports" below).
+5. Commit message in English, in the format `T0-03: implement palette section storage`. One logical step — one commit.
+6. A PR with a description: what was done, before/after numbers, what remains. CI must be green.
+
+## Task reports
+
+After completing **every** task, write a report to the `task-reports/` folder before opening the PR. The report is mandatory even if everything went smoothly.
+
+- File name: `<task-id>-<slug>.md`, e.g. `task-reports/t0-03-world-palette-section.md`.
+- Written in English, like everything else in the repository.
+- Required sections:
+  1. **What was done** — a short summary of the implementation, files/crates touched, tests and benchmarks run (with honest numbers, per rule 7).
+  2. **What went wrong** — mistakes, failed approaches, reverted changes, and how they were resolved. Write "None" if there were none.
+  3. **Issues encountered** — blockers, deviations from the specification or ADRs, open questions raised, and anything left unfinished or needing follow-up.
+
+The report is committed together with the task's changes.
 
 ## Language
 
