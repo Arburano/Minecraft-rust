@@ -1,6 +1,7 @@
 # T0-03. 16³ section with palette
 
 - **Status:** done
+- **PR:** [#5](https://github.com/Arburano/Minecraft-rust/pull/5)
 - **Depends on:** T0-01
 - **Owner:** agent
 
