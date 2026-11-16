@@ -2,6 +2,12 @@
 
 The single source of numbers. Change here and in PRD §1 at the same time. Status: **Target** — a commitment; **Hypothesis** — not yet measured; **Measured** — a benchmark exists (marked with what it ran on).
 
+## Engine core (client and server)
+
+| What | Value | Status |
+| --- | --- | --- |
+| Job scheduler: submit + complete overhead | ≤ 2 µs per job | Measured (VM: ≈ 0.37 µs/job under load, ≈ 0.57 µs idle round trip; `engine-core` bench `jobs`, [details](../research/job-scheduler-2026-11-15.md)) |
+
 ## Client
 
 | What | Value | Status |

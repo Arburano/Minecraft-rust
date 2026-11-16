@@ -14,8 +14,8 @@ The backlog is split by stage of the roadmap ([docs/process/roadmap.md](../docs/
 
 | Task | Name | Depends on | Owner | Status |
 | --- | --- | --- | --- | --- |
-| [T0-01](stage-0/T0-01-ci-and-toolchain.md) | CI green and reproducible | — | human + agent | todo |
-| [T0-02](stage-0/T0-02-core-job-scheduler.md) | Job scheduler with priorities and cancellation | T0-01 | agent | todo |
+| [T0-01](stage-0/T0-01-ci-and-toolchain.md) | CI green and reproducible | — | human + agent | done |
+| [T0-02](stage-0/T0-02-core-job-scheduler.md) | Job scheduler with priorities and cancellation | T0-01 | agent | done |
 | [T0-03](stage-0/T0-03-world-palette-section.md) | 16³ section with palette | T0-01 | agent | todo |
 | [T0-04](stage-0/T0-04-mesh-chunk-32.md) | Gather, incremental masks and fast_mesh for the 32³ mesh chunk | T0-03 | agent | todo |
 | [T0-05](stage-0/T0-05-mesh-render-batches.md) | Render batches of 2×2×2 mesh chunks | T0-04 | agent | todo |
