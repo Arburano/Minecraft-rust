@@ -1,6 +1,7 @@
 # T0-04. Gather, incremental masks and fast_mesh for the 32³ mesh chunk
 
 - **Status:** done
+- **PR:** [#6](https://github.com/Arburano/Minecraft-rust/pull/6)
 - **Depends on:** T0-03
 - **Owner:** agent
 
