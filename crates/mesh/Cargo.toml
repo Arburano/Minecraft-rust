@@ -8,7 +8,17 @@ license.workspace = true
 publish = false
 
 [dependencies]
+binary-greedy-meshing = { workspace = true }
 world = { path = "../world" }
+
+[dev-dependencies]
+criterion = { workspace = true }
+noise = { workspace = true }
+proptest = { workspace = true }
+
+[[bench]]
+name = "mesh_chunk"
+harness = false
 
 [lints]
 workspace = true

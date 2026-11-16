@@ -21,9 +21,9 @@ The single source of numbers. Change here and in PRD §1 at the same time. Statu
 | Joining a server until control | ≤ 5 s with asset cache | Target |
 | GPU geometry time | ≤ 8 ms per frame on iGPU | Hypothesis |
 | CPU command recording | ≤ 1 ms per frame | Hypothesis |
-| `fast_mesh` of a 32³ mesh chunk | ≤ 0.2 ms p50 on a 4-core desktop | Hypothesis (VM, 62³: 0.27 ms) |
-| Gather + masks of a 32³ mesh chunk | ≤ 100 µs p50 | Hypothesis |
-| Mask update per edit | ≤ 20 ns | Hypothesis |
+| `fast_mesh` of a 32³ mesh chunk | ≤ 0.2 ms p50 on a 4-core desktop | Measured (VM: ≈ 42 µs on the T0-04 terrain corpus; `mesh` bench `mesh_chunk/fast_mesh`) |
+| Gather + masks of a 32³ mesh chunk | ≤ 100 µs p50 | Measured (VM: ≈ 60 µs on the T0-04 corpus; `mesh` bench `mesh_chunk/gather_masks`, [details](../../task-reports/t0-04-mesh-chunk-32.md)) |
+| Mask update per edit | ≤ 20 ns | Measured (VM: ≈ 2.6 ns; `mesh` bench `mesh_chunk/mask_update`) |
 | Render batch copy after an edit | ≤ 50 µs | Hypothesis |
 | Lighting: add / remove per edit | ≤ 100 / ≤ 200 µs p95 | Hypothesis |
 | `get` in a section | ≈ 3.8 ns | Measured (VM: ≈ 3.4 ns paletted, 0.5 ns single, 0.7 ns direct; `world` bench `section_get`) |

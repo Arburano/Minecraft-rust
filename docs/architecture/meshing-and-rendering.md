@@ -21,13 +21,15 @@ new chunk  ─► gather 34³ + masks  ─► queue (Visible / Prefetch)
 ## Meshing
 
 - Crate: `binary-greedy-meshing` 0.6.4, `Mesher<32>`, the `fast_mesh` method with precomputed masks.
-- Input: a 34³ buffer (32³ + 1 block of padding on each side from neighbors). Gather is word-by-word section unpacking (see world-storage.md), not a per-block `get()`.
+- Input: a 34³ buffer (32³ + 1 block of padding on each side from neighbors). The 8 core sections are gathered word by word (`Section::unpack_into`, see world-storage.md); the 1-block-thick padding shell (6 536 cells) is read with per-cell `get` — unpacking whole 4 096-cell sections for a ≤ 256-cell sliver measured ≈ 3× slower (T0-04). Uniform sections are filled without unpacking, with whole bit-range mask updates.
 - Opacity and transparency masks are maintained incrementally on `set_block` (target ≤ 20 ns per edit). Building from scratch happens only on chunk load.
-- Empty and solid mesh chunks are skipped by section flags; the mesher is not called.
-- An edit on a mesh chunk border affects neighbors (padding): up to 4 mesh chunks (up to 8 with diagonal AO).
+- Empty and solid mesh chunks are skipped by section flags; the mesher is not called. "Solid" means every section in the 4×4×4 neighborhood is fully opaque (a solid core with air padding still meshes its boundary faces).
+- An edit on a mesh chunk border affects neighbors (padding): up to 4 mesh chunks (up to 8 with diagonal AO). `mesh::affected_mesh_chunks` computes the dirty set.
 - Non-cubic models (stairs, fences, plants) take a separate path: precomputed model templates, instances. No greedy merging.
 
-Measured (VM 2 vCPU, ±30%, 62³ unit): `fast_mesh` 0.27 ms, masks from scratch 0.35 ms, `mesh()` 1.1 ms. For 32³ we expect ≈ 1/7 of the per-unit time — to be confirmed by the T0-04 benchmark.
+Measured (VM 2 vCPU, ±30%, 62³ unit, pre-code research): `fast_mesh` 0.27 ms, masks from scratch 0.35 ms, `mesh()` 1.1 ms.
+
+Measured (VM, T0-04, 32³ mesh chunk, seeded terrain corpus 4×2×4 chunks, 8.1% transparent; `mesh` bench `mesh_chunk`): gather + masks ≈ 60 µs, `fast_mesh` ≈ 42 µs, full build ≈ 99 µs, re-mesh after an edit ≈ 30 µs, mask update per edit ≈ 2.6 ns, mask rebuild ≈ 41 µs; ≈ 535 quads/chunk (4.2 KB). Bare-metal confirmation pending.
 
 ## Render batches (ADR-0005 decision)
 

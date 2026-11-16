@@ -1,6 +1,6 @@
 # T0-04. Gather, incremental masks and fast_mesh for the 32³ mesh chunk
 
-- **Status:** todo
+- **Status:** done
 - **Depends on:** T0-03
 - **Owner:** agent
 
@@ -21,9 +21,9 @@ In the `mesh` crate: gather 34³ from sections (word-by-word unpacking), opaque/
 
 ## Acceptance criteria
 
-- [ ] Visible geometry of `fast_mesh` equals the reference (proptest on random mesh chunks; compare covered faces, not the quad count).
-- [ ] Numbers for gather+masks, `fast_mesh`, and mask update recorded in performance-budgets.md.
-- [ ] An edit on a mesh chunk boundary marks the correct neighbors as dirty (test).
+- [x] Visible geometry of `fast_mesh` equals the reference (proptest on random mesh chunks, 512 cases + 512 edit-sequence cases; covered faces compared, not the quad count).
+- [x] Numbers for gather+masks (≈ 60 µs), `fast_mesh` (≈ 42 µs), and mask update (≈ 2.6 ns) recorded in performance-budgets.md — measured on a VM, marked as such; see [task report](../../task-reports/t0-04-mesh-chunk-32.md).
+- [x] An edit on a mesh chunk boundary marks the correct neighbors as dirty (`affected_mesh_chunks`, unit tests for interior/face/edge/corner and negative coordinates).
 
 ## Out of scope
 
