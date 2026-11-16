@@ -3,7 +3,7 @@
 - **Status:** done
 - **Depends on:** —
 - **Owner:** human + agent
-- **PR:** closed in [#3](https://github.com/Arburano/Minecraft-rust/pull/3) (status bookkeeping; the CI work itself landed earlier)
+- **PR:** [#2](https://github.com/Arburano/Minecraft-rust/pull/2) (verification with the pinned toolchain); status bookkeeping also landed on `main` via [#3](https://github.com/Arburano/Minecraft-rust/pull/3)
 - **Evidence:** [CI run #3 on `main`](https://github.com/Arburano/Minecraft-rust/actions/runs/43750180060) (commit `4257ec8`) — green; reproduced locally on 2026-11-15 (fmt, clippy with `-D warnings`, test, `bench --no-run`, all pass; sandbox toolchain stable 1.100, the pinned 1.97 was not downloadable there — `rust-toolchain.toml` unchanged).
 
 ## Goal
@@ -24,6 +24,16 @@ Make sure GitHub Actions passes on `main`: fmt, clippy with `-D warnings`, test,
 
 - [x] Workflow `.github/workflows/ci.yml` passes on a clean clone.
 - [x] `cargo test --workspace` gives the same result locally and in CI.
+
+## Verification
+
+All four CI steps pass with the pinned toolchain (rustc 1.97.1, Linux x86_64), both on a
+fresh `git clone` without a build cache and in GitHub Actions
+([run 43750957998](https://github.com/Arburano/Minecraft-rust/actions/runs/43750957998),
+conclusion: success): `fmt --all --check`, `clippy --workspace --all-targets` with
+`-D warnings`, `test --workspace` (6 passed, 0 failed: 3 in `engine-core`, 3 in `world`),
+`bench --workspace --no-run`. No workflow or code changes were needed; the CI badge was
+already in the README.
 
 ## Out of scope
 
