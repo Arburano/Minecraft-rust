@@ -4,10 +4,14 @@
 //! Spec:
 //! - `docs/architecture/world-storage.md`
 //!
-//! Status: skeleton. Coordinate types and constants are final; `Section` storage is
-//! task T0-03 in `tasks/stage-0/`.
+//! Status: coordinate types and constants are final; `Section` palette storage is
+//! implemented (task T0-03). Chunk columns, registries and the ID table are later
+//! tasks in `tasks/stage-0/`.
 
 pub mod coords;
+pub mod section;
+
+pub use section::Section;
 
 /// Edge length of a storage section in blocks (16^3 = 4096 blocks).
 pub const SECTION_SIZE: i32 = 16;

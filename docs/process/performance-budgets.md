@@ -26,7 +26,9 @@ The single source of numbers. Change here and in PRD §1 at the same time. Statu
 | Mask update per edit | ≤ 20 ns | Hypothesis |
 | Render batch copy after an edit | ≤ 50 µs | Hypothesis |
 | Lighting: add / remove per edit | ≤ 100 / ≤ 200 µs p95 | Hypothesis |
-| `set` in a section, any bit width | ≤ 10 ns | Hypothesis (VM: 6–7 ns up to 16 states, 67 ns at 256 without an index) |
+| `get` in a section | ≈ 3.8 ns | Measured (VM: ≈ 3.4 ns paletted, 0.5 ns single, 0.7 ns direct; `world` bench `section_get`) |
+| `set` in a section, any bit width | ≤ 10 ns | Measured (VM: ≈ 6 ns typical; 6–8-bit readings of 13–15 ns are 4K-aliasing stalls on this VM, see [T0-03 report](../../task-reports/t0-03-world-palette-section.md); bare-metal confirmation pending) |
+| `unpack_into` per section | ≤ 5 µs | Measured (VM: ≈ 2.9–4.1 µs paletted, < 0.1 µs single/direct; `world` bench `section_unpack_into`) |
 
 ## Server
 

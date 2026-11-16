@@ -17,25 +17,35 @@ Always `div_euclid`/`rem_euclid`, never `/` and `%` for coordinates: block −1 
 ## Section
 
 ```text
+struct Section { blocks: SectionBlocks, non_air: u16 }   // 56 bytes total
+
 enum SectionBlocks {
-    Single(BlockStateId),                       // uniform: 2 bytes + tag
-    Paletted { palette: Vec<BlockStateId>,      // 2..=256 states
+    Single(BlockStateId),                       // uniform
+    Paletted { palette: Box<[BlockStateId]>,    // 2..=256 states
                bits: u8,                         // 1,2,3,4,5,6,7,8
-               data: Vec<u64>,                   // indices that do not cross word boundaries
-               reverse: Option<HashMap<BlockStateId, u8>> }, // only if palette.len() > 16
-    Direct(Box<[BlockStateId; 4096]>),          // > 256 states
+               data: Box<[u64]>,                 // indices that do not cross word boundaries
+               reverse: Option<Box<ReverseIndex>> }, // only if palette.len() > 16
+    Direct(Box<[BlockStateId; 4096]>),          // > 256 states, flat u16
 }
 ```
 
+The palette, packed words and reverse index are boxed so the whole `Section`
+stays at 56 bytes (the measured `Single` size below). `ReverseIndex` is a compact
+open-addressing table (one `u32` per slot: key + palette index + occupancy bit,
+multiply-shift hash), not a std `HashMap`; see the rules below.
+
 Rules:
 
-- Indices do not cross a `u64` boundary (MC 1.16+ format): a word holds `64 / bits` indices, the remaining bits are empty. Simpler and faster access (test: `get` ≈ 3.8 ns).
-- Bit width grows when the palette overflows; compaction (repacking) happens only in `PostTick` or on save, not on every `set`.
-- A reverse hash index for palettes > 16 entries. Without it, `set` in an 8-bit section takes 67 ns due to linear search; the target is ≤ 10 ns at any bit width.
-- Bulk unpacking (`unpack_into(&mut [BlockStateId; 4096])`) word by word is the basis of fast gather for meshing. Target: gather + masks ≤ 100 µs per 32³ mesh chunk (estimate from 62³ ≤ 0.5 ms, see analysis §13.2).
-- The opaque block counter and the `all_air`/`all_opaque` flags are updated on `set`: this lets the mesher skip empty and solid mesh chunks without unpacking.
+- Indices do not cross a `u64` boundary (MC 1.16+ format): a word holds `64 / bits` indices, the remaining bits are empty. Simpler and faster access (measured `get` ≈ 3.4 ns on the test VM).
+- Bit width grows when the palette overflows; compaction (repacking) happens only in `PostTick` or on save (`Section::compact`), not on every `set`.
+- A reverse index for palettes > 16 entries keeps `set` O(1). Without it, `set` in an 8-bit section takes ~67 ns (linear scan). The index is a small open-addressing table with interleaved key/index entries: separate key and value arrays caused 4K-aliasing stalls against the 4 KiB packed data of an 8-bit section (~260 ns/op on the test VM); one interleaved array removes them. Measured `set` ≈ 6 ns typical (VM; see [performance-budgets.md](../process/performance-budgets.md) and the T0-03 report for the aliasing caveat).
+- Bulk unpacking (`unpack_into(&mut [BlockStateId; 4096])`) word by word is the basis of fast gather for meshing (measured ≈ 3 µs per section on the test VM). Target: gather + masks ≤ 100 µs per 32³ mesh chunk (estimate from 62³ ≤ 0.5 ms, see analysis §13.2).
+- The `non_air` counter and the `all_air` flag are updated on `set` and let the mesher skip empty mesh chunks without unpacking. Opacity is registry/mod data, so `all_opaque` takes the caller's `is_opaque` predicate (the engine does not know block semantics); together with the counter it lets the mesher skip solid mesh chunks.
 
-Measured sizes (test, `docs/research/optimization-tests.md`):
+Measured sizes (test, `docs/research/optimization-tests.md`; reproduced by the
+`storage_sizes_match_spec_table` unit test). Bytes = the 56-byte `Section` plus
+palette (`len * 2`) and packed words (`words * 8`); allocator overhead and the
+optional reverse index are excluded:
 
 | Section | Bytes |
 | --- | --- |
@@ -43,7 +53,11 @@ Measured sizes (test, `docs/research/optimization-tests.md`):
 | Surface, 3 bit | 1,640 |
 | Dungeon, 4 bit | 2,124 |
 | 8 bit | 4,664 |
-| Worst case, direct | 6,616 (8,192 for a flat u16) |
+| Worst case, direct (flat u16) | 8,248 (8,192 data + 56) |
+
+`Direct` is implemented as the flat `Box<[BlockStateId; 4096]>` from the enum
+above (8,192 B of data). The 6,616 B figure in the research prototype was a 12-bit
+packed direct representation, which is not used here.
 
 ## Light in a section
 
