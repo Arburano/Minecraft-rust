@@ -141,3 +141,59 @@ pub fn naive_faces_sorted(
     f.sort_unstable();
     f
 }
+
+/// Plane axis, width axis and height axis per face direction
+/// (Up, Down, Right, Left, Front, Back), from the crate's
+/// `Face::vertices_packed` geometry.
+const PLANE_AXIS: [usize; 6] = [1, 1, 0, 0, 2, 2];
+const W_AXIS: [usize; 6] = [0, 0, 1, 1, 0, 0];
+const H_AXIS: [usize; 6] = [2, 2, 2, 2, 1, 1];
+/// Directions whose width extent is subtracted from the anchor (the anchor
+/// stores the max corner on the width axis): Down, Right, Front.
+const W_MAX: [bool; 6] = [false, true, true, false, true, false];
+
+/// Expands batch quads (64^3 render batch, coordinates modulo 64) back into
+/// unit faces with batch-local block coordinates `0..=63`.
+///
+/// Unlike [`covered_faces`], this decodes the anchor fields directly instead
+/// of going through the crate's `Face::vertices_packed`: a max-corner anchor
+/// field stored as 0 means 64 (see [`crate::batch`]), which does not fit the
+/// crate's 6-bit vertex packing. The layout table is verified against
+/// `covered_faces` on unshifted chunks in the batch tests.
+#[must_use]
+pub fn batch_faces(quads: &[Vec<crate::Quad>; 6]) -> Vec<UnitFace> {
+    let mut out = Vec::new();
+    for (dir, list) in quads.iter().enumerate() {
+        let (pa, wa, ha) = (PLANE_AXIS[dir], W_AXIS[dir], H_AXIS[dir]);
+        let positive = dir % 2 == 0;
+        for &quad in list {
+            let xyz = quad.xyz();
+            let mut a = [xyz[0] as u32, xyz[1] as u32, xyz[2] as u32];
+            for (axis, c) in a.iter_mut().enumerate() {
+                if *c == 0 && crate::batch::max_corner_field(dir, axis) {
+                    *c = 64;
+                }
+            }
+            let block_plane = if positive { a[pa] - 1 } else { a[pa] };
+            let (w, h) = (quad.width() as u32, quad.height() as u32);
+            let u0 = if W_MAX[dir] { a[wa] - w } else { a[wa] };
+            for u in u0..u0 + w {
+                for v in a[ha]..a[ha] + h {
+                    let mut p = [0u32; 3];
+                    p[pa] = block_plane;
+                    p[wa] = u;
+                    p[ha] = v;
+                    debug_assert!(p.iter().all(|&c| c < 64));
+                    out.push(UnitFace {
+                        x: p[0] as u8,
+                        y: p[1] as u8,
+                        z: p[2] as u8,
+                        dir: dir as u8,
+                        id: quad.voxel_id() as u16,
+                    });
+                }
+            }
+        }
+    }
+    out
+}
