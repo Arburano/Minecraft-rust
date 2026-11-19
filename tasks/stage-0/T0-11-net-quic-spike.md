@@ -1,6 +1,6 @@
 # T0-11. QUIC transport spike
 
-- **Status:** todo
+- **Status:** in-progress
 - **Depends on:** T0-01
 - **Owner:** agent
 

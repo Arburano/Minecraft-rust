@@ -24,7 +24,7 @@ The backlog is split by stage of the roadmap ([docs/process/roadmap.md](../docs/
 | [T0-08](stage-0/T0-08-light-incremental-bfs.md) | Incremental light add/remove | T0-03 | agent | todo |
 | [T0-09](stage-0/T0-09-sim-region-prototype.md) | Server regions prototype | T0-02 | agent | todo |
 | [T0-10](stage-0/T0-10-human-legal-and-azure.md) | Lawyer and Minecraft API access | — | human (not an agent) | todo |
-| [T0-11](stage-0/T0-11-net-quic-spike.md) | QUIC transport spike | T0-01 | agent | todo |
+| [T0-11](stage-0/T0-11-net-quic-spike.md) | QUIC transport spike | T0-01 | agent | in-progress |
 | [T0-12](stage-0/T0-12-worldgen-test-corpus.md) | Deterministic test terrain | T0-03 | agent | done |
 | [T0-13](stage-0/T0-13-modhost-interruption-latency.md) | Mod interruption latency: split criterion, diagnose overrun | T0-07 (open question 11 answered) | agent | todo |
 | [T0-14](stage-0/T0-14-gpu-hardware-evidence.md) | GPU hardware evidence for T0-06 (Vega 10 + GTX 1660 Ti) | T0-06 implementation | agent + human runs on the laptop | done |
