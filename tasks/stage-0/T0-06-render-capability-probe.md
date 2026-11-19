@@ -3,6 +3,7 @@
 - **Status:** in-progress
 - **Depends on:** T0-04
 - **Owner:** agent writes, human runs on hardware
+- **PR:** https://github.com/Arburano/Minecraft-rust/pull/8 (draft; hardware acceptance pending)
 
 ## Goal
 
