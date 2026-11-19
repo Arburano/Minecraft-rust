@@ -7,11 +7,17 @@
 //! `get`/`set` run over a random index order; `set` writes states already in the
 //! palette so no growth or allocation happens on the measured hot path.
 //! `unpack_into` measures a full word-by-word unpack of one section.
+//!
+//! The `section_corpus` group (T0-12) runs the same operations on real terrain
+//! sections from `worldgen::test_corpus` (fixed seed 0, column (0, 0)):
+//! deep underground, surface and tree canopy. The width-sweep groups above stay
+//! synthetic so every bit width is covered.
 
 use std::hint::black_box;
 
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use world::{BlockStateId, Section};
+use worldgen::test_corpus::test_column;
 
 const VOLUME: usize = 4096;
 
@@ -130,5 +136,49 @@ fn bench_unpack(c: &mut Criterion) {
     g.finish();
 }
 
-criterion_group!(benches, bench_get, bench_set, bench_unpack);
+/// T0-12: get/set/unpack on terrain sections of the fixed test corpus.
+fn bench_corpus(c: &mut Criterion) {
+    let column = test_column(0, 0, 0, -1..5);
+    let order = random_order();
+    let mut g = c.benchmark_group("section_corpus");
+    for (name, sy) in [("deep", 0), ("surface", 2), ("canopy", 3)] {
+        let section = column.section(sy).clone();
+        // The section's own states, so `set` stays on the no-growth hot path.
+        let mut states = [BlockStateId::AIR; VOLUME];
+        section.unpack_into(&mut states);
+        let mut states = states.to_vec();
+        states.sort_unstable();
+        states.dedup();
+
+        g.bench_with_input(BenchmarkId::new("get", name), &order, |b, order| {
+            b.iter(|| {
+                let mut acc = 0u64;
+                for &i in order {
+                    acc += black_box(&section).get(i).0 as u64;
+                }
+                acc
+            });
+        });
+        g.bench_with_input(BenchmarkId::new("set", name), &states, |b, states| {
+            let mut section = section.clone();
+            b.iter(|| {
+                let mut r = Rng(0x1234_5678_9abc_def1);
+                for _ in 0..VOLUME {
+                    let i = (r.next() % VOLUME as u64) as usize;
+                    let v = states[(r.next() % states.len() as u64) as usize];
+                    black_box(&mut section).set(i, v);
+                }
+            });
+        });
+        g.bench_with_input(BenchmarkId::new("unpack", name), &(), |b, _| {
+            let mut out = [BlockStateId::AIR; VOLUME];
+            b.iter(|| {
+                black_box(&section).unpack_into(black_box(&mut out));
+            });
+        });
+    }
+    g.finish();
+}
+
+criterion_group!(benches, bench_get, bench_set, bench_unpack, bench_corpus);
 criterion_main!(benches);

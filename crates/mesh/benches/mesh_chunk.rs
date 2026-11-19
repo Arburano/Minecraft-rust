@@ -1,5 +1,6 @@
-//! T0-04 benchmarks on a fixed synthetic terrain corpus (seeded Perlin
-//! heightmap + caves + water + trees, ~8% transparent blocks).
+//! T0-04 benchmarks on the fixed T0-12 test corpus (`worldgen::test_corpus`,
+//! seeded Perlin heightmap + caves + ores + water + trees, ~8% transparent
+//! blocks).
 //!
 //! Budget rows (docs/process/performance-budgets.md):
 //! - gather + masks of a 32^3 mesh chunk: <= 100 us p50
@@ -11,7 +12,7 @@
 //! after an edit (open question No. 8, budget <= 50 us).
 //!
 //! Corpus: 4x2x4 mesh chunks (blocks x,z 0..128, y 0..64), sections cut from
-//! one global field so neighboring chunks share consistent padding.
+//! the corpus columns so neighboring chunks share consistent padding.
 
 use binary_greedy_meshing::Mesher;
 use criterion::{Criterion, criterion_group, criterion_main};
@@ -19,10 +20,10 @@ use mesh::{
     CS, MaskCache, MeshChunkBuilder, MeshChunkQuads, P2, P3, PackedBatch, RenderBatch,
     SectionNeighborhood,
 };
-use noise::{NoiseFn, Perlin};
 use std::hint::black_box;
+use world::BlockStateId;
 use world::coords::MeshChunkPos;
-use world::{BlockStateId, SECTION_VOLUME, Section};
+use worldgen::test_corpus::{CorpusArea, composition, is_transparent, test_corpus};
 
 /// One pre-gathered chunk: voxels + opaque + transparent masks.
 type Gathered = (Box<[u16; P3]>, Box<[u64; P2]>, Box<[u64; P2]>);
@@ -30,157 +31,35 @@ type Gathered = (Box<[u16; P3]>, Box<[u64; P2]>, Box<[u64; P2]>);
 const GX: i32 = 4;
 const GY: i32 = 2;
 const GZ: i32 = 4;
-// Field extent in blocks (one section of margin around the chunk grid).
-const FX: i32 = 160; // x: -16..144
-const FY: i32 = 96; // y: -16..80
-const FZ: i32 = 160; // z: -16..144
-const SEA: i32 = 44;
+/// Fixed corpus seed (docs/process/testing-and-benchmarks.md).
+const SEED: u64 = 0;
 
-fn is_transparent(b: BlockStateId) -> bool {
-    matches!(b.0, 5..=7)
-}
-
-fn field_index(x: i32, y: i32, z: i32) -> usize {
-    (((y + 16) * FX + (x + 16)) * FZ + (z + 16)) as usize
-}
-
-fn section_index(sx: i32, sy: i32, sz: i32) -> usize {
-    (((sy + 1) * 10 + (sz + 1)) * 10 + (sx + 1)) as usize
-}
-
-struct Rng(u64);
-impl Rng {
-    fn next(&mut self) -> u64 {
-        self.0 ^= self.0 << 13;
-        self.0 ^= self.0 >> 7;
-        self.0 ^= self.0 << 17;
-        self.0
-    }
-}
-
-/// ids: 0 air, 1 stone, 2 dirt, 3 grass, 4 sand, 5 water(T), 6 leaves(T), 7 glass(T)
-fn build_corpus() -> (Vec<Section>, Vec<SectionNeighborhood>) {
-    let height_noise = Perlin::new(1);
-    let cave_noise = Perlin::new(2);
-    let mut field = vec![0u16; (FX * FY * FZ) as usize];
-    let mut height = vec![0i32; (FX * FZ) as usize];
-    for x in 0..FX {
-        for z in 0..FZ {
-            let (wx, wz) = ((x - 16) as f64, (z - 16) as f64);
-            let (mut a, mut f, mut s) = (1.0, 1.0 / 128.0, 0.0);
-            for _ in 0..4 {
-                s += a * height_noise.get([wx * f, wz * f]);
-                a *= 0.5;
-                f *= 2.0;
-            }
-            height[(x * FZ + z) as usize] = (36.0 + s * 16.0) as i32;
-        }
-    }
-    for y in -16..80i32 {
-        for x in -16..144i32 {
-            for z in -16..144i32 {
-                let h = height[((x + 16) * FZ + (z + 16)) as usize];
-                let mut b = 0u16;
-                if y <= h {
-                    b = if y == h {
-                        if h <= SEA + 1 { 4 } else { 3 }
-                    } else if y >= h - 3 {
-                        2
-                    } else {
-                        1
-                    };
-                    if y < h - 2
-                        && cave_noise.get([
-                            f64::from(x) / 24.0,
-                            f64::from(y) / 16.0,
-                            f64::from(z) / 24.0,
-                        ]) > 0.55
-                    {
-                        b = 0;
-                    }
-                } else if y <= SEA {
-                    b = 5;
-                }
-                field[field_index(x, y, z)] = b;
-            }
-        }
-    }
-    // Trees: deterministic per 32x32 surface column, trunks + leaf blobs.
-    for cx in 0..GX {
-        for cz in 0..GZ {
-            let mut r = Rng((u64::from(cx.unsigned_abs()) * 73856093)
-                ^ (u64::from(cz.unsigned_abs()) * 19349663)
-                | 1);
-            for _ in 0..24 {
-                let x = cx * 32 + 3 + (r.next() % 26) as i32;
-                let z = cz * 32 + 3 + (r.next() % 26) as i32;
-                let h = height[((x + 16) * FZ + (z + 16)) as usize];
-                if h <= SEA + 1 {
-                    continue;
-                }
-                for dy in 1..=5 {
-                    let i = field_index(x, h + dy, z);
-                    if field[i] == 0 {
-                        field[i] = 2;
-                    }
-                }
-                for dy in 4..=7i32 {
-                    for dx in -2..=2i32 {
-                        for dz in -2..=2i32 {
-                            if dx.abs() + dz.abs() > 3 {
-                                continue;
-                            }
-                            let i = field_index(x + dx, h + dy, z + dz);
-                            if field[i] == 0 {
-                                field[i] = 6;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-    // Composition over the mesh-chunk grid.
-    let (mut air, mut opaque, mut trans) = (0usize, 0usize, 0usize);
-    for y in 0..64i32 {
-        for x in 0..128i32 {
-            for z in 0..128i32 {
-                let b = field[field_index(x, y, z)];
-                if b == 0 {
-                    air += 1;
-                } else if is_transparent(BlockStateId(b)) {
-                    trans += 1;
-                } else {
-                    opaque += 1;
-                }
-            }
-        }
-    }
-    let total = (air + opaque + trans) as f64;
+fn build_corpus() -> Vec<SectionNeighborhood> {
+    // One section of margin around the chunk grid: x,z -1..=8, y -1..=4.
+    let area = CorpusArea {
+        x: -1..9,
+        y: -1..5,
+        z: -1..9,
+    };
+    let columns = test_corpus(SEED, &area);
+    // Composition over the mesh-chunk grid only (x,z 0..128, y 0..64).
+    let comp = composition(
+        columns
+            .iter()
+            .filter(|c| (0..8).contains(&c.x) && (0..8).contains(&c.z))
+            .flat_map(|c| c.sections()[1..5].iter()),
+    );
+    let total = comp.total() as f64;
     eprintln!(
         "corpus: air {:.1}%  opaque {:.1}%  transparent {:.1}%",
-        air as f64 / total * 100.0,
-        opaque as f64 / total * 100.0,
-        trans as f64 / total * 100.0
+        comp.air as f64 / total * 100.0,
+        comp.opaque as f64 / total * 100.0,
+        comp.transparent as f64 / total * 100.0
     );
-    // Cut sections (x,z: -1..=8, y: -1..=4).
-    let mut sections = Vec::with_capacity(600);
-    for sy in -1..=4i32 {
-        for sz in -1..=8i32 {
-            for sx in -1..=8i32 {
-                let mut arr = [BlockStateId::AIR; SECTION_VOLUME];
-                for ly in 0..16i32 {
-                    for lz in 0..16i32 {
-                        for lx in 0..16i32 {
-                            let i = field_index(sx * 16 + lx, sy * 16 + ly, sz * 16 + lz);
-                            arr[((ly * 16 + lz) * 16 + lx) as usize] = BlockStateId(field[i]);
-                        }
-                    }
-                }
-                sections.push(Section::from_blocks(&arr));
-            }
-        }
-    }
+    let z_len = (area.z.end - area.z.start) as usize;
+    let column = |sx: i32, sz: i32| {
+        &columns[(sx - area.x.start) as usize * z_len + (sz - area.z.start) as usize]
+    };
     let mut neighborhoods = Vec::new();
     for cy in 0..GY {
         for cz in 0..GZ {
@@ -191,16 +70,16 @@ fn build_corpus() -> (Vec<Section>, Vec<SectionNeighborhood>) {
                     z: cz,
                 };
                 neighborhoods.push(SectionNeighborhood::from_fn(chunk, |sp| {
-                    sections[section_index(sp.x, sp.y, sp.z)].clone()
+                    column(sp.x, sp.z).section(sp.y).clone()
                 }));
             }
         }
     }
-    (sections, neighborhoods)
+    neighborhoods
 }
 
 fn bench_mesh(c: &mut Criterion) {
-    let (_sections, neighborhoods) = build_corpus();
+    let neighborhoods = build_corpus();
     let n = neighborhoods.len();
     let mut builder = MeshChunkBuilder::new();
 
@@ -299,7 +178,7 @@ fn bench_mesh(c: &mut Criterion) {
 /// No. 8): re-copying only the edited slot's sub-ranges vs re-copying and
 /// packing the whole batch into 6 per-direction ranges.
 fn bench_render_batch(c: &mut Criterion) {
-    let (_sections, neighborhoods) = build_corpus();
+    let neighborhoods = build_corpus();
     let mut builder = MeshChunkBuilder::new();
     // Slot order (sy, sz, sx); corpus index (cy * GZ + cz) * GX + cx.
     let mut chunks: [MeshChunkQuads; 8] = std::array::from_fn(|_| MeshChunkQuads::default());
