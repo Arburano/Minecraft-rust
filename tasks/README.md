@@ -31,6 +31,24 @@ The backlog is split by stage of the roadmap ([docs/process/roadmap.md](../docs/
 
 Recommended order for a single agent: T0-01 → T0-03 → T0-12 → T0-04 → T0-05 → T0-08 → T0-02 → T0-09 → T0-07 → T0-13 → T0-11 → T0-06 → T0-14.
 
+### Remaining stage 0: order and parallel work (2026-11-19)
+
+Done: T0-01…T0-06, T0-14. Open: T0-07 (closes with T0-13), T0-08, T0-09, T0-10, T0-11, T0-12, T0-13.
+
+| Wave | Tasks that can run in parallel | Where | Waits for |
+| --- | --- | --- | --- |
+| 1 | **T0-12** worldgen corpus | cloud | — |
+| 1 | **T0-09** server regions | cloud; final 1 vs 8 region benchmark preferably on the owner's PC (8 threads) | — |
+| 1 | **T0-11** QUIC spike | cloud | — |
+| 1 | **T0-10** lawyer and Minecraft API access | human only | — |
+| 1 | Owner answers open question 11 | human | — |
+| 2 | **T0-13** (+ closes T0-07) | cloud; final latency measurement preferably also on the owner's PC | answer to open question 11 |
+| 2 | **T0-08** light | cloud | T0-12 merged (its benchmark must use the T0-12 corpus); the algorithm and proptests may start in wave 1 |
+| 3 | Bare-metal re-run of VM-only benchmarks (T0-03/04/05/08, `cargo bench -p world -p mesh -p light`) | owner's PC, local agent | T0-12 and T0-08 merged (benches switch to the T0-12 corpus) |
+| 4 | Stage 0 exit check; create stage 1 tasks from the carry-over list below | cloud + owner | all of the above |
+
+Parallel tasks touch different crates (`worldgen`, `sim`, `net`, `modhost`, `light`). Expect only small merge conflicts in shared files (`tasks/README.md`, `docs/process/performance-budgets.md`, `docs/open-questions.md`, `Cargo.toml` workspace dependencies): merge `main` before opening a PR and keep both sides' rows.
+
 ## Next stages
 
 Stage 1 tasks are created at the end of stage 0, once the benchmark numbers are confirmed (stage 0 exit criterion).
