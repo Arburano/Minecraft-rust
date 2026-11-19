@@ -1,8 +1,8 @@
 # T0-13. Mod interruption latency: split the criterion, diagnose and reduce overrun
 
 - **Status:** todo
-- **Depends on:** T0-07 (implementation merged in PR #9); owner answer to [open question No. 11](../../docs/open-questions.md) for steps 1 and 5
-- **Owner:** agent (step 1 needs the owner's decision first)
+- **Depends on:** T0-07 (implementation merged in PR #9); [open question No. 11](../../docs/open-questions.md) — answered 2026-11-19, the task can start
+- **Owner:** agent
 
 ## Background
 
@@ -21,8 +21,8 @@ Make CI deterministic, turn the 1 ms bound into a measured latency target, and r
 
 ## Steps
 
-1. **Split the test (only after the owner answers No. 11; until then use the "For now" value).**
-   - Functional test in CI: the infinite loop is interrupted, all 4,000 staged writes are discarded, the healthy worker continues the tick. Overrun bound with margin — "For now" ≤ 10 ms (`// OPEN-QUESTION: 11` next to the constant). This still catches real regressions (`park_timeout` gave 4.7 ms; a hang is seconds).
+1. **Split the test (owner decision No. 11: CI bound ≤ 10 ms; p99 ≤ 1 ms quiet is a measured target, not a CI assertion).**
+   - Functional test in CI: the infinite loop is interrupted, all 4,000 staged writes are discarded, the healthy worker continues the tick. Overrun bound ≤ 10 ms per decision No. 11 (comment next to the constant: `// Decision: open question 11`). This still catches real regressions (`park_timeout` gave 4.7 ms; a hang is seconds).
    - Latency measurement outside default CI: an `#[ignore]` test or a Criterion/custom bench that performs ≥ 1,000 interruptions and prints p50 / p99 / max overrun. Run it quiet and under load (all cores busy) and record both.
    - Do **not** add retries, do not `#[ignore]` the functional test, do not loosen the bound without the owner's decision.
 2. **Diagnose where the overrun comes from.** Record the instant the epoch callback returns `UpdateDeadline::Interrupt` separately from the instant `ModWorker::call` returns. Report three parts: watchdog wake latency (deadline → callback), trap/unwind cost (callback → return), measuring-thread preemption. Diagnostics must not allocate in the hot path.

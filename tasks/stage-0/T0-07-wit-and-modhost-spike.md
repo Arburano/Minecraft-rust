@@ -23,7 +23,7 @@ Bring `wit/engine-api.wit` to 0.1: a Rust guest built with `wit-bindgen` (target
 
 ## Acceptance criteria
 
-- [ ] An infinite loop in a mod is interrupted ≤ 1 ms after the deadline, and the server continues its tick (test).
+- [ ] An infinite loop in a mod is interrupted and the server continues its tick (test). Reworded by owner decision No. 11: CI asserts overrun ≤ 10 ms; the 1 ms bound is a p99 latency target on a quiet desktop, measured and reported in performance-budgets (done in [T0-13](T0-13-modhost-interruption-latency.md)).
 - [x] World changes from the interrupted call are not applied (test).
 - [x] Hook dispatch ≤ 1 µs, ≤ 5 ns per event (or a documented deviation).
 

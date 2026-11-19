@@ -367,7 +367,7 @@ The work is split into 8 stages, about 3–4 years in total for a team of 3–5 
 ### Stage 0. Research and prototypes (2–3 months)
 
 - [ ] Benchmarks: meshing, palette storage, wasmtime calls, BFS lighting
-- [ ] GPU-driven renderer prototype on wgpu + fallback for weak GPUs; Features/Limits dump on iGPU and GTX 1050 (Vulkan, DX12, GL)
+- [ ] GPU-driven renderer prototype on wgpu + fallback for weak GPUs; Features/Limits dump on iGPU and GTX 1050 (Vulkan, DX12, GL) — B/C prototype and dumps done in T0-06/T0-14 on Radeon Vega 10 + GTX 1660 Ti (open question 12; GTX 1050 not verified); path A is stage 2
 - [ ] First version of the WIT contract `engine:api@0.1`
 - [ ] Submit the Minecraft API access form; legal consultation on assets
 
@@ -700,7 +700,7 @@ The 2 GB target is realistic; an internal budget of 1 GiB is proposed. **Server*
 | Lifting `string`/`record` in a Rust guest | `list<record>` of 1000 elements | ≤ 20 ns per element |
 | Mod cold start | `Component::new` for 1–5 MB, cache | ≤ 50 ms per mod with cache |
 | Instance memory | 20 mods × 16 workers | ≤ 1 GB per node |
-| Hung mod | Infinite loop | interrupted ≤ 1 ms after the deadline |
+| Hung mod | Infinite loop | interrupted, tick continues; overrun ≤ 1 ms p99 on a quiet desktop, ≤ 10 ms hard bound in CI (open question 11) |
 
 ### 13.11 Rust level
 

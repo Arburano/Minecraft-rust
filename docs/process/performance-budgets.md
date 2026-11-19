@@ -20,7 +20,7 @@ The single source of numbers. Change here and in PRD §1 at the same time. Statu
 | Cold start to menu | ≤ 5 s | Target |
 | Joining a server until control | ≤ 5 s with asset cache | Target |
 | GPU geometry time | ≤ 8 ms per frame on iGPU | Measured (Radeon RX Vega 10, path B as the engine would select: 2.417 ms p50 / 2.619 ms p95 on DX12, worst backend GL 2.612 / 2.821; path C 1.637–1.948 ms p50; bare-metal ASUS FX505DU, 3 runs per combination, [T0-14 summary](../research/gpu/summary-2026-11-19.md)) |
-| CPU command recording | ≤ 1 ms per frame | Measured (Ryzen 7 3750H, worst adapter/backend Vega 10 + DX12: 0.535 ms p50 / 0.821 ms p95 median of 3 runs, worst single-run p95 0.923 ms; [T0-14 summary](../research/gpu/summary-2026-11-19.md)) |
+| CPU command recording | ≤ 1 ms per frame | Measured (Ryzen 7 3750H, worst adapter/backend Vega 10 + DX12: 0.535 ms p50 / 0.821 ms p95 median of 3 runs, worst single-run p95 0.923 ms; judged at p95 — the budget does not name a statistic; single-frame maxima exceed 1 ms: 1.323 ms Vega 10 DX12 B, 1.061 ms Vega 10 DX12 C; [T0-14 summary](../research/gpu/summary-2026-11-19.md)) |
 | `fast_mesh` of a 32³ mesh chunk | ≤ 0.2 ms p50 on a 4-core desktop | Measured (VM: ≈ 42 µs on the T0-04 terrain corpus; `mesh` bench `mesh_chunk/fast_mesh`) |
 | Gather + masks of a 32³ mesh chunk | ≤ 100 µs p50 | Measured (VM: ≈ 60 µs on the T0-04 corpus; `mesh` bench `mesh_chunk/gather_masks`, [details](../../task-reports/t0-04-mesh-chunk-32.md)) |
 | Mask update per edit | ≤ 20 ns | Measured (VM: ≈ 2.6 ns; `mesh` bench `mesh_chunk/mask_update`) |
@@ -55,7 +55,7 @@ those targets. They stay unchanged.
 | Batched hook dispatch | ≤ 1 µs | Measured deviation: 1.1508 µs end-to-end empty hook on Ryzen 7 3750H, Windows; T0-07 below |
 | Event in a batch | ≤ 5 ns | Measured deviation: 308.27 ns/event in a 1,000-string-event batch on the same machine; T0-07 below |
 | Epoch cost | ≤ 10% | Measured (VM: 0–9%; earlier research, not remeasured in T0-07) |
-| Deadline-to-interruption overrun | ≤ 1 ms | Not consistently met: final quiet repetitions ≤ 0.6894 ms; earlier corrected-timer run during compilation reached 1.5101 ms; Linux VM 4 vCPU with all cores busy: 1.66–5.80 ms (5/5 runs failed). Follow-up: T0-13, open question 11 |
+| Deadline-to-interruption overrun | ≤ 1 ms p99 on a quiet desktop (measured, not a CI assertion); CI functional bound ≤ 10 ms — owner decision, open question 11 | To be measured in T0-13 with ≥ 1,000 interruptions. Earlier data: final quiet repetitions ≤ 0.6894 ms; earlier corrected-timer run during compilation reached 1.5101 ms; Linux VM 4 vCPU with all cores busy: 1.66–5.80 ms (5/5 runs failed against the old hard 1 ms assertion) |
 | Cold start of a mod with cache | ≤ 50 ms | Hypothesis |
 | Default mod | 0.5 ms per tick per region, 32 MB | Target |
 
