@@ -24,7 +24,7 @@ The backlog is split by stage of the roadmap ([docs/process/roadmap.md](../docs/
 | [T0-08](stage-0/T0-08-light-incremental-bfs.md) | Incremental light add/remove | T0-03 | agent | todo |
 | [T0-09](stage-0/T0-09-sim-region-prototype.md) | Server regions prototype | T0-02 | agent | todo |
 | [T0-10](stage-0/T0-10-human-legal-and-azure.md) | Lawyer and Minecraft API access | — | human (not an agent) | todo |
-| [T0-11](stage-0/T0-11-net-quic-spike.md) | QUIC transport spike | T0-01 | agent | in-progress |
+| [T0-11](stage-0/T0-11-net-quic-spike.md) | QUIC transport spike | T0-01 | agent | done |
 | [T0-12](stage-0/T0-12-worldgen-test-corpus.md) | Deterministic test terrain | T0-03 | agent | done |
 | [T0-13](stage-0/T0-13-modhost-interruption-latency.md) | Mod interruption latency: split criterion, diagnose overrun | T0-07 (open question 11 answered) | agent | todo |
 | [T0-14](stage-0/T0-14-gpu-hardware-evidence.md) | GPU hardware evidence for T0-06 (Vega 10 + GTX 1660 Ti) | T0-06 implementation | agent + human runs on the laptop | done |
@@ -33,7 +33,7 @@ Recommended order for a single agent: T0-01 → T0-03 → T0-12 → T0-04 → T0
 
 ### Remaining stage 0: order and parallel work (2026-11-19)
 
-Done: T0-01…T0-06, T0-12, T0-14. Open: T0-07 (closes with T0-13), T0-08, T0-09, T0-10, T0-11, T0-13.
+Done: T0-01…T0-06, T0-11, T0-12, T0-14. Open: T0-07 (closes with T0-13), T0-08, T0-09, T0-10, T0-13.
 
 | Wave | Tasks that can run in parallel | Where | Waits for |
 | --- | --- | --- | --- |
@@ -60,4 +60,5 @@ Turn these into stage 1 tasks; do not drop them:
 - Re-measure B vs C (indexed B variant, real terrain corpus) and decide the iGPU default — open question 13.
 - CPU command recording: decide the statistic (open question 14); single frames reached 1.32 ms on Vega 10 + DX12.
 - Bare-metal confirmation of VM-only numbers from T0-03/T0-04/T0-05 (`cargo bench -p world`, `cargo bench -p mesh` on the owner's laptop).
+- Bare-metal re-run of the T0-11 QUIC spike with a shaped link (bandwidth cap + jitter, `tc netem`), and BBR fairness on a shared congested bottleneck — [net-quic-spike-2026-11-19](../docs/research/net-quic-spike-2026-11-19.md).
 - GTX 1050 targets remain unverified (open question 12).

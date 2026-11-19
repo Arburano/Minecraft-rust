@@ -45,6 +45,8 @@ those targets. They stay unchanged.
 | Entity transfer between `World`s | ≤ 5 µs | Hypothesis |
 | Entity handoff between nodes | ≤ 50 ms p99, 0 dupes | Target (stage 6) |
 | Network CPU | ≤ 1 core per 10,000 packets/s | Hypothesis |
+| Nearest 3×3 columns at 2% loss, RTT 100 ms | ≤ 1 s | Measured (VM, T0-11 spike, 8 KB random columns, BBR: 0.46–0.77 s over 6 seeds; quinn's default Cubic misses it — 1.13 s worst; [details](../research/net-quic-spike-2026-11-19.md)) |
+| Entity-delta latency while columns stream (2% loss, RTT 100 ms) | not blocked by chunk streams | Measured (VM, T0-11 spike, BBR: p95 52–58 ms ≈ the 50 ms one-way path delay; [details](../research/net-quic-spike-2026-11-19.md)) |
 | Traffic per player, steady state | ≤ 50 kbit/s (≤ 20 moving entities nearby) | Target |
 | Node RAM, 500 scattered players | ≤ 16 GB | Hypothesis |
 
