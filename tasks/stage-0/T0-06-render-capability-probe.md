@@ -1,9 +1,9 @@
 # T0-06. GPU capability probe and vertex pulling prototype
 
-- **Status:** in-progress
+- **Status:** done
 - **Depends on:** T0-04
 - **Owner:** agent writes, human runs on hardware
-- **PR:** https://github.com/Arburano/Minecraft-rust/pull/8 (merged; hardware acceptance pending)
+- **PR:** https://github.com/Arburano/Minecraft-rust/pull/8 (merged); hardware evidence in [T0-14](T0-14-gpu-hardware-evidence.md), https://github.com/Arburano/Minecraft-rust/pull/11
 
 ## Goal
 
@@ -25,18 +25,23 @@ In the `render` crate: (1) a `gpu-probe` utility that prints `features`, `limits
 The prototype binaries, GPU-free path-selection/shader tests and an ignored
 B/C image-comparison test are implemented. Run/save instructions and measurement
 semantics are in [docs/research/gpu/README.md](../../docs/research/gpu/README.md).
-The task remains `in-progress` until the required human hardware evidence and
-green CI are available; no target-hardware numbers are assumed. Implementation
-and verification details are in the [task report](../../task-reports/t0-06-render-capability-probe.md).
+The hardware evidence was collected on the owner's laptop via
+[T0-14](T0-14-gpu-hardware-evidence.md): see the
+[2026-11-19 summary](../../docs/research/gpu/summary-2026-11-19.md). Both budget
+targets are met on the Vega 10 / Ryzen 7 3750H; GTX 1050 targets remain
+unverified per decision No. 12. Implementation and verification details are in
+the [task report](../../task-reports/t0-06-render-capability-probe.md).
 
 ## Acceptance criteria
 
 - [x] Unit tests for path selection pass in CI without a GPU (CI green on PR #8 and on `main` after the merge).
-- [ ] Human has attached dumps and numbers from two machines (per decision No. 12: Vega 10 and GTX 1660 Ti of one laptop, via [T0-14](T0-14-gpu-hardware-evidence.md)); the "GPU geometry time" and "CPU command recording" rows are updated.
+- [x] Human has attached dumps and numbers from two machines (per decision No. 12: Vega 10 and GTX 1660 Ti of one laptop, via [T0-14](T0-14-gpu-hardware-evidence.md)); the "GPU geometry time" and "CPU command recording" rows are updated.
 
 ## Remaining work
 
-The agent part is done and merged. The hardware evidence is tracked as a separate task: [T0-14](T0-14-gpu-hardware-evidence.md). T0-06 is closed together with T0-14.
+None. The agent part is merged (PR #8) and the hardware evidence is complete
+([T0-14](T0-14-gpu-hardware-evidence.md), PR #11). T0-06 is closed together
+with T0-14.
 
 **Owner decision (2026-11-19, [open question No. 12](../../docs/open-questions.md)):** there is no GTX 1050. The evidence is taken on one laptop (ASUS TUF FX505DU, Ryzen 7 3750H): the **Radeon RX Vega 10** counts as the iGPU, the **GTX 1660 Ti** replaces the GTX 1050. The second acceptance criterion below is read as "two adapters: Vega 10 and GTX 1660 Ti". GTX 1050 targets in the PRD remain unchanged and unverified.
 

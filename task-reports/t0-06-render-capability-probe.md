@@ -1,7 +1,9 @@
 # T0-06: GPU capability probe and vertex pulling prototype
 
-Status: agent implementation locally verified. The task remains `in-progress`
-pending human evidence from two target machines and green CI.
+Status: done. Implementation merged in PR #8; the hardware acceptance evidence
+was collected on the owner's laptop (Vega 10 + GTX 1660 Ti, decision No. 12)
+via T0-14, PR #11 — see the
+[2026-11-19 summary](../docs/research/gpu/summary-2026-11-19.md).
 
 ## What was done
 
@@ -91,9 +93,27 @@ pending human evidence from two target machines and green CI.
   It is not a GTX 1050 machine, and testing both adapters in one laptop is not
   evidence from two machines. Any local runs are smoke tests, not acceptance
   measurements or replacements for the requested target hardware.
-- Human follow-up remains mandatory: capability dumps and three comparable
-  runs per supported backend/path from an iGPU machine and a GTX 1050 machine,
-  with machine, environment, driver, clock/power and spread details. Update
-  the performance-budget rows from that evidence before marking T0-06 `done`.
+- Human follow-up was mandatory and is now complete: per owner decision
+  No. 12 (2026-11-19) there is no GTX 1050, so the evidence was taken on the
+  two adapters of this one laptop via
+  [T0-14](../tasks/stage-0/T0-14-gpu-hardware-evidence.md): probe, three
+  release bare-metal runs per supported adapter/backend/path (DX12, Vulkan
+  and GL, including Vega 10 on GL), no-timestamp runs and B/C image tests.
+  Both budget rows are now Measured; GTX 1050 targets stay unverified.
 - This is an offscreen geometry prototype, not a complete textured/lit renderer
   or a pipelined game-frame benchmark. GPU-driven culling remains out of scope.
+
+## Closure (2026-11-19, via T0-14)
+
+- The "no timestamps" runtime path was exercised on real hardware with the
+  T0-14 `--no-timestamps` flag on both adapters (`gpu_geometry_ms: null`,
+  CPU recording present, nonblank output).
+- Measured on the Vega 10 (path B, as the engine would select): GPU geometry
+  2.417 ms p50 / 2.619 ms p95 on DX12, worst backend GL 2.612 / 2.821 — the
+  ≤ 8 ms iGPU target is met. CPU command recording worst case (Vega 10, DX12):
+  0.535 ms p50 / 0.821 ms p95, worst single-run p95 0.923 ms — the ≤ 1 ms
+  target is met. Numbers are medians of three runs; details and spreads in
+  the [T0-14 summary](../docs/research/gpu/summary-2026-11-19.md).
+- Vulkan works on both adapters once `VK_LAYER_AMD_switchable_graphics` is
+  disabled via `VK_LOADER_LAYERS_DISABLE`; no driver update was needed.
+- T0-06 and T0-14 are `done`; PR #11 carries the evidence and doc updates.

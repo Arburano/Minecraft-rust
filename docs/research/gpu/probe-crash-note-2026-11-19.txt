@@ -1,0 +1,25 @@
+gpu-probe exit-crash note, 2026-11-19 (ASUS TUF FX505DU, AMD 27.20.1032.2)
+
+After the NVIDIA Control Panel program setting "Integrated graphics" was
+applied to gpu-probe.exe and quad-bench.exe (to expose the Vega 10 on GL),
+gpu-probe.exe writes its complete, valid JSON to stdout and then crashes with
+a segmentation fault during process exit (exit code 139 / 0xC0000005).
+Reproduced twice:
+
+  VK_LOADER_LAYERS_DISABLE=VK_LAYER_AMD_switchable_graphics
+  target\release\gpu-probe.exe > laptop-probe-2026-11-19.json   -> JSON complete, exit 139
+  same command > target\probe-recheck.json                      -> JSON complete, exit 139
+
+Before the program setting (GL on the GTX 1660 Ti) the probe exited cleanly.
+quad-bench.exe runs on every backend/adapter, including Vega 10 on GL, exit
+cleanly; only the probe's exit path crashes, consistent with an AMD driver
+teardown issue when the GL context is on the Vega 10.
+
+The committed laptop-probe-2026-11-19.json parses fully and lists all
+adapters; the crash happens after the report is written, so the evidence is
+complete. Adapter indices in this probe (post-setting): Vulkan 0=Vega 10,
+1=GTX 1660 Ti; DX12 0=Vega 10, 1=GTX 1660 Ti, 2=Microsoft Basic Render
+Driver; GL 0=Vega 10 (GTX 1660 Ti not exposed while the setting is active).
+The DX12/Vulkan/GL-GTX runs committed earlier were captured before the
+setting, with the opposite DX12/Vulkan order (0=GTX 1660 Ti, 1=Vega 10) and
+GL 0=GTX 1660 Ti; every run JSON records its actual adapter name and index.

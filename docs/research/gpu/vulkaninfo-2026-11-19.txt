@@ -1,0 +1,75 @@
+=== vulkaninfo --summary (default environment) ===
+WARNING: [Loader Message] Code 0 : loader_add_layer_properties: 'layers' tag not supported until file version 1.0.1, but C:\WINDOWS\System32\DriverStore\FileRepository\nvam.inf_amd64_900a074fe80431cd\nv-vk64.json is reporting version 1
+WARNING: [Loader Message] Code 0 : windows_read_data_files_in_registry: Registry lookup failed to get layer manifest files.
+WARNING: [Loader Message] Code 0 : Layer VK_LAYER_AMD_switchable_graphics uses API version 1.2 which is older than the application specified API version of 1.3. May cause issues.
+ERROR at C:\j\msdk\build\Khronos-Tools\repo\vulkaninfo\vulkaninfo.h:245:vkEnumeratePhysicalDevices failed with INCOMPLETE
+
+=== vulkaninfo --summary with VK_LOADER_LAYERS_DISABLE=VK_LAYER_AMD_switchable_graphics ===
+WARNING: [Loader Message] Code 0 : loader_add_layer_properties: 'layers' tag not supported until file version 1.0.1, but C:\WINDOWS\System32\DriverStore\FileRepository\nvam.inf_amd64_900a074fe80431cd\nv-vk64.json is reporting version 1
+WARNING: [Loader Message] Code 0 : windows_read_data_files_in_registry: Registry lookup failed to get layer manifest files.
+WARNING: [Loader Message] Code 0 : Layer "VK_LAYER_AMD_switchable_graphics" forced disabled because name matches filter of env var 'VK_LOADER_LAYERS_DISABLE'.
+WARNING: [Loader Message] Code 0 : vkGetPhysicalDeviceSurfaceCapabilities2KHR: Emulation found unrecognized structure type in pSurfaceInfo->pNext - this struct will be ignored
+==========
+VULKANINFO
+==========
+
+Vulkan Instance Version: 1.3.301
+
+
+Instance Extensions: count = 19
+-------------------------------
+VK_EXT_debug_report                    : extension revision 10
+VK_EXT_debug_utils                     : extension revision 2
+VK_EXT_direct_mode_display             : extension revision 1
+VK_EXT_surface_maintenance1            : extension revision 1
+VK_EXT_swapchain_colorspace            : extension revision 4
+VK_KHR_device_group_creation           : extension revision 1
+VK_KHR_display                         : extension revision 23
+VK_KHR_external_fence_capabilities     : extension revision 1
+VK_KHR_external_memory_capabilities    : extension revision 1
+VK_KHR_external_semaphore_capabilities : extension revision 1
+VK_KHR_get_display_properties2         : extension revision 1
+VK_KHR_get_physical_device_properties2 : extension revision 2
+VK_KHR_get_surface_capabilities2       : extension revision 1
+VK_KHR_portability_enumeration         : extension revision 1
+VK_KHR_surface                         : extension revision 25
+VK_KHR_surface_protected_capabilities  : extension revision 1
+VK_KHR_win32_surface                   : extension revision 6
+VK_LUNARG_direct_driver_loading        : extension revision 1
+VK_NV_external_memory_capabilities     : extension revision 1
+
+Instance Layers: count = 4
+--------------------------
+VK_LAYER_EOS_Overlay           Vulkan overlay layer for Epic Online Services 1.2.136  version 1
+VK_LAYER_NV_optimus            NVIDIA Optimus layer                          1.3.278  version 1
+VK_LAYER_VALVE_steam_fossilize Steam Pipeline Caching Layer                  1.4.303  version 1
+VK_LAYER_VALVE_steam_overlay   Steam Overlay Layer                           1.3.207  version 1
+
+Devices:
+========
+GPU0:
+	apiVersion         = 1.3.278
+	driverVersion      = 555.97.0.0
+	vendorID           = 0x10de
+	deviceID           = 0x2191
+	deviceType         = PHYSICAL_DEVICE_TYPE_DISCRETE_GPU
+	deviceName         = NVIDIA GeForce GTX 1660 Ti
+	driverID           = DRIVER_ID_NVIDIA_PROPRIETARY
+	driverName         = NVIDIA
+	driverInfo         = 555.97
+	conformanceVersion = 1.3.8.0
+	deviceUUID         = bb3d61ae-73ec-a86f-6b63-b188f4ba2a7d
+	driverUUID         = 5eebfc3f-cbdc-527c-b5b4-aa4d732679dc
+GPU1:
+	apiVersion         = 1.2.133
+	driverVersion      = 2.0.137
+	vendorID           = 0x1002
+	deviceID           = 0x15d8
+	deviceType         = PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU
+	deviceName         = AMD Radeon(TM) RX Vega 10 Graphics
+	driverID           = DRIVER_ID_AMD_PROPRIETARY
+	driverName         = AMD proprietary driver
+	driverInfo         = 20.10.32
+	conformanceVersion = 1.2.0.2
+	deviceUUID         = 05000000-0000-0000-0000-000000000000
+	driverUUID         = 414d442d-5749-4e2d-4452-560000000000

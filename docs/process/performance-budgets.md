@@ -19,8 +19,8 @@ The single source of numbers. Change here and in PRD §1 at the same time. Statu
 | Client RAM, 12 chunks | ≤ 1 GiB internal budget; ≤ 2 GB external target | Hypothesis: 0.5–0.9 GiB |
 | Cold start to menu | ≤ 5 s | Target |
 | Joining a server until control | ≤ 5 s with asset cache | Target |
-| GPU geometry time | ≤ 8 ms per frame on iGPU | Hypothesis (T0-06 B/C harness implemented; target-hardware evidence pending, [run instructions](../research/gpu/README.md)) |
-| CPU command recording | ≤ 1 ms per frame | Hypothesis (T0-06 recording harness implemented; target-hardware evidence pending, [run instructions](../research/gpu/README.md)) |
+| GPU geometry time | ≤ 8 ms per frame on iGPU | Measured (Radeon RX Vega 10, path B as the engine would select: 2.417 ms p50 / 2.619 ms p95 on DX12, worst backend GL 2.612 / 2.821; path C 1.637–1.948 ms p50; bare-metal ASUS FX505DU, 3 runs per combination, [T0-14 summary](../research/gpu/summary-2026-11-19.md)) |
+| CPU command recording | ≤ 1 ms per frame | Measured (Ryzen 7 3750H, worst adapter/backend Vega 10 + DX12: 0.535 ms p50 / 0.821 ms p95 median of 3 runs, worst single-run p95 0.923 ms; [T0-14 summary](../research/gpu/summary-2026-11-19.md)) |
 | `fast_mesh` of a 32³ mesh chunk | ≤ 0.2 ms p50 on a 4-core desktop | Measured (VM: ≈ 42 µs on the T0-04 terrain corpus; `mesh` bench `mesh_chunk/fast_mesh`) |
 | Gather + masks of a 32³ mesh chunk | ≤ 100 µs p50 | Measured (VM: ≈ 60 µs on the T0-04 corpus; `mesh` bench `mesh_chunk/gather_masks`, [details](../../task-reports/t0-04-mesh-chunk-32.md)) |
 | Mask update per edit | ≤ 20 ns | Measured (VM: ≈ 2.6 ns; `mesh` bench `mesh_chunk/mask_update`) |
@@ -29,6 +29,12 @@ The single source of numbers. Change here and in PRD §1 at the same time. Statu
 | `get` in a section | ≈ 3.8 ns | Measured (VM: ≈ 3.4 ns paletted, 0.5 ns single, 0.7 ns direct; `world` bench `section_get`) |
 | `set` in a section, any bit width | ≤ 10 ns | Measured (VM: ≈ 6 ns typical; 6–8-bit readings of 13–15 ns are 4K-aliasing stalls on this VM, see [T0-03 report](../../task-reports/t0-03-world-palette-section.md); bare-metal confirmation pending) |
 | `unpack_into` per section | ≤ 5 µs | Measured (VM: ≈ 2.9–4.1 µs paletted, < 0.1 µs single/direct; `world` bench `section_unpack_into`) |
+
+GTX 1050 targets (FPS on iGPU / GTX 1050 and 64-chunk LOD distance) remain
+**not verified on GTX 1050**: no such hardware is available (owner decision,
+[open question No. 12](../open-questions.md)); the T0-14 discrete-GPU evidence
+was taken on a GTX 1660 Ti, which is considerably faster and does not verify
+those targets. They stay unchanged.
 
 ## Server
 
