@@ -700,7 +700,7 @@ The 2 GB target is realistic; an internal budget of 1 GiB is proposed. **Server*
 | Lifting `string`/`record` in a Rust guest | `list<record>` of 1000 elements | ≤ 20 ns per element |
 | Mod cold start | `Component::new` for 1–5 MB, cache | ≤ 50 ms per mod with cache |
 | Instance memory | 20 mods × 16 workers | ≤ 1 GB per node |
-| Hung mod | Infinite loop | interrupted ≤ 1 ms after the deadline |
+| Hung mod | Infinite loop | interrupted, tick continues; overrun ≤ 1 ms p99 on a quiet desktop, ≤ 10 ms hard bound in CI (open question 11) |
 
 ### 13.11 Rust level
 

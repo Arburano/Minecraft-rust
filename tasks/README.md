@@ -26,7 +26,7 @@ The backlog is split by stage of the roadmap ([docs/process/roadmap.md](../docs/
 | [T0-10](stage-0/T0-10-human-legal-and-azure.md) | Lawyer and Minecraft API access | — | human (not an agent) | todo |
 | [T0-11](stage-0/T0-11-net-quic-spike.md) | QUIC transport spike | T0-01 | agent | todo |
 | [T0-12](stage-0/T0-12-worldgen-test-corpus.md) | Deterministic test terrain | T0-03 | agent | todo |
-| [T0-13](stage-0/T0-13-modhost-interruption-latency.md) | Mod interruption latency: split criterion, diagnose overrun | T0-07, open question 11 | agent (after owner decision) | todo |
+| [T0-13](stage-0/T0-13-modhost-interruption-latency.md) | Mod interruption latency: split criterion, diagnose overrun | T0-07 (open question 11 answered) | agent | todo |
 | [T0-14](stage-0/T0-14-gpu-hardware-evidence.md) | GPU hardware evidence for T0-06 (Vega 10 + GTX 1660 Ti) | T0-06 implementation | agent + human runs on the laptop | done |
 
 Recommended order for a single agent: T0-01 → T0-03 → T0-12 → T0-04 → T0-05 → T0-08 → T0-02 → T0-09 → T0-07 → T0-13 → T0-11 → T0-06 → T0-14.
@@ -41,8 +41,7 @@ Done: T0-01…T0-06, T0-14. Open: T0-07 (closes with T0-13), T0-08, T0-09, T0-10
 | 1 | **T0-09** server regions | cloud; final 1 vs 8 region benchmark preferably on the owner's PC (8 threads) | — |
 | 1 | **T0-11** QUIC spike | cloud | — |
 | 1 | **T0-10** lawyer and Minecraft API access | human only | — |
-| 1 | Owner answers open question 11 | human | — |
-| 2 | **T0-13** (+ closes T0-07) | cloud; final latency measurement preferably also on the owner's PC | answer to open question 11 |
+| 2 | **T0-13** (+ closes T0-07) | cloud; final latency measurement preferably also on the owner's PC | — (open question 11 answered); can run in wave 1 |
 | 2 | **T0-08** light | cloud | T0-12 merged (its benchmark must use the T0-12 corpus); the algorithm and proptests may start in wave 1 |
 | 3 | Bare-metal re-run of VM-only benchmarks (T0-03/04/05/08, `cargo bench -p world -p mesh -p light`) | owner's PC, local agent | T0-12 and T0-08 merged (benches switch to the T0-12 corpus) |
 | 4 | Stage 0 exit check; create stage 1 tasks from the carry-over list below | cloud + owner | all of the above |

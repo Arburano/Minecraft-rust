@@ -55,7 +55,7 @@ those targets. They stay unchanged.
 | Batched hook dispatch | ≤ 1 µs | Measured deviation: 1.1508 µs end-to-end empty hook on Ryzen 7 3750H, Windows; T0-07 below |
 | Event in a batch | ≤ 5 ns | Measured deviation: 308.27 ns/event in a 1,000-string-event batch on the same machine; T0-07 below |
 | Epoch cost | ≤ 10% | Measured (VM: 0–9%; earlier research, not remeasured in T0-07) |
-| Deadline-to-interruption overrun | ≤ 1 ms | Not consistently met: final quiet repetitions ≤ 0.6894 ms; earlier corrected-timer run during compilation reached 1.5101 ms; Linux VM 4 vCPU with all cores busy: 1.66–5.80 ms (5/5 runs failed). Follow-up: T0-13, open question 11 |
+| Deadline-to-interruption overrun | ≤ 1 ms p99 on a quiet desktop (measured, not a CI assertion); CI functional bound ≤ 10 ms — owner decision, open question 11 | To be measured in T0-13 with ≥ 1,000 interruptions. Earlier data: final quiet repetitions ≤ 0.6894 ms; earlier corrected-timer run during compilation reached 1.5101 ms; Linux VM 4 vCPU with all cores busy: 1.66–5.80 ms (5/5 runs failed against the old hard 1 ms assertion) |
 | Cold start of a mod with cache | ≤ 50 ms | Hypothesis |
 | Default mod | 0.5 ms per tick per region, 32 MB | Target |
 
