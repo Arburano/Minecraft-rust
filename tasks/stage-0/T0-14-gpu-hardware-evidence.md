@@ -1,7 +1,8 @@
 # T0-14. GPU hardware evidence for T0-06 (Vega 10 + GTX 1660 Ti)
 
-- **Status:** in-progress
+- **Status:** done
 - **Depends on:** T0-06 implementation (merged in PR #8)
+- **PR:** https://github.com/Arburano/Minecraft-rust/pull/11
 - **Owner:** agent (parts A and C); part B — an agent running **on the laptop itself** (Claude Code / desktop app locally, or a cloud session attached to the laptop via Remote Control), with the human only for the steps marked [human]
 - **Closes:** T0-06 (its second acceptance criterion)
 
@@ -96,7 +97,7 @@ Use **Command Prompt (cmd.exe)**, not PowerShell (PowerShell 5.1 writes UTF-16 a
 
    Repeat with `QUAD_BENCH_ADAPTER_NAME=1660` for `dx12` and `gl` (and `vulkan` if it works). Each file must end with `test result: ok. 1 passed`.
 7. [x] **Sanity check before commit:** no file is empty; every `quad-bench` JSON contains `"build_profile": "release"` and `"environment": "bare-metal"`. If something failed, keep the error text in a `.txt` next to it instead of an empty JSON.
-8. [ ] **Commit and push:**
+8. [x] **Commit and push:**
 
    ```bat
    git checkout -b t0-14-gpu-hardware-evidence
@@ -109,21 +110,21 @@ Use **Command Prompt (cmd.exe)**, not PowerShell (PowerShell 5.1 writes UTF-16 a
 
 ## Part C — agent, after the files are pushed
 
-1. [ ] Validate every file: release profile, `bare-metal`, default quads/draws/frames (500,000 / 600 / 120 measured / 30 warmup), `rendered_pixels` > 0, adapter name matches the file name, three runs per combination, image tests passed, no-timestamp runs have `null` GPU time. List anything missing; do not invent numbers.
-2. [ ] Write `docs/research/gpu/summary-DATE.md`: hardware and driver versions; per adapter/backend/path p50 and p95 of `gpu_geometry_ms` and `cpu_command_recording_ms` (median of the three runs) and run-to-run spread; B vs C on the same adapter/backend; unsupported combinations (Vulkan, Vega on GL) with reasons; the owner decision above and its consequences.
-3. [ ] Update `docs/process/performance-budgets.md`:
+1. [x] Validate every file: release profile, `bare-metal`, default quads/draws/frames (500,000 / 600 / 120 measured / 30 warmup), `rendered_pixels` > 0, adapter name matches the file name, three runs per combination, image tests passed, no-timestamp runs have `null` GPU time. List anything missing; do not invent numbers.
+2. [x] Write `docs/research/gpu/summary-DATE.md`: hardware and driver versions; per adapter/backend/path p50 and p95 of `gpu_geometry_ms` and `cpu_command_recording_ms` (median of the three runs) and run-to-run spread; B vs C on the same adapter/backend; unsupported combinations (Vulkan, Vega on GL) with reasons; the owner decision above and its consequences.
+3. [x] Update `docs/process/performance-budgets.md`:
    - "GPU geometry time ≤ 8 ms per frame on iGPU" → Measured, from the **Vega 10** numbers (path the engine would select, B; also give C).
    - "CPU command recording ≤ 1 ms per frame" → Measured, Ryzen 7 3750H, worst adapter/backend.
    - Add a note that GTX 1050 targets remain unverified (GTX 1660 Ti used, owner decision No. 12).
    - If a target is **not** met: stop and ask the owner (AGENTS.md); do not change the target or the architecture.
-4. [ ] Update `docs/architecture/meshing-and-rendering.md` (capability dump line) and, only if the owner changes a target, the PRD identically.
+4. [x] Update `docs/architecture/meshing-and-rendering.md` (capability dump line) and, only if the owner changes a target, the PRD identically.
 5. [ ] Close: tick T0-06's second acceptance criterion (reworded per decision No. 12), set T0-06 and T0-14 to `done` in their files and in `tasks/README.md`, update `task-reports/t0-06-render-capability-probe.md`, write `task-reports/t0-14-gpu-hardware-evidence.md`, open the PR, CI green.
 
 ## Acceptance criteria
 
-- [ ] `--no-timestamps` and adapter selection for the image test exist, are tested and documented (part A).
-- [ ] Probe, 3 runs per supported adapter/backend/path, no-timestamp runs and image tests for both adapters are committed; unsupported combinations are documented with reasons (part B).
-- [ ] Summary written; the two budget rows are Measured with links; GTX 1050 targets explicitly marked as not verified (part C).
+- [x] `--no-timestamps` and adapter selection for the image test exist, are tested and documented (part A).
+- [x] Probe, 3 runs per supported adapter/backend/path, no-timestamp runs and image tests for both adapters are committed; unsupported combinations are documented with reasons (part B).
+- [x] Summary written; the two budget rows are Measured with links; GTX 1050 targets explicitly marked as not verified (part C).
 
 ## Out of scope
 

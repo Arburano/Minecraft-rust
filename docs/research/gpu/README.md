@@ -1,8 +1,8 @@
 # T0-06: GPU probe and quad benchmark
 
-The task remains **in-progress** until a human supplies measurements from two
-machines (an iGPU and a GTX 1050) and updates the GPU geometry and CPU recording
-rows in `docs/process/performance-budgets.md`.
+The hardware evidence is **complete** (T0-14, 2026-11-19): see
+[summary-2026-11-19.md](summary-2026-11-19.md). Both budget rows in
+`docs/process/performance-budgets.md` are Measured.
 
 **Owner decision (open question No. 12):** no GTX 1050 is available. The evidence
 is taken on one laptop: Radeon RX Vega 10 as the iGPU and GTX 1660 Ti instead of
