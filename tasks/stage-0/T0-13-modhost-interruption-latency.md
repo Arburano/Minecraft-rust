@@ -1,6 +1,6 @@
 # T0-13. Mod interruption latency: split the criterion, diagnose and reduce overrun
 
-- **Status:** todo
+- **Status:** in-progress
 - **Depends on:** T0-07 (implementation merged in PR #9); [open question No. 11](../../docs/open-questions.md) — answered 2026-11-19, the task can start
 - **Owner:** agent
 
