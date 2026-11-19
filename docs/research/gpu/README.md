@@ -95,7 +95,12 @@ successful result.
   `timestamp_period_ns`. It includes the clear, rasterization and color writes,
   but excludes query resolution, readback and synchronization. If
   `TIMESTAMP_QUERY` is unavailable, these fields are `null`; CPU wall time is
-  never mislabeled as GPU time.
+  never mislabeled as GPU time. The `timestamps` field says why:
+  `"enabled"`, `"unsupported"` (adapter lacks the feature) or
+  `"disabled-by-flag"` (`--no-timestamps` was passed). `--no-timestamps` does
+  not request `TIMESTAMP_QUERY` even on adapters that support it, so the
+  `gpu_geometry_ms: null` path can be exercised on real hardware; nothing else
+  about the measured workload changes.
 - `cpu_command_recording_ms` measures encoder creation, pass/draw recording,
   optional timestamp resolve/copy recording and encoder finish. It excludes
   queue submission, GPU waits, initialization and image readback. Application
@@ -126,7 +131,24 @@ cargo test -p render --bin quad-bench gpu_paths_render_identical_nonblank_images
 
 It uses the first enumerated Vulkan/DX12/GL adapter with vertex storage. Set
 `WGPU_BACKEND=dx12`, `vulkan`, or `gl` to restrict the backend for this test.
+Set `QUAD_BENCH_ADAPTER_NAME` to a case-insensitive substring of the adapter
+name (e.g. `Vega` or `1660`) to pick a specific GPU; without it the first
+adapter with vertex storage wins, which on DX12 is usually the discrete GPU.
 It is deliberately ignored in GPU-free CI.
+
+## Run the whole T0-14 matrix
+
+On the laptop, from the repository root in **cmd.exe** (not PowerShell 5.1):
+
+```bat
+cargo build --release -p render --bins
+research\gpu\run-matrix.cmd DATE "MACHINE STRING"
+```
+
+The script saves the probe, three runs per adapter/backend/path, the
+`--no-timestamps` runs and the per-adapter image-test logs under this directory
+with the T0-14 file names. Re-check its adapter indices against the fresh probe
+first; Vulkan rows are not included until Vulkan works (see T0-14 part B).
 
 ## Local smoke evidence (not acceptance)
 

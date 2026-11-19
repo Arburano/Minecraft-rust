@@ -70,6 +70,9 @@ struct Args {
     machine: String,
     #[arg(long, value_enum, default_value_t = Environment::Unknown)]
     environment: Environment,
+    /// Do not request TIMESTAMP_QUERY even if the adapter supports it.
+    #[arg(long)]
+    no_timestamps: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -115,6 +118,7 @@ struct BenchReport {
     resolution: [u32; 2],
     warmup_frames: u32,
     measured_frames: u32,
+    timestamps: &'static str,
     timestamp_period_ns: Option<f32>,
     gpu_geometry_ms: Option<Timing>,
     cpu_command_recording_ms: Timing,
@@ -187,7 +191,14 @@ fn benchmark(
         path != RenderPath::VertexPulling || select_path(caps.flags) == path,
         "path B requires VERTEX_STORAGE; select --path c"
     );
-    let timestamps = adapter.features().contains(wgpu::Features::TIMESTAMP_QUERY);
+    let timestamp_state = if args.no_timestamps {
+        "disabled-by-flag"
+    } else if adapter.features().contains(wgpu::Features::TIMESTAMP_QUERY) {
+        "enabled"
+    } else {
+        "unsupported"
+    };
+    let timestamps = timestamp_state == "enabled";
     let mut limits = wgpu::Limits::downlevel_webgl2_defaults()
         .using_resolution(adapter.limits())
         .using_alignment(adapter.limits());
@@ -491,6 +502,7 @@ fn benchmark(
         resolution: [WIDTH, HEIGHT],
         warmup_frames: args.warmup,
         measured_frames: args.frames,
+        timestamps: timestamp_state,
         timestamp_period_ns: timestamps.then(|| queue.get_timestamp_period()),
         gpu_geometry_ms,
         cpu_command_recording_ms: Timing::from_samples(cpu_samples),
@@ -596,6 +608,15 @@ mod tests {
     }
 
     #[test]
+    fn cli_parses_no_timestamps_flag() {
+        let default = Args::try_parse_from(["quad-bench"]).expect("default args parse");
+        assert!(!default.no_timestamps);
+        let flagged = Args::try_parse_from(["quad-bench", "--no-timestamps"]).expect("flag parses");
+        assert!(flagged.no_timestamps);
+        assert!(Args::try_parse_from(["quad-bench", "--no-timestamps=yes"]).is_err());
+    }
+
+    #[test]
     #[ignore = "requires an adapter with vertex storage; run manually on hardware"]
     fn gpu_paths_render_identical_nonblank_images() -> Result<()> {
         let args = Args::parse_from([
@@ -617,12 +638,25 @@ mod tests {
         let backends = descriptor.backends;
         let instance = wgpu::Instance::new(descriptor);
         let adapters = pollster::block_on(instance.enumerate_adapters(backends));
+        let name_filter = std::env::var("QUAD_BENCH_ADAPTER_NAME").ok();
         let adapter = adapters
             .iter()
             .find(|adapter| {
                 select_path(adapter.get_downlevel_capabilities().flags) == RenderPath::VertexPulling
+                    && name_filter.as_ref().is_none_or(|filter| {
+                        adapter
+                            .get_info()
+                            .name
+                            .to_lowercase()
+                            .contains(&filter.to_lowercase())
+                    })
             })
-            .context("an adapter with vertex storage is required")?;
+            .with_context(|| match &name_filter {
+                Some(filter) => format!(
+                    "no adapter with vertex storage matches QUAD_BENCH_ADAPTER_NAME={filter:?}"
+                ),
+                None => "an adapter with vertex storage is required".to_string(),
+            })?;
         let (b, image_b) = benchmark(adapter, RenderPath::VertexPulling, &args)?;
         let (c, image_c) = benchmark(adapter, RenderPath::Instanced, &args)?;
         assert_eq!(image_b, image_c);
