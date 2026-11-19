@@ -20,7 +20,7 @@ The single source of numbers. Change here and in PRD §1 at the same time. Statu
 | Cold start to menu | ≤ 5 s | Target |
 | Joining a server until control | ≤ 5 s with asset cache | Target |
 | GPU geometry time | ≤ 8 ms per frame on iGPU | Measured (Radeon RX Vega 10, path B as the engine would select: 2.417 ms p50 / 2.619 ms p95 on DX12, worst backend GL 2.612 / 2.821; path C 1.637–1.948 ms p50; bare-metal ASUS FX505DU, 3 runs per combination, [T0-14 summary](../research/gpu/summary-2026-11-19.md)) |
-| CPU command recording | ≤ 1 ms per frame | Measured (Ryzen 7 3750H, worst adapter/backend Vega 10 + DX12: 0.535 ms p50 / 0.821 ms p95 median of 3 runs, worst single-run p95 0.923 ms; [T0-14 summary](../research/gpu/summary-2026-11-19.md)) |
+| CPU command recording | ≤ 1 ms per frame | Measured (Ryzen 7 3750H, worst adapter/backend Vega 10 + DX12: 0.535 ms p50 / 0.821 ms p95 median of 3 runs, worst single-run p95 0.923 ms; judged at p95 — the budget does not name a statistic; single-frame maxima exceed 1 ms: 1.323 ms Vega 10 DX12 B, 1.061 ms Vega 10 DX12 C; [T0-14 summary](../research/gpu/summary-2026-11-19.md)) |
 | `fast_mesh` of a 32³ mesh chunk | ≤ 0.2 ms p50 on a 4-core desktop | Measured (VM: ≈ 42 µs on the T0-04 terrain corpus; `mesh` bench `mesh_chunk/fast_mesh`) |
 | Gather + masks of a 32³ mesh chunk | ≤ 100 µs p50 | Measured (VM: ≈ 60 µs on the T0-04 corpus; `mesh` bench `mesh_chunk/gather_masks`, [details](../../task-reports/t0-04-mesh-chunk-32.md)) |
 | Mask update per edit | ≤ 20 ns | Measured (VM: ≈ 2.6 ns; `mesh` bench `mesh_chunk/mask_update`) |

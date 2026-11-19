@@ -34,3 +34,13 @@ Recommended order for a single agent: T0-01 → T0-03 → T0-12 → T0-04 → T0
 ## Next stages
 
 Stage 1 tasks are created at the end of stage 0, once the benchmark numbers are confirmed (stage 0 exit criterion).
+
+### Carry-over for stage 1 (from stage 0 results)
+
+Turn these into stage 1 tasks; do not drop them:
+
+- Renderer backend selection with fallback when Vulkan enumerates no adapters (AMD switchable-graphics laptops), adapter choice by type/capability rather than index, and a GL shutdown test on AMD iGPU — T0-14, [meshing-and-rendering](../docs/architecture/meshing-and-rendering.md).
+- Re-measure B vs C (indexed B variant, real terrain corpus) and decide the iGPU default — open question 13.
+- CPU command recording: decide the statistic (open question 14); single frames reached 1.32 ms on Vega 10 + DX12.
+- Bare-metal confirmation of VM-only numbers from T0-03/T0-04/T0-05 (`cargo bench -p world`, `cargo bench -p mesh` on the owner's laptop).
+- GTX 1050 targets remain unverified (open question 12).

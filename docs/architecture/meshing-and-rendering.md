@@ -61,6 +61,13 @@ We read `adapter.features()`, `limits()`, `get_downlevel_capabilities()` and cho
 
 Stages 0–1 build B and C; A comes from stage 2, only after measurements (analysis §13.3). Capability dump on an iGPU and GTX 1050 (Vulkan, DX12, GL) — task T0-06; stage 0 evidence is taken on Radeon RX Vega 10 + GTX 1660 Ti instead (open question 12, T0-14), so GTX 1050 remains unverified. The [2026-11-19 laptop probe](../research/gpu/laptop-probe-2026-11-19.json) shows `VERTEX_STORAGE` and `TIMESTAMP_QUERY` on both adapters on all three backends, so both select path B; B/C measurements and the [summary](../research/gpu/summary-2026-11-19.md) are in T0-14.
 
+Platform findings from T0-14 that the stage 1 renderer must handle:
+
+- **Path choice:** on the Vega 10 iGPU path C was 25–32% faster than B on all backends (synthetic unit quads, non-indexed B). The default stays B until re-measured — [open question 13](../open-questions.md).
+- **Vulkan on AMD switchable-graphics laptops:** `VK_LAYER_AMD_switchable_graphics` made Vulkan enumerate zero adapters; it worked only with `VK_LOADER_LAYERS_DISABLE=VK_LAYER_AMD_switchable_graphics`. Players cannot be asked to set environment variables, so backend selection must fall back (DX12 on Windows, then GL) when Vulkan returns no adapters, and must never assume Vulkan exists.
+- **Adapter order is not stable:** the NVIDIA "preferred GPU" program setting swapped DX12/Vulkan indices and made GL expose only the iGPU. Select adapters by type/capability/name, never by index.
+- **GL on the AMD iGPU:** `gpu-probe` crashed at process exit (segfault, after valid output) while GL was on the Vega 10 ([note](../research/gpu/probe-crash-note-2026-11-19.txt)). The renderer's GL shutdown path needs a test on this driver.
+
 ## Culling
 
 1. Frustum: CPU, by render batches (AABB), then by mesh chunks.
