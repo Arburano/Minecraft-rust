@@ -11,6 +11,12 @@ use world::BlockStateId;
 
 const BUDGET: Duration = Duration::from_secs(1);
 
+// Decision: open question 11 (owner, 2026-11-19). CI asserts this functional
+// bound with margin; the ≤ 1 ms p99 latency target on a quiet desktop is
+// measured separately (tests/interruption_latency.rs) and reported, not
+// asserted here. An OS-thread watchdog cannot guarantee 1 ms under load.
+const CI_OVERRUN_BOUND: Duration = Duration::from_millis(10);
+
 fn prepared() -> anyhow::Result<&'static PreparedMod> {
     static PREPARED: OnceLock<Result<PreparedMod, String>> = OnceLock::new();
     PREPARED
@@ -115,7 +121,7 @@ fn infinite_loop_is_interrupted_and_tick_continues() -> anyhow::Result<()> {
         );
         maximum_overrun = maximum_overrun.max(overrun);
         assert!(
-            overrun <= Duration::from_millis(1),
+            overrun <= CI_OVERRUN_BOUND,
             "interruption returned {overrun:?} after the deadline"
         );
         assert_eq!(hung.region().section().non_air(), 0);

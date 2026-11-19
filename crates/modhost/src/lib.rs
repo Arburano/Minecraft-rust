@@ -143,8 +143,10 @@ impl PreparedMod {
     /// Instantiates a component on a worker and bounds its start function as well.
     pub fn instantiate(&self, region: Region, budget: Duration) -> Result<ModWorker, Error> {
         let mut store = Store::new(&self.host.engine, HostState::new(region));
-        store.epoch_deadline_callback(|state| {
-            Ok(if Instant::now() >= state.data().deadline {
+        store.epoch_deadline_callback(|mut state| {
+            let now = Instant::now();
+            Ok(if now >= state.data().deadline {
+                state.data_mut().interrupt_at = Some(now);
                 UpdateDeadline::Interrupt
             } else {
                 UpdateDeadline::Continue(1)
@@ -179,6 +181,21 @@ pub struct ModWorker {
     _watchdog: Arc<EpochWatchdog>,
 }
 
+/// Timing breakdown of a call that ended in a deadline overrun (T0-13
+/// diagnostics). All instants use the same monotonic clock as the deadline.
+#[derive(Clone, Copy, Debug)]
+pub struct InterruptionTiming {
+    /// The wall-clock deadline the call exceeded.
+    pub deadline: Instant,
+    /// When the epoch callback returned `UpdateDeadline::Interrupt`:
+    /// deadline → interrupt is the watchdog wake latency (tick granularity
+    /// plus OS scheduling).
+    pub interrupt: Instant,
+    /// When the guest call returned to the host: interrupt → returned is
+    /// the trap/unwind cost.
+    pub returned: Instant,
+}
+
 impl ModWorker {
     /// Declares the mod's systems and subscriptions.
     pub fn init(&mut self, budget: Duration) -> Result<ModDecl, Error> {
@@ -206,6 +223,18 @@ impl ModWorker {
         &self.store.data().region
     }
 
+    /// Timing breakdown of the most recent call, if it ended in a deadline
+    /// overrun. `None` after a successful call, a non-deadline trap, or before
+    /// the first call.
+    pub fn last_interruption(&self) -> Option<InterruptionTiming> {
+        let state = self.store.data();
+        Some(InterruptionTiming {
+            deadline: state.deadline,
+            interrupt: state.interrupt_at?,
+            returned: state.returned_at?,
+        })
+    }
+
     /// Releases the instance and returns committed state, including after a trap.
     pub fn into_region(self) -> Region {
         self.store.into_data().region
@@ -230,6 +259,7 @@ impl ModWorker {
             self.trapped = true;
         }
         if finished >= deadline {
+            self.store.data_mut().returned_at = Some(finished);
             let discarded_blocks = self.store.data().pending_blocks();
             self.store.data_mut().discard();
             return Err(Error::Deadline {
