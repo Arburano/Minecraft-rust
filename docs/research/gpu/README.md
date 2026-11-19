@@ -150,6 +150,12 @@ The script saves the probe, three runs per adapter/backend/path, the
 with the T0-14 file names. Re-check its adapter indices against the fresh probe
 first; Vulkan rows are not included until Vulkan works (see T0-14 part B).
 
+On the FX505DU, `VK_LAYER_AMD_switchable_graphics` makes
+`vkEnumeratePhysicalDevices` return `INCOMPLETE` with no devices, which is why
+the 2026-11-18 probe saw no Vulkan adapters. Setting
+`VK_LOADER_LAYERS_DISABLE=VK_LAYER_AMD_switchable_graphics` (the script does)
+exposes both the GTX 1660 Ti and the Vega 10 without any driver change.
+
 ## Local smoke evidence (not acceptance)
 
 `local-probe-2026-11-18.json` and `local-*-smoke.json` were captured on one ASUS

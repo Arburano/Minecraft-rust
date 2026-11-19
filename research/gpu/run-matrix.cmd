@@ -16,6 +16,9 @@ set "PROBE=target\release\gpu-probe.exe"
 set "VEGA_DX12=1"
 set "NV_DX12=0"
 set "NV_GL=0"
+rem The AMD switchable-graphics layer breaks vkEnumeratePhysicalDevices on this
+rem laptop (INCOMPLETE, zero devices); disabling it exposes both GPUs.
+set "VK_LOADER_LAYERS_DISABLE=VK_LAYER_AMD_switchable_graphics"
 if not exist "%BENCH%" goto :nobuild
 if not exist "%PROBE%" goto :nobuild
 
