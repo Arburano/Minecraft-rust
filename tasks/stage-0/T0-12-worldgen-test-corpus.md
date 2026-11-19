@@ -1,6 +1,6 @@
 # T0-12. Deterministic test terrain
 
-- **Status:** todo
+- **Status:** in-progress
 - **Depends on:** T0-03
 - **Owner:** agent
 
