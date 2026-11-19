@@ -1,6 +1,6 @@
 # T0-07: WIT 0.1 and mod host spike
 
-Status: implementation and measurements recorded on 2026-11-19; task remains in progress because interruption timing is not consistently within the acceptance bound. No completion PR or remote CI run yet.
+Status: implementation and measurements recorded on 2026-11-19; task remains in progress because interruption timing is not consistently within the acceptance bound. Update (review, 2026-11-19): the work was merged in PR #9 and CI passed on the PR and on `main`; the interruption follow-up is [T0-13](../tasks/stage-0/T0-13-modhost-interruption-latency.md).
 
 ## What was done
 
