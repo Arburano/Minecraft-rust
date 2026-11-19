@@ -34,6 +34,8 @@ A voxel game that can be fully reworked through mods, holds a steady 60 FPS on a
 | Time to join a server with a warm asset cache (until the character is controllable) | ≤ 5 s |
 | WASM mod overhead per hook call | ≤ 1 µs |
 
+The T0-07 prototype exceeds the hook and typed-event performance targets; the targets above are unchanged. Its measurements, documented deviations and unresolved interruption jitter are recorded in [performance budgets](process/performance-budgets.md#t0-07-measurements-2026-11-19).
+
 ## 2. Key decisions and stack
 
 Main decision: the engine is an empty "voxel construction kit", and all gameplay comes from mods. This way the engine's optimizations automatically work for all mods, and the mod API is tested on our own content every day.

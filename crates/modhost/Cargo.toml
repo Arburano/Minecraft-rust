@@ -10,6 +10,16 @@ publish = false
 [dependencies]
 engine-core = { path = "../engine-core" }
 world = { path = "../world" }
+wasmtime = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+anyhow = { workspace = true }
+criterion = { workspace = true }
+
+[[bench]]
+name = "hooks"
+harness = false
 
 [lints]
 workspace = true

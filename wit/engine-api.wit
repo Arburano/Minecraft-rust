@@ -1,9 +1,4 @@
-// Draft mod API contract. Status: 0.1.0 draft — task T0-07 finalises it.
-// Rules (docs/modding/wasm-api.md):
-//  - every host call that touches many things takes a list (batching is mandatory);
-//  - events arrive as one list per event kind per tick, never one call per event;
-//  - mod state lives in host ECS components, linear memory is scratch for one call;
-//  - world access is limited to the calling region; far targets go through send-to.
+// Version 0.1 contract; execution and batching rules are in docs/modding/wasm-api.md.
 package engine:api@0.1.0;
 
 interface types {
@@ -40,7 +35,7 @@ interface world-access {
     use types.{block-pos, block-state, block-change, api-error};
 
     get-blocks: func(positions: list<block-pos>) -> result<list<block-state>, api-error>;
-    /// Applied by the host only if the whole call returns successfully.
+    /// Rejected writes invalidate the hook; all changes commit only on a successful, within-budget return.
     set-blocks: func(changes: list<block-change>) -> result<_, api-error>;
     state-id: func(name: string) -> result<block-state, api-error>;
     region-contains: func(pos: block-pos) -> bool;

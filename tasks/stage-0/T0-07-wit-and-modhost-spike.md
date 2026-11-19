@@ -1,6 +1,6 @@
 # T0-07. WIT 0.1 and mod host spike
 
-- **Status:** todo
+- **Status:** in-progress
 - **Depends on:** T0-01
 - **Owner:** agent
 
@@ -23,8 +23,14 @@ Bring `wit/engine-api.wit` to 0.1: a Rust guest built with `wit-bindgen` (target
 ## Acceptance criteria
 
 - [ ] An infinite loop in a mod is interrupted ≤ 1 ms after the deadline, and the server continues its tick (test).
-- [ ] World changes from the interrupted call are not applied (test).
-- [ ] Hook dispatch ≤ 1 µs, ≤ 5 ns per event (or a documented deviation).
+- [x] World changes from the interrupted call are not applied (test).
+- [x] Hook dispatch ≤ 1 µs, ≤ 5 ns per event (or a documented deviation).
+
+## Verification status (2026-11-19)
+
+The guest, pooled host, rollback tests and benchmarks are implemented. The latest workspace test run passed all 56 tests and 2 doctests; strict Clippy, formatting, WIT/component validation and the example also passed. Performance targets are exceeded, with the permitted deviation documented in [performance budgets](../../docs/process/performance-budgets.md#t0-07-measurements-2026-11-19).
+
+The interruption criterion remains open: 130 final quiet interruptions passed, but an earlier run with the corrected timer during concurrent compilation exceeded the 1 ms bound (1.5101 ms). The test has not been relaxed or ignored. CI has not run for this branch; the task is not closed and no completion PR has been opened. See the [implementation report](../../task-reports/t0-07-wit-and-modhost-spike.md).
 
 ## Out of scope
 

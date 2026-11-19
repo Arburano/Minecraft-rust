@@ -18,6 +18,7 @@ jobs:
         with:
           toolchain: "1.97"
           components: rustfmt, clippy
+          targets: wasm32-wasip2
       - uses: Swatinem/rust-cache@v2
       - name: Format
         run: cargo fmt --all --check
