@@ -1,6 +1,6 @@
 # T0-14. GPU hardware evidence for T0-06 (Vega 10 + GTX 1660 Ti)
 
-- **Status:** todo
+- **Status:** in-progress
 - **Depends on:** T0-06 implementation (merged in PR #8)
 - **Owner:** agent (parts A and C); part B — an agent running **on the laptop itself** (Claude Code / desktop app locally, or a cloud session attached to the laptop via Remote Control), with the human only for the steps marked [human]
 - **Closes:** T0-06 (its second acceptance criterion)
@@ -33,10 +33,10 @@ Indices are per backend and can change after a driver update: always re-check th
 
 ## Part A — agent, before the human run
 
-1. [ ] Add a `--no-timestamps` flag to `quad-bench` that does not request `TIMESTAMP_QUERY` even if the adapter supports it, so the `gpu_geometry_ms: null` path runs end to end. The report must say timestamps were disabled by the flag (e.g. `"timestamps": "disabled-by-flag"` vs `"unsupported"` vs `"enabled"`). Unit test for the CLI parsing; no change to the measured code otherwise.
-2. [ ] Let the ignored image-comparison test choose the adapter: an env var (e.g. `QUAD_BENCH_ADAPTER_NAME`, substring match on the adapter name) in addition to `WGPU_BACKEND`. Today it takes the first adapter with vertex storage, which on DX12 is always the GTX 1660 Ti, so the Vega 10 is never compared.
+1. [x] Add a `--no-timestamps` flag to `quad-bench` that does not request `TIMESTAMP_QUERY` even if the adapter supports it, so the `gpu_geometry_ms: null` path runs end to end. The report must say timestamps were disabled by the flag (e.g. `"timestamps": "disabled-by-flag"` vs `"unsupported"` vs `"enabled"`). Unit test for the CLI parsing; no change to the measured code otherwise.
+2. [x] Let the ignored image-comparison test choose the adapter: an env var (e.g. `QUAD_BENCH_ADAPTER_NAME`, substring match on the adapter name) in addition to `WGPU_BACKEND`. Today it takes the first adapter with vertex storage, which on DX12 is always the GTX 1660 Ti, so the Vega 10 is never compared.
 3. [ ] Optional: a `research/gpu/run-matrix.cmd` (cmd.exe, so output stays UTF-8) that runs the probe and the whole matrix from part B with the correct file names. Test what you can without a GPU (`cargo test -p render`, CI green).
-4. [ ] Update [docs/research/gpu/README.md](../../docs/research/gpu/README.md) with the new flag/env var. Merge part A before the human run.
+4. [x] Update [docs/research/gpu/README.md](../../docs/research/gpu/README.md) with the new flag/env var. Merge part A before the human run.
 
 ## Part B — on the laptop (agent running locally, human only where marked)
 
