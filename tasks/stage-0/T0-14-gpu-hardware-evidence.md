@@ -118,7 +118,7 @@ Use **Command Prompt (cmd.exe)**, not PowerShell (PowerShell 5.1 writes UTF-16 a
    - Add a note that GTX 1050 targets remain unverified (GTX 1660 Ti used, owner decision No. 12).
    - If a target is **not** met: stop and ask the owner (AGENTS.md); do not change the target or the architecture.
 4. [x] Update `docs/architecture/meshing-and-rendering.md` (capability dump line) and, only if the owner changes a target, the PRD identically.
-5. [ ] Close: tick T0-06's second acceptance criterion (reworded per decision No. 12), set T0-06 and T0-14 to `done` in their files and in `tasks/README.md`, update `task-reports/t0-06-render-capability-probe.md`, write `task-reports/t0-14-gpu-hardware-evidence.md`, open the PR, CI green.
+5. [x] Close: tick T0-06's second acceptance criterion (reworded per decision No. 12), set T0-06 and T0-14 to `done` in their files and in `tasks/README.md`, update `task-reports/t0-06-render-capability-probe.md`, write `task-reports/t0-14-gpu-hardware-evidence.md`, open the PR, CI green.
 
 ## Acceptance criteria
 
