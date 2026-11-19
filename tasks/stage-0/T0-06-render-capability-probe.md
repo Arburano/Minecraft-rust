@@ -3,7 +3,7 @@
 - **Status:** in-progress
 - **Depends on:** T0-04
 - **Owner:** agent writes, human runs on hardware
-- **PR:** https://github.com/Arburano/Minecraft-rust/pull/8 (draft; hardware acceptance pending)
+- **PR:** https://github.com/Arburano/Minecraft-rust/pull/8 (merged; hardware acceptance pending)
 
 ## Goal
 
@@ -31,8 +31,14 @@ and verification details are in the [task report](../../task-reports/t0-06-rende
 
 ## Acceptance criteria
 
-- [ ] Unit tests for path selection pass in CI without a GPU.
-- [ ] Human has attached dumps and numbers from two machines; the "GPU geometry time" and "CPU command recording" rows are updated.
+- [x] Unit tests for path selection pass in CI without a GPU (CI green on PR #8 and on `main` after the merge).
+- [ ] Human has attached dumps and numbers from two machines (per decision No. 12: Vega 10 and GTX 1660 Ti of one laptop, via [T0-14](T0-14-gpu-hardware-evidence.md)); the "GPU geometry time" and "CPU command recording" rows are updated.
+
+## Remaining work
+
+The agent part is done and merged. The hardware evidence is tracked as a separate task: [T0-14](T0-14-gpu-hardware-evidence.md). T0-06 is closed together with T0-14.
+
+**Owner decision (2026-11-19, [open question No. 12](../../docs/open-questions.md)):** there is no GTX 1050. The evidence is taken on one laptop (ASUS TUF FX505DU, Ryzen 7 3750H): the **Radeon RX Vega 10** counts as the iGPU, the **GTX 1660 Ti** replaces the GTX 1050. The second acceptance criterion below is read as "two adapters: Vega 10 and GTX 1660 Ti". GTX 1050 targets in the PRD remain unchanged and unverified.
 
 ## Out of scope
 

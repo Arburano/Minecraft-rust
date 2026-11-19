@@ -2,8 +2,12 @@
 
 The task remains **in-progress** until a human supplies measurements from two
 machines (an iGPU and a GTX 1050) and updates the GPU geometry and CPU recording
-rows in `docs/process/performance-budgets.md`. Other GPUs are smoke-test evidence,
-not substitutes for the GTX 1050.
+rows in `docs/process/performance-budgets.md`.
+
+**Owner decision (open question No. 12):** no GTX 1050 is available. The evidence
+is taken on one laptop: Radeon RX Vega 10 as the iGPU and GTX 1660 Ti instead of
+the GTX 1050. 1660 Ti numbers do not verify GTX 1050 targets. The step-by-step
+run is [T0-14](../../../tasks/stage-0/T0-14-gpu-hardware-evidence.md).
 
 ## Build and identify adapters
 
