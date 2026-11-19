@@ -3,6 +3,7 @@
 - **Status:** done
 - **Depends on:** T0-01
 - **Owner:** agent
+- **PR:** [#14](https://github.com/Arburano/Minecraft-rust/pull/14)
 - **Evidence:** [docs/research/net-quic-spike-2026-11-19.md](../../docs/research/net-quic-spike-2026-11-19.md), [task report](../../task-reports/t0-11-net-quic-spike.md)
 
 ## Goal
