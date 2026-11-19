@@ -9,6 +9,7 @@ Materials from which the PRD and ADRs grew (November 2026).
 | [optimization-analysis.md](optimization-analysis.md) | Analysis and recommendations (the same as PRD §13) | English |
 | [job-scheduler-2026-11-15.md](job-scheduler-2026-11-15.md) | T0-02 job scheduler overhead (VM 4 vCPU, ±30%) | English |
 | [review-budget.py](review-budget.py) | Reviewer calculations: memory, VRAM, traffic, login time | Python |
+| [gpu/README.md](gpu/README.md) | T0-06 capability probe and B/C quad benchmark; human hardware run instructions | English |
 
 Rules:
 
