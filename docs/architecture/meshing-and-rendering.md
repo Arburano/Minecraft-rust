@@ -33,15 +33,15 @@ Measured (VM, T0-04, 32³ mesh chunk, seeded terrain corpus 4×2×4 chunks, 8.1%
 
 ## Render batches (ADR-0005 decision)
 
-- A 32³ mesh chunk produces quads with coordinates 0..31. When copying into a 64³ batch we add an offset of 0 or 32 on each axis. The crate's 6 bits (0..63) fit the entire batch.
-- A batch = 8 mesh chunks, one range in the GPU buffer per face direction. Re-meshing one mesh chunk → re-copying the batch (target ≤ 50 µs) or supporting 8 sub-ranges with their own counters (the T0-05 benchmark will decide).
+- A 32³ mesh chunk produces quads with coordinates 0..31 (anchor planes and max corners reach 32). When copying into a 64³ batch we add an offset of 0 or 32 on each axis — a flip of bit 5 of each 6-bit coordinate field. Coordinates are stored modulo 64: a max-corner anchor field (positive face plane, or the far corner of Down/Right/Front) reading 0 means 64; such fields are always ≥ 1, so this is unambiguous. Min-corner fields never wrap.
+- A batch = 8 mesh chunks, one range in the GPU buffer per face direction. Re-meshing one mesh chunk → re-copying the whole batch (`mesh::RenderBatch::pack_into`). Decided by the T0-05 benchmark (open question No. 8): full re-copy ≈ 1.6 µs vs ≈ 0.2 µs for the 8-sub-range variant (VM, 4 976-quad batch), both far under the 50 µs budget — the ~1.4 µs saving does not justify 48 ranges with per-slot counters. Bare-metal confirmation pending.
 - Number of draw commands: ≈ as for a 62³ unit (≈ 600 at 12 chunks without indirect), not ≈ 4,500 for separate 32³ ones.
 
 ## Quad format (8 bytes)
 
 | Bits | Field |
 | --- | --- |
-| 0–5, 6–11, 12–17 | x, y, z in the batch (0..63) |
+| 0–5, 6–11, 12–17 | x, y, z in the batch (0..63, modulo 64: a max-corner field of 0 means 64, see above) |
 | 18–23, 24–29 | width, height − 1 |
 | 32–47 | block type / texture index (16 bits) |
 | 48–55 | flat face light (reserve, if the 3D light texture is unavailable) |

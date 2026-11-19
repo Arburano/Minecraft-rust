@@ -19,12 +19,12 @@ The single source of numbers. Change here and in PRD §1 at the same time. Statu
 | Client RAM, 12 chunks | ≤ 1 GiB internal budget; ≤ 2 GB external target | Hypothesis: 0.5–0.9 GiB |
 | Cold start to menu | ≤ 5 s | Target |
 | Joining a server until control | ≤ 5 s with asset cache | Target |
-| GPU geometry time | ≤ 8 ms per frame on iGPU | Hypothesis |
-| CPU command recording | ≤ 1 ms per frame | Hypothesis |
+| GPU geometry time | ≤ 8 ms per frame on iGPU | Hypothesis (T0-06 B/C harness implemented; target-hardware evidence pending, [run instructions](../research/gpu/README.md)) |
+| CPU command recording | ≤ 1 ms per frame | Hypothesis (T0-06 recording harness implemented; target-hardware evidence pending, [run instructions](../research/gpu/README.md)) |
 | `fast_mesh` of a 32³ mesh chunk | ≤ 0.2 ms p50 on a 4-core desktop | Measured (VM: ≈ 42 µs on the T0-04 terrain corpus; `mesh` bench `mesh_chunk/fast_mesh`) |
 | Gather + masks of a 32³ mesh chunk | ≤ 100 µs p50 | Measured (VM: ≈ 60 µs on the T0-04 corpus; `mesh` bench `mesh_chunk/gather_masks`, [details](../../task-reports/t0-04-mesh-chunk-32.md)) |
 | Mask update per edit | ≤ 20 ns | Measured (VM: ≈ 2.6 ns; `mesh` bench `mesh_chunk/mask_update`) |
-| Render batch copy after an edit | ≤ 50 µs | Hypothesis |
+| Render batch copy after an edit | ≤ 50 µs | Measured (VM: ≈ 1.6 µs full re-copy of a 64³ batch, 4 976 quads / 38.9 KB on the T0-04 corpus; sub-range copy ≈ 0.2 µs; `mesh` bench `mesh_chunk/render_batch`, [details](../../task-reports/t0-05-mesh-render-batches.md)) |
 | Lighting: add / remove per edit | ≤ 100 / ≤ 200 µs p95 | Hypothesis |
 | `get` in a section | ≈ 3.8 ns | Measured (VM: ≈ 3.4 ns paletted, 0.5 ns single, 0.7 ns direct; `world` bench `section_get`) |
 | `set` in a section, any bit width | ≤ 10 ns | Measured (VM: ≈ 6 ns typical; 6–8-bit readings of 13–15 ns are 4K-aliasing stalls on this VM, see [T0-03 report](../../task-reports/t0-03-world-palette-section.md); bare-metal confirmation pending) |

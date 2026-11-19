@@ -9,6 +9,16 @@ publish = false
 
 [dependencies]
 mesh = { path = "../mesh" }
+wgpu = { workspace = true, features = ["serde"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+clap = { workspace = true }
+bytemuck = { workspace = true }
+pollster = { workspace = true }
+
+[dev-dependencies]
+naga = { workspace = true }
 
 [lints]
 workspace = true

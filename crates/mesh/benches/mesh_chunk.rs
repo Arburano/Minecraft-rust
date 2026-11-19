@@ -6,12 +6,19 @@
 //! - fast_mesh of a 32^3 mesh chunk: <= 0.2 ms p50
 //! - mask update per edit: <= 20 ns
 //!
+//! T0-05 adds the `render_batch` group on the same corpus (one 64^3 batch =
+//! the 2x2x2 chunks at the grid origin): sub-range re-copy vs full re-copy
+//! after an edit (open question No. 8, budget <= 50 us).
+//!
 //! Corpus: 4x2x4 mesh chunks (blocks x,z 0..128, y 0..64), sections cut from
 //! one global field so neighboring chunks share consistent padding.
 
 use binary_greedy_meshing::Mesher;
 use criterion::{Criterion, criterion_group, criterion_main};
-use mesh::{CS, MaskCache, MeshChunkBuilder, MeshChunkQuads, P2, P3, SectionNeighborhood};
+use mesh::{
+    CS, MaskCache, MeshChunkBuilder, MeshChunkQuads, P2, P3, PackedBatch, RenderBatch,
+    SectionNeighborhood,
+};
 use noise::{NoiseFn, Perlin};
 use std::hint::black_box;
 use world::coords::MeshChunkPos;
@@ -287,5 +294,64 @@ fn bench_mesh(c: &mut Criterion) {
     g.finish();
 }
 
-criterion_group!(benches, bench_mesh);
+/// T0-05: one 64^3 render batch from the 2x2x2 mesh chunks at the grid
+/// origin. Compares the two update variants after an edit (open question
+/// No. 8): re-copying only the edited slot's sub-ranges vs re-copying and
+/// packing the whole batch into 6 per-direction ranges.
+fn bench_render_batch(c: &mut Criterion) {
+    let (_sections, neighborhoods) = build_corpus();
+    let mut builder = MeshChunkBuilder::new();
+    // Slot order (sy, sz, sx); corpus index (cy * GZ + cz) * GX + cx.
+    let mut chunks: [MeshChunkQuads; 8] = std::array::from_fn(|_| MeshChunkQuads::default());
+    let mut batch = RenderBatch::new();
+    for (s, chunk) in chunks.iter_mut().enumerate() {
+        let (sy, sz, sx) = (s / 4, (s / 2) % 2, s % 2);
+        let nb = &neighborhoods[(sy * GZ as usize + sz) * GX as usize + sx];
+        builder.build_into(nb, is_transparent, chunk);
+        batch.set_chunk(s, chunk);
+    }
+    let mut packed = PackedBatch::default();
+    batch.pack_into(&mut packed);
+    eprintln!(
+        "render batch: {} quads ({:.1} KB at 8 B/quad)",
+        batch.len(),
+        batch.len() as f64 * 8.0 / 1024.0
+    );
+
+    let mut g = c.benchmark_group("render_batch");
+
+    // Variant B (sub-ranges): after an edit, re-copy only the edited slot.
+    g.bench_function("edit_subrange", |b| {
+        let mut s = 0;
+        b.iter(|| {
+            batch.set_chunk(black_box(s), black_box(&chunks[s]));
+            s = (s + 1) % 8;
+        });
+    });
+
+    // Full pack of all 8 slots into 6 contiguous ranges (the extra cost of
+    // variant A on top of the sub-range copy).
+    g.bench_function("pack_all", |b| {
+        b.iter(|| {
+            batch.pack_into(black_box(&mut packed));
+            black_box(&packed);
+        });
+    });
+
+    // Variant A (full re-copy): after an edit, re-copy the slot and re-pack
+    // the whole batch.
+    g.bench_function("edit_recopy_all", |b| {
+        let mut s = 0;
+        b.iter(|| {
+            batch.set_chunk(black_box(s), black_box(&chunks[s]));
+            batch.pack_into(&mut packed);
+            black_box(&packed);
+            s = (s + 1) % 8;
+        });
+    });
+
+    g.finish();
+}
+
+criterion_group!(benches, bench_mesh, bench_render_batch);
 criterion_main!(benches);
