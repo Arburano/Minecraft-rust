@@ -9,6 +9,14 @@ publish = false
 
 [dependencies]
 protocol = { path = "../protocol" }
+bytes = { workspace = true }
+quinn = { workspace = true }
+tokio = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+anyhow = { workspace = true }
+rcgen = { workspace = true }
 
 [lints]
 workspace = true
