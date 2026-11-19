@@ -9,9 +9,13 @@
 //! padding on each side, index `(y * 34 + x) * 34 + z` with padded coordinates
 //! `0..=33` (chunk-local block `b` sits at padded coordinate `b + 1`).
 //!
-//! Render batches (copying quads into a 64^3 batch) are task T0-05.
+//! Render batches ([`RenderBatch`], [`batch`]) copy the quads of 8 mesh chunks
+//! into a 64^3 batch with 0/32 offsets, 6 ranges by face direction.
 
+pub mod batch;
 pub mod reference;
+
+pub use batch::{PackedBatch, RenderBatch};
 
 use binary_greedy_meshing::Mesher;
 use world::coords::{BlockPos, MeshChunkPos, SectionPos};
@@ -216,7 +220,7 @@ fn copy_box(
 
 /// Greedy-meshed output: 6 quad lists indexed by [`Face`]
 /// (Up, Down, Right, Left, Front, Back). Quads are the crate's 8-byte packed
-/// format with chunk-local coordinates; the batch copy (T0-05) adds the
+/// format with chunk-local coordinates; the batch copy ([`batch`]) adds the
 /// 0/32 offsets.
 #[derive(Clone, Debug, Default)]
 pub struct MeshChunkQuads {
