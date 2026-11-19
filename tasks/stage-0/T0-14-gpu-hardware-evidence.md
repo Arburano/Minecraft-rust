@@ -2,7 +2,7 @@
 
 - **Status:** todo
 - **Depends on:** T0-06 implementation (merged in PR #8)
-- **Owner:** agent (parts A and C) + human (part B, runs on the laptop)
+- **Owner:** agent (parts A and C); part B — an agent running **on the laptop itself** (Claude Code / desktop app locally, or a cloud session attached to the laptop via Remote Control), with the human only for the steps marked [human]
 - **Closes:** T0-06 (its second acceptance criterion)
 
 ## Goal
@@ -38,7 +38,17 @@ Indices are per backend and can change after a driver update: always re-check th
 3. [ ] Optional: a `research/gpu/run-matrix.cmd` (cmd.exe, so output stays UTF-8) that runs the probe and the whole matrix from part B with the correct file names. Test what you can without a GPU (`cargo test -p render`, CI green).
 4. [ ] Update [docs/research/gpu/README.md](../../docs/research/gpu/README.md) with the new flag/env var. Merge part A before the human run.
 
-## Part B — human, on the laptop
+## Part B — on the laptop (agent running locally, human only where marked)
+
+A cloud container has no GPU, so part B must run on the laptop. An agent running there can execute every command below. The human is needed only for:
+
+- [human] plug in AC power, set Windows power mode "Best performance", close games/browsers/video before the matrix starts, and do not use the laptop while it runs;
+- [human] approve driver installation (administrator rights) and reboots in step 2, if a driver update is needed;
+- [human] the optional NVIDIA Control Panel setting for Vega 10 on GL (GUI);
+- [human] approve the agent's commands and the push.
+
+The agent must ask the human for these before starting, and record in the summary that power/background conditions were confirmed by the human.
+
 
 Use **Command Prompt (cmd.exe)**, not PowerShell (PowerShell 5.1 writes UTF-16 and breaks the JSON). AC power, Windows power mode "Best performance", close games/browsers/video, no other GPU work. Replace `DATE` with the run date, e.g. `2026-11-20`.
 
