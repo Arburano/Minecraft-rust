@@ -24,3 +24,4 @@ Template — [0000-template.md](0000-template.md).
 | [0009](0009-sharding-ownership-number.md) | Sharding with ownership number | Accepted |
 | [0010](0010-in-game-launcher-and-updater.md) | In-game launcher menu + separate updater | Accepted |
 | [0011](0011-client-light-server-lod.md) | Light on the client, LOD from the server | Accepted |
+| [0012](0012-no-std-guest-allocator.md) | Isolated canonical-ABI allocator for the no_std guest | Accepted |

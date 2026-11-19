@@ -46,10 +46,37 @@ The single source of numbers. Change here and in PRD §1 at the same time. Statu
 
 | What | Value | Status |
 | --- | --- | --- |
-| Batched hook dispatch | ≤ 1 µs | Measured (VM: ≈ 0.4 µs, component) |
-| Event in a batch | ≤ 5 ns | Measured (VM: ≈ 3.6 ns/element of `list<u32>`) |
-| Epoch cost | ≤ 10% | Measured (VM: 0–9%) |
+| Batched hook dispatch | ≤ 1 µs | Measured deviation: 1.1508 µs end-to-end empty hook on Ryzen 7 3750H, Windows; T0-07 below |
+| Event in a batch | ≤ 5 ns | Measured deviation: 308.27 ns/event in a 1,000-string-event batch on the same machine; T0-07 below |
+| Epoch cost | ≤ 10% | Measured (VM: 0–9%; earlier research, not remeasured in T0-07) |
+| Deadline-to-interruption overrun | ≤ 1 ms | Not consistently met: final quiet repetitions ≤ 0.6894 ms; earlier corrected-timer run during compilation reached 1.5101 ms |
 | Cold start of a mod with cache | ≤ 50 ms | Hypothesis |
 | Default mod | 0.5 ms per tick per region, 32 MB | Target |
 
-"VM" figures — 2 vCPU Xeon 2.1 GHz, noise ±30%: `docs/research/optimization-tests.md`.
+### T0-07 measurements (2026-11-19)
+
+Machine: ASUS TUF Gaming FX505DU, AMD Ryzen 7 3750H (4 cores / 8 logical processors), approximately 13.94 GiB usable RAM, Windows 11 build 28000; physical machine, not a VM. Rust 1.97.1, Wasmtime 50.0.2, wit-bindgen 0.63.0, Criterion 0.8.2. Release profile with thin LTO and one codegen unit. CPU frequency was not pinned and background activity was not controlled; these are development measurements, not a production capacity guarantee.
+
+Three consecutive Criterion runs, each with 30 samples, 1 s warmup and 3 s requested measurement time per benchmark:
+
+```bash
+cargo bench --workspace --bench hooks -- --sample-size 30 --warm-up-time 1 --measurement-time 3
+```
+
+| Benchmark | Run 1 estimate [95% CI], µs | Run 2 estimate [95% CI], µs | Run 3 estimate [95% CI], µs |
+| --- | --- | --- | --- |
+| `modhost/empty_run_system` | 1.1604 [1.1388, 1.1835] | 1.1396 [1.1259, 1.1555] | 1.1508 [1.1324, 1.1733] |
+| `modhost/on_events_1000_strings` | 324.83 [314.61, 339.71] | 308.14 [303.96, 313.26] | 308.27 [303.26, 313.10] |
+| `modhost/set_blocks_4000` | 148.17 [142.90, 155.25] | 139.88 [137.41, 142.29] | 137.84 [135.53, 140.83] |
+
+The median of the three point estimates is 1.1508 µs/hook, 308.27 µs/event batch (308.27 ns/event), and 139.88 µs/block batch (34.97 ns/change). These are not per-call latency percentiles. The run-to-run range exceeds 5% for events and blocks; do not interpret differences at that scale as an optimization result.
+
+The engine, pre-linked component, instance, initialization and host event construction are outside the timed loop. Measurements include the epoch-enabled hook wrapper, canonical ABI work, guest execution, host imports, validation and transaction commit. Each event is a `Message` with a 13-byte channel and 4-byte payload; the guest consumes the strings and writes a byte count to a host component. The block benchmark alternates two registered states so that every iteration changes 4,000 blocks rather than repeating no-op writes.
+
+**Documented deviations:** the empty hook is approximately 15.1% above its target; the measured event path is approximately 61.7 times the event target. Owned string/list marshalling, allocation and guest/host work are included, unlike the earlier VM experiments (approximately 0.4 µs/component call and 3.6 ns/element of `list<u32>`). Those experiments are not comparable before/after measurements of this implementation. The targets remain unchanged; the spike is not allocation-free, and it does not establish the default 0.5 ms budget for every hook.
+
+**Interruption:** `park_timeout(200 µs)` initially produced 4.7229 ms and 4.3402 ms overruns on Windows. Switching the watchdog to `thread::sleep(200 µs)` uses the platform's high-resolution sleep timer. With that correction, one repeated test during concurrent compilation still failed at 1.5101 ms. After compilation finished, three complete integration-suite repetitions (10 interruptions each) passed with maxima 689.4, 458.4 and 593.2 µs. A further ten focused repetitions (100 interruptions total) passed with maxima 604.6, 476.9, 550.6, 565.9, 603.0, 444.1, 562.8, 579.2, 583.7 and 534.1 µs. Each uses a 10 ms hook budget and requires all 4,000 writes to be staged before the infinite loop, then discarded while another worker continues the tick. The strict 1 ms assertion remains enabled; quiet passes do not resolve the observed failure under load or prove an OS scheduling guarantee. T0-07 remains in progress pending that acceptance criterion and CI verification.
+
+See the [T0-07 report](../../task-reports/t0-07-wit-and-modhost-spike.md) for verification and limitations.
+
+Earlier "VM" figures — 2 vCPU Xeon 2.1 GHz, noise ±30%: `docs/research/optimization-tests.md`.
