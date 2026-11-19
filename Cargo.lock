@@ -1297,9 +1297,9 @@ version = "0.0.1"
 dependencies = [
  "binary-greedy-meshing",
  "criterion",
- "noise",
  "proptest",
  "world",
+ "worldgen",
 ]
 
 [[package]]
@@ -3319,12 +3319,15 @@ dependencies = [
  "criterion",
  "engine-core",
  "proptest",
+ "worldgen",
 ]
 
 [[package]]
 name = "worldgen"
 version = "0.0.1"
 dependencies = [
+ "noise",
+ "proptest",
  "world",
 ]
 

@@ -13,8 +13,8 @@ world = { path = "../world" }
 
 [dev-dependencies]
 criterion = { workspace = true }
-noise = { workspace = true }
 proptest = { workspace = true }
+worldgen = { path = "../worldgen" }
 
 [[bench]]
 name = "mesh_chunk"

@@ -13,6 +13,8 @@ engine-core = { path = "../engine-core" }
 [dev-dependencies]
 criterion = { workspace = true }
 proptest = { workspace = true }
+# Dev-only cycle (worldgen depends on world): the T0-12 corpus for benchmarks.
+worldgen = { path = "../worldgen" }
 
 [[bench]]
 name = "section"

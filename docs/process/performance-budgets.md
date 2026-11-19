@@ -21,14 +21,14 @@ The single source of numbers. Change here and in PRD §1 at the same time. Statu
 | Joining a server until control | ≤ 5 s with asset cache | Target |
 | GPU geometry time | ≤ 8 ms per frame on iGPU | Measured (Radeon RX Vega 10, path B as the engine would select: 2.417 ms p50 / 2.619 ms p95 on DX12, worst backend GL 2.612 / 2.821; path C 1.637–1.948 ms p50; bare-metal ASUS FX505DU, 3 runs per combination, [T0-14 summary](../research/gpu/summary-2026-11-19.md)) |
 | CPU command recording | ≤ 1 ms per frame | Measured (Ryzen 7 3750H, worst adapter/backend Vega 10 + DX12: 0.535 ms p50 / 0.821 ms p95 median of 3 runs, worst single-run p95 0.923 ms; judged at p95 — the budget does not name a statistic; single-frame maxima exceed 1 ms: 1.323 ms Vega 10 DX12 B, 1.061 ms Vega 10 DX12 C; [T0-14 summary](../research/gpu/summary-2026-11-19.md)) |
-| `fast_mesh` of a 32³ mesh chunk | ≤ 0.2 ms p50 on a 4-core desktop | Measured (VM: ≈ 42 µs on the T0-04 terrain corpus; `mesh` bench `mesh_chunk/fast_mesh`) |
-| Gather + masks of a 32³ mesh chunk | ≤ 100 µs p50 | Measured (VM: ≈ 60 µs on the T0-04 corpus; `mesh` bench `mesh_chunk/gather_masks`, [details](../../task-reports/t0-04-mesh-chunk-32.md)) |
-| Mask update per edit | ≤ 20 ns | Measured (VM: ≈ 2.6 ns; `mesh` bench `mesh_chunk/mask_update`) |
-| Render batch copy after an edit | ≤ 50 µs | Measured (VM: ≈ 1.6 µs full re-copy of a 64³ batch, 4 976 quads / 38.9 KB on the T0-04 corpus; sub-range copy ≈ 0.2 µs; `mesh` bench `mesh_chunk/render_batch`, [details](../../task-reports/t0-05-mesh-render-batches.md)) |
+| `fast_mesh` of a 32³ mesh chunk | ≤ 0.2 ms p50 on a 4-core desktop | Measured (VM: ≈ 49 µs on the T0-12 corpus, seed 0; `mesh` bench `mesh_chunk/fast_mesh`) |
+| Gather + masks of a 32³ mesh chunk | ≤ 100 µs p50 | Measured (VM: ≈ 89 µs on the T0-12 corpus, seed 0; was ≈ 60 µs on the pre-T0-12 corpus — ores make deep sections paletted instead of uniform; `mesh` bench `mesh_chunk/gather_masks`, [details](../../task-reports/t0-12-worldgen-test-corpus.md)) |
+| Mask update per edit | ≤ 20 ns | Measured (VM: ≈ 3.7 ns on the T0-12 corpus; `mesh` bench `mesh_chunk/mask_update`) |
+| Render batch copy after an edit | ≤ 50 µs | Measured (VM: ≈ 1.2 µs full re-copy of a 64³ batch, 5 410 quads / 42.3 KB on the T0-12 corpus; sub-range copy ≈ 0.15 µs; `mesh` bench `mesh_chunk/render_batch`, [details](../../task-reports/t0-12-worldgen-test-corpus.md)) |
 | Lighting: add / remove per edit | ≤ 100 / ≤ 200 µs p95 | Hypothesis |
-| `get` in a section | ≈ 3.8 ns | Measured (VM: ≈ 3.4 ns paletted, 0.5 ns single, 0.7 ns direct; `world` bench `section_get`) |
-| `set` in a section, any bit width | ≤ 10 ns | Measured (VM: ≈ 6 ns typical; 6–8-bit readings of 13–15 ns are 4K-aliasing stalls on this VM, see [T0-03 report](../../task-reports/t0-03-world-palette-section.md); bare-metal confirmation pending) |
-| `unpack_into` per section | ≤ 5 µs | Measured (VM: ≈ 2.9–4.1 µs paletted, < 0.1 µs single/direct; `world` bench `section_unpack_into`) |
+| `get` in a section | ≈ 3.8 ns | Measured (VM: ≈ 3.4 ns paletted, 0.5 ns single, 0.7 ns direct; `world` bench `section_get`; T0-12 corpus group `section_corpus/get`: ≈ 4.0 ns paletted, 0.6 ns single) |
+| `set` in a section, any bit width | ≤ 10 ns | Measured (VM: ≈ 6 ns typical; 6–8-bit readings of 13–15 ns are 4K-aliasing stalls on this VM, see [T0-03 report](../../task-reports/t0-03-world-palette-section.md); T0-12 corpus group `section_corpus/set`: 12–13 ns on 2–3-bit terrain sections, same VM caveat; bare-metal confirmation pending) |
+| `unpack_into` per section | ≤ 5 µs | Measured (VM: ≈ 2.9–4.1 µs paletted, < 0.1 µs single/direct; `world` bench `section_unpack_into`; T0-12 corpus group `section_corpus/unpack`: ≈ 3.3 µs paletted, 0.08 µs single) |
 
 GTX 1050 targets (FPS on iGPU / GTX 1050 and 64-chunk LOD distance) remain
 **not verified on GTX 1050**: no such hardware is available (owner decision,

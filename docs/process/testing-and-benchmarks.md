@@ -16,7 +16,7 @@
 
 - `criterion` in `crates/<crate>/benches/`. CI checks that they compile (`cargo bench --no-run`).
 - Each benchmark corresponds to a row in [`performance-budgets.md`](performance-budgets.md); the name or a comment contains a reference to that row.
-- A fixed data corpus: synthetic terrain with a fixed seed (`research/bench` as a starting point), later — an export of a real world.
+- A fixed data corpus: `worldgen::test_corpus` with a fixed seed (T0-12; `research/bench` was the starting point), later — an export of a real world.
 - Stage 0 results and the test machine are recorded in `docs/research/`. A 2 vCPU VM gives ±30% noise — final numbers are taken on bare metal with a fixed frequency (spread ≤ 5%).
 - A regression > 10% on a hot benchmark is a PR blocker (automatically, once a stable runner exists).
 
