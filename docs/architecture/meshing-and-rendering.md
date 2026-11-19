@@ -59,7 +59,7 @@ We read `adapter.features()`, `limits()`, `get_downlevel_capabilities()` and cho
 | B. Vertex pulling | `DownlevelFlags::VERTEX_STORAGE` | CPU culling, a draw per render batch × direction, quads from a storage buffer, vertex from `vertex_index` (quad = `vertex_index / 6`), `first_instance` not needed |
 | C. Fallback | no storage in the vertex shader (GL ES 3.0, old drivers) | the same 8 bytes as a per-instance `Uint32x2` attribute, 4 vertices per instance |
 
-Stages 0–1 build B and C; A comes from stage 2, only after measurements (analysis §13.3). Capability dump on an iGPU and GTX 1050 (Vulkan, DX12, GL) — task T0-06.
+Stages 0–1 build B and C; A comes from stage 2, only after measurements (analysis §13.3). Capability dump on an iGPU and GTX 1050 (Vulkan, DX12, GL) — task T0-06; stage 0 evidence is taken on Radeon RX Vega 10 + GTX 1660 Ti instead (open question 12, T0-14), so GTX 1050 remains unverified.
 
 ## Culling
 
