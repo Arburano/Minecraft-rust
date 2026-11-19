@@ -1,0 +1,8 @@
+    Finished `test` profile [optimized + debuginfo] target(s) in 0.38s
+     Running unittests src\bin\quad-bench.rs (target\debug\deps\quad_bench-061b57e0731be849.exe)
+
+running 1 test
+test tests::gpu_paths_render_identical_nonblank_images ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.32s
+

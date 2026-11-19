@@ -147,8 +147,8 @@ research\gpu\run-matrix.cmd DATE "MACHINE STRING"
 
 The script saves the probe, three runs per adapter/backend/path, the
 `--no-timestamps` runs and the per-adapter image-test logs under this directory
-with the T0-14 file names. Re-check its adapter indices against the fresh probe
-first; Vulkan rows are not included until Vulkan works (see T0-14 part B).
+with the T0-14 file names, including the Vulkan rows. Re-check its adapter
+indices against the fresh probe first.
 
 On the FX505DU, `VK_LAYER_AMD_switchable_graphics` makes
 `vkEnumeratePhysicalDevices` return `INCOMPLETE` with no devices, which is why

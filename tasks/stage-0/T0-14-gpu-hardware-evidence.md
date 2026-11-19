@@ -35,7 +35,7 @@ Indices are per backend and can change after a driver update: always re-check th
 
 1. [x] Add a `--no-timestamps` flag to `quad-bench` that does not request `TIMESTAMP_QUERY` even if the adapter supports it, so the `gpu_geometry_ms: null` path runs end to end. The report must say timestamps were disabled by the flag (e.g. `"timestamps": "disabled-by-flag"` vs `"unsupported"` vs `"enabled"`). Unit test for the CLI parsing; no change to the measured code otherwise.
 2. [x] Let the ignored image-comparison test choose the adapter: an env var (e.g. `QUAD_BENCH_ADAPTER_NAME`, substring match on the adapter name) in addition to `WGPU_BACKEND`. Today it takes the first adapter with vertex storage, which on DX12 is always the GTX 1660 Ti, so the Vega 10 is never compared.
-3. [ ] Optional: a `research/gpu/run-matrix.cmd` (cmd.exe, so output stays UTF-8) that runs the probe and the whole matrix from part B with the correct file names. Test what you can without a GPU (`cargo test -p render`, CI green).
+3. [x] Optional: a `research/gpu/run-matrix.cmd` (cmd.exe, so output stays UTF-8) that runs the probe and the whole matrix from part B with the correct file names. Test what you can without a GPU (`cargo test -p render`, CI green).
 4. [x] Update [docs/research/gpu/README.md](../../docs/research/gpu/README.md) with the new flag/env var. Merge part A before the human run.
 
 ## Part B — on the laptop (agent running locally, human only where marked)
@@ -52,14 +52,14 @@ The agent must ask the human for these before starting, and record in the summar
 
 Use **Command Prompt (cmd.exe)**, not PowerShell (PowerShell 5.1 writes UTF-16 and breaks the JSON). AC power, Windows power mode "Best performance", close games/browsers/video, no other GPU work. Replace `DATE` with the run date, e.g. `2026-11-20`.
 
-1. [ ] **Build:** `git pull`, then `cargo build --release -p render --bins`.
-2. [ ] **Vulkan.** wgpu found no Vulkan adapters, although both NVIDIA and AMD drivers normally ship Vulkan. Check in this order and write down what you found:
+1. [x] **Build:** `git pull`, then `cargo build --release -p render --bins`.
+2. [x] **Vulkan.** wgpu found no Vulkan adapters, although both NVIDIA and AMD drivers normally ship Vulkan. Check in this order and write down what you found:
    - `C:\Windows\System32\vulkan-1.dll` exists?
    - Install the Vulkan runtime/SDK from LunarG (vulkan.lunarg.com) and run `vulkaninfo --summary`. Does it list the GTX 1660 Ti and the Vega 10?
    - If not: update/clean-install the NVIDIA driver (GeForce/Studio driver from nvidia.com) and the AMD driver (AMD Adrenalin for Vega 10 / Ryzen 3750H from amd.com; the laptop's OEM driver 27.20.1032.2 is old). Reboot, run `vulkaninfo --summary` again.
    - If Vulkan still does not work: it is an "unsupported combination". Save the `vulkaninfo` output (or the error text) to `docs/research/gpu/vulkan-unavailable-DATE.txt` with the driver versions. Do not skip it silently.
-3. [ ] **Probe:** `target\release\gpu-probe.exe > docs\research\gpu\laptop-probe-DATE.json`. Check the adapter indices for each backend against the table above.
-4. [ ] **Benchmark matrix — three runs each.** Set the machine string once (fill in current driver versions):
+3. [x] **Probe:** `target\release\gpu-probe.exe > docs\research\gpu\laptop-probe-DATE.json`. Check the adapter indices for each backend against the table above.
+4. [x] **Benchmark matrix — three runs each.** Set the machine string once (fill in current driver versions):
 
    ```bat
    set M=ASUS TUF FX505DU; Ryzen 7 3750H; about 14 GiB usable RAM; Windows 11 build 28000; NVIDIA <driver>; AMD <driver>
@@ -83,10 +83,10 @@ Use **Command Prompt (cmd.exe)**, not PowerShell (PowerShell 5.1 writes UTF-16 a
    | gtx1660ti | vulkan | from probe | b, c — only if step 2 fixed Vulkan |
 
    That is 18 files without Vulkan, 30 with it. Vega 10 on GL: Windows GL uses the GPU chosen by the driver; optionally set "Integrated graphics" for `quad-bench.exe` in NVIDIA Control Panel → Manage 3D settings → Program settings, re-run the probe and, if GL now shows the Vega 10, add `vega10 gl b/c`. If not possible, note it as unsupported.
-5. [ ] **No timestamps** (needs part A): one run per adapter, e.g.
+5. [x] **No timestamps** (needs part A): one run per adapter, e.g.
    `target\release\quad-bench.exe --backend dx12 --adapter 1 --path b --no-timestamps --machine "%M%" --environment bare-metal > docs\research\gpu\vega10-dx12-b-notimestamps-DATE.json`
    and the same with `--adapter 0` as `gtx1660ti-...`. Expected: the run succeeds, `gpu_geometry_ms` is `null`, CPU recording is present, `rendered_pixels` > 0.
-6. [ ] **Image comparison test (ignored by default)** — B and C must draw identical images. Run once per adapter/backend and save the console output:
+6. [x] **Image comparison test (ignored by default)** — B and C must draw identical images. Run once per adapter/backend and save the console output:
 
    ```bat
    set WGPU_BACKEND=dx12
@@ -95,7 +95,7 @@ Use **Command Prompt (cmd.exe)**, not PowerShell (PowerShell 5.1 writes UTF-16 a
    ```
 
    Repeat with `QUAD_BENCH_ADAPTER_NAME=1660` for `dx12` and `gl` (and `vulkan` if it works). Each file must end with `test result: ok. 1 passed`.
-7. [ ] **Sanity check before commit:** no file is empty; every `quad-bench` JSON contains `"build_profile": "release"` and `"environment": "bare-metal"`. If something failed, keep the error text in a `.txt` next to it instead of an empty JSON.
+7. [x] **Sanity check before commit:** no file is empty; every `quad-bench` JSON contains `"build_profile": "release"` and `"environment": "bare-metal"`. If something failed, keep the error text in a `.txt` next to it instead of an empty JSON.
 8. [ ] **Commit and push:**
 
    ```bat
