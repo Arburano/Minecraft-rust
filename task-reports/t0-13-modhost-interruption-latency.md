@@ -54,7 +54,7 @@ The quiet-desktop p99 ≤ 1 ms target was met in all six runs, including the loa
 
 ### Verification
 
-Local, 2026-11-20, all green: `cargo test --workspace` — 79 tests + 2 doctests passed, 0 failed (includes the functional interruption test and the new watchdog-gating unit test); `cargo fmt --all --check`; `cargo clippy --workspace --all-targets -- -D warnings` — no warnings; `cargo bench --workspace --no-run`. Evidence matrix: 3 quiet + 3 loaded latency runs and 20/20 loaded functional runs (above). `origin/main` (T0-11/T0-12, PR #13/#14) was merged into the branch before the PR; conflicts in `tasks/README.md` and `Cargo.lock` resolved keeping both sides. [PR #15](https://github.com/Arburano/Minecraft-rust/pull/15) CI green on the merged tree (run 44691005658).
+Local, 2026-11-20, all green: `cargo test --workspace` — 79 tests + 2 doctests passed before the main merge and 99 tests after it (T0-11/T0-12 suites included), 0 failed (includes the functional interruption test and the new watchdog-gating unit test); `cargo fmt --all --check`; `cargo clippy --workspace --all-targets -- -D warnings` — no warnings; `cargo bench --workspace --no-run`. Evidence matrix: 3 quiet + 3 loaded latency runs and 20/20 loaded functional runs (above). `origin/main` (T0-11/T0-12, PR #13/#14) was merged into the branch before the PR; conflicts in `tasks/README.md` and `Cargo.lock` resolved keeping both sides. [PR #15](https://github.com/Arburano/Minecraft-rust/pull/15) CI green on the merged tree (run 44691005658).
 
 ## What went wrong
 
