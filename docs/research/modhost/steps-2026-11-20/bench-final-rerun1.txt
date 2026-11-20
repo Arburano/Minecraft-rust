@@ -1,0 +1,34 @@
+    Finished `bench` profile [optimized + debuginfo] target(s) in 12.32s
+     Running benches\hooks.rs (target\release\deps\hooks-1a92e0645544c7ea.exe)
+Gnuplot not found, using plotters backend
+    Finished `release` profile [optimized + debuginfo] target(s) in 1.34s
+Benchmarking modhost/empty_run_system
+Benchmarking modhost/empty_run_system: Warming up for 1.0000 s
+Benchmarking modhost/empty_run_system: Collecting 30 samples in estimated 3.0000 s (1.4M iterations)
+Benchmarking modhost/empty_run_system: Analyzing
+modhost/empty_run_system
+                        time:   [2.1857 µs 2.2873 µs 2.3925 µs]
+                        change: [−39.068% −36.416% −33.626%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Benchmarking modhost/on_events_1000_strings
+Benchmarking modhost/on_events_1000_strings: Warming up for 1.0000 s
+Benchmarking modhost/on_events_1000_strings: Collecting 30 samples in estimated 3.0419 s (16k iterations)
+Benchmarking modhost/on_events_1000_strings: Analyzing
+modhost/on_events_1000_strings
+                        time:   [194.89 µs 204.22 µs 213.55 µs]
+                        thrpt:  [4.6826 Melem/s 4.8966 Melem/s 5.1310 Melem/s]
+                 change:
+                        time:   [−37.989% −33.881% −30.168%] (p = 0.00 < 0.05)
+                        thrpt:  [+43.201% +51.242% +61.261%]
+                        Performance has improved.
+Benchmarking modhost/set_blocks_4000
+Benchmarking modhost/set_blocks_4000: Warming up for 1.0000 s
+Benchmarking modhost/set_blocks_4000: Collecting 30 samples in estimated 3.0012 s (33k iterations)
+Benchmarking modhost/set_blocks_4000: Analyzing
+modhost/set_blocks_4000 time:   [87.501 µs 90.963 µs 95.248 µs]
+                        thrpt:  [41.995 Melem/s 43.974 Melem/s 45.714 Melem/s]
+                 change:
+                        time:   [−38.128% −35.023% −31.950%] (p = 0.00 < 0.05)
+                        thrpt:  [+46.951% +53.900% +61.624%]
+                        Performance has improved.
+

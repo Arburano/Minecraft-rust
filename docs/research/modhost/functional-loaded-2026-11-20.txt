@@ -1,0 +1,220 @@
+=== functional run 1 ===
+    Finished `test` profile [optimized + debuginfo] target(s) in 1.13s
+     Running tests\component.rs (target\debug\deps\component-e223962de09d52d5.exe)
+
+running 1 test
+    Finished `release` profile [optimized + debuginfo] target(s) in 0.51s
+10 interruption runs: maximum deadline overrun 505.7µs
+test infinite_loop_is_interrupted_and_tick_continues ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 1.02s
+
+=== functional run 2 ===
+    Finished `test` profile [optimized + debuginfo] target(s) in 1.06s
+     Running tests\component.rs (target\debug\deps\component-e223962de09d52d5.exe)
+
+running 1 test
+    Finished `release` profile [optimized + debuginfo] target(s) in 0.52s
+10 interruption runs: maximum deadline overrun 464.2µs
+test infinite_loop_is_interrupted_and_tick_continues ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 0.97s
+
+=== functional run 3 ===
+    Finished `test` profile [optimized + debuginfo] target(s) in 1.08s
+     Running tests\component.rs (target\debug\deps\component-e223962de09d52d5.exe)
+
+running 1 test
+    Finished `release` profile [optimized + debuginfo] target(s) in 0.45s
+10 interruption runs: maximum deadline overrun 517.4µs
+test infinite_loop_is_interrupted_and_tick_continues ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 0.89s
+
+=== functional run 4 ===
+    Finished `test` profile [optimized + debuginfo] target(s) in 0.98s
+     Running tests\component.rs (target\debug\deps\component-e223962de09d52d5.exe)
+
+running 1 test
+    Finished `release` profile [optimized + debuginfo] target(s) in 0.45s
+10 interruption runs: maximum deadline overrun 528.6µs
+test infinite_loop_is_interrupted_and_tick_continues ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 0.95s
+
+=== functional run 5 ===
+    Finished `test` profile [optimized + debuginfo] target(s) in 1.05s
+     Running tests\component.rs (target\debug\deps\component-e223962de09d52d5.exe)
+
+running 1 test
+    Finished `release` profile [optimized + debuginfo] target(s) in 0.45s
+10 interruption runs: maximum deadline overrun 385.6µs
+test infinite_loop_is_interrupted_and_tick_continues ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 0.91s
+
+=== functional run 6 ===
+    Finished `test` profile [optimized + debuginfo] target(s) in 0.97s
+     Running tests\component.rs (target\debug\deps\component-e223962de09d52d5.exe)
+
+running 1 test
+    Finished `release` profile [optimized + debuginfo] target(s) in 0.49s
+10 interruption runs: maximum deadline overrun 434.3µs
+test infinite_loop_is_interrupted_and_tick_continues ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 0.94s
+
+=== functional run 7 ===
+    Finished `test` profile [optimized + debuginfo] target(s) in 0.96s
+     Running tests\component.rs (target\debug\deps\component-e223962de09d52d5.exe)
+
+running 1 test
+    Finished `release` profile [optimized + debuginfo] target(s) in 0.47s
+10 interruption runs: maximum deadline overrun 506.5µs
+test infinite_loop_is_interrupted_and_tick_continues ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 0.88s
+
+=== functional run 8 ===
+    Finished `test` profile [optimized + debuginfo] target(s) in 1.01s
+     Running tests\component.rs (target\debug\deps\component-e223962de09d52d5.exe)
+
+running 1 test
+    Finished `release` profile [optimized + debuginfo] target(s) in 0.45s
+10 interruption runs: maximum deadline overrun 499.2µs
+test infinite_loop_is_interrupted_and_tick_continues ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 1.00s
+
+=== functional run 9 ===
+    Finished `test` profile [optimized + debuginfo] target(s) in 1.05s
+     Running tests\component.rs (target\debug\deps\component-e223962de09d52d5.exe)
+
+running 1 test
+    Finished `release` profile [optimized + debuginfo] target(s) in 0.48s
+10 interruption runs: maximum deadline overrun 476.7µs
+test infinite_loop_is_interrupted_and_tick_continues ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 1.03s
+
+=== functional run 10 ===
+    Finished `test` profile [optimized + debuginfo] target(s) in 0.99s
+     Running tests\component.rs (target\debug\deps\component-e223962de09d52d5.exe)
+
+running 1 test
+    Finished `release` profile [optimized + debuginfo] target(s) in 0.45s
+10 interruption runs: maximum deadline overrun 507.8µs
+test infinite_loop_is_interrupted_and_tick_continues ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 0.89s
+
+=== functional run 11 ===
+    Finished `test` profile [optimized + debuginfo] target(s) in 1.03s
+     Running tests\component.rs (target\debug\deps\component-e223962de09d52d5.exe)
+
+running 1 test
+    Finished `release` profile [optimized + debuginfo] target(s) in 0.45s
+10 interruption runs: maximum deadline overrun 469.4µs
+test infinite_loop_is_interrupted_and_tick_continues ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 0.88s
+
+=== functional run 12 ===
+    Finished `test` profile [optimized + debuginfo] target(s) in 1.04s
+     Running tests\component.rs (target\debug\deps\component-e223962de09d52d5.exe)
+
+running 1 test
+    Finished `release` profile [optimized + debuginfo] target(s) in 0.45s
+10 interruption runs: maximum deadline overrun 480.1µs
+test infinite_loop_is_interrupted_and_tick_continues ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 0.93s
+
+=== functional run 13 ===
+    Finished `test` profile [optimized + debuginfo] target(s) in 1.06s
+     Running tests\component.rs (target\debug\deps\component-e223962de09d52d5.exe)
+
+running 1 test
+    Finished `release` profile [optimized + debuginfo] target(s) in 0.51s
+10 interruption runs: maximum deadline overrun 482µs
+test infinite_loop_is_interrupted_and_tick_continues ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 1.00s
+
+=== functional run 14 ===
+    Finished `test` profile [optimized + debuginfo] target(s) in 1.12s
+     Running tests\component.rs (target\debug\deps\component-e223962de09d52d5.exe)
+
+running 1 test
+    Finished `release` profile [optimized + debuginfo] target(s) in 0.45s
+10 interruption runs: maximum deadline overrun 356.4µs
+test infinite_loop_is_interrupted_and_tick_continues ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 0.89s
+
+=== functional run 15 ===
+    Finished `test` profile [optimized + debuginfo] target(s) in 1.00s
+     Running tests\component.rs (target\debug\deps\component-e223962de09d52d5.exe)
+
+running 1 test
+    Finished `release` profile [optimized + debuginfo] target(s) in 0.45s
+10 interruption runs: maximum deadline overrun 446.4µs
+test infinite_loop_is_interrupted_and_tick_continues ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 0.82s
+
+=== functional run 16 ===
+    Finished `test` profile [optimized + debuginfo] target(s) in 0.97s
+     Running tests\component.rs (target\debug\deps\component-e223962de09d52d5.exe)
+
+running 1 test
+    Finished `release` profile [optimized + debuginfo] target(s) in 0.46s
+10 interruption runs: maximum deadline overrun 973.2µs
+test infinite_loop_is_interrupted_and_tick_continues ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 0.90s
+
+=== functional run 17 ===
+    Finished `test` profile [optimized + debuginfo] target(s) in 1.00s
+     Running tests\component.rs (target\debug\deps\component-e223962de09d52d5.exe)
+
+running 1 test
+    Finished `release` profile [optimized + debuginfo] target(s) in 0.45s
+10 interruption runs: maximum deadline overrun 495.3µs
+test infinite_loop_is_interrupted_and_tick_continues ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 0.90s
+
+=== functional run 18 ===
+    Finished `test` profile [optimized + debuginfo] target(s) in 1.06s
+     Running tests\component.rs (target\debug\deps\component-e223962de09d52d5.exe)
+
+running 1 test
+    Finished `release` profile [optimized + debuginfo] target(s) in 0.49s
+10 interruption runs: maximum deadline overrun 454.8µs
+test infinite_loop_is_interrupted_and_tick_continues ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 0.91s
+
+=== functional run 19 ===
+    Finished `test` profile [optimized + debuginfo] target(s) in 1.07s
+     Running tests\component.rs (target\debug\deps\component-e223962de09d52d5.exe)
+
+running 1 test
+    Finished `release` profile [optimized + debuginfo] target(s) in 0.83s
+10 interruption runs: maximum deadline overrun 448.5µs
+test infinite_loop_is_interrupted_and_tick_continues ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 1.40s
+
+=== functional run 20 ===
+    Finished `test` profile [optimized + debuginfo] target(s) in 1.42s
+     Running tests\component.rs (target\debug\deps\component-e223962de09d52d5.exe)
+
+running 1 test
+    Finished `release` profile [optimized + debuginfo] target(s) in 0.59s
+10 interruption runs: maximum deadline overrun 537.2µs
+test infinite_loop_is_interrupted_and_tick_continues ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 1.21s
+

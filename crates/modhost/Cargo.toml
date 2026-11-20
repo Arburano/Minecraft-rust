@@ -12,6 +12,7 @@ engine-core = { path = "../engine-core" }
 world = { path = "../world" }
 wasmtime = { workspace = true }
 thiserror = { workspace = true }
+thread-priority = { workspace = true }
 
 [dev-dependencies]
 anyhow = { workspace = true }

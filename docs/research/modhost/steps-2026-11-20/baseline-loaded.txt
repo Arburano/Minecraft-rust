@@ -1,0 +1,19 @@
+    Blocking waiting for file lock on build directory
+    Finished `release` profile [optimized + debuginfo] target(s) in 5m 17s
+     Running tests\interruption_latency.rs (target\release\deps\interruption_latency-9b23266659788c4b.exe)
+
+running 1 test
+    Finished `release` profile [optimized + debuginfo] target(s) in 0.35s
+interruption-latency measurement (T0-13, owner decision No. 11)
+machine: windows x86_64, 8 logical CPUs; build profile: release
+interruptions: 1000, hook budget: 10ms, load: external (none spawned by this test)
+metric                                    p50        p90        p99        max
+deadline-to-return overrun           8.425 ms  22.181 ms  33.941 ms  47.061 ms
+watchdog wake (deadline->interrupt)   8.356 ms  22.162 ms  33.920 ms  47.045 ms
+trap/unwind (interrupt->return)      0.019 ms   0.027 ms   0.062 ms  13.967 ms
+post-return (return->observer)       0.003 ms   0.003 ms   0.006 ms   0.131 ms
+quiet-desktop target p99 <= 1 ms: NOT MET (informational; under load this is expected to fail)
+test interruption_latency ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 21.11s
+

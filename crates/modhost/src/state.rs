@@ -75,6 +75,8 @@ impl Region {
 pub(crate) struct HostState {
     pub(crate) region: Region,
     pub(crate) deadline: Instant,
+    pub(crate) interrupt_at: Option<Instant>,
+    pub(crate) returned_at: Option<Instant>,
     writes: Vec<(usize, BlockStateId)>,
     component_writes: Vec<(u32, u64, Vec<u8>)>,
     registrations: Vec<(String, bool)>,
@@ -88,6 +90,8 @@ impl HostState {
         Self {
             region,
             deadline: Instant::now(),
+            interrupt_at: None,
+            returned_at: None,
             writes: Vec::with_capacity(MAX_WRITES),
             component_writes: Vec::with_capacity(MAX_WRITES),
             registrations: Vec::with_capacity(MAX_COMPONENTS),
@@ -100,6 +104,8 @@ impl HostState {
     pub(crate) fn begin(&mut self, deadline: Instant) {
         self.discard();
         self.deadline = deadline;
+        self.interrupt_at = None;
+        self.returned_at = None;
     }
 
     pub(crate) fn pending_blocks(&self) -> usize {

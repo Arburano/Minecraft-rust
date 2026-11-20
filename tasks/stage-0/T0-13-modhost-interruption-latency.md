@@ -1,6 +1,6 @@
 # T0-13. Mod interruption latency: split the criterion, diagnose and reduce overrun
 
-- **Status:** todo
+- **Status:** done (2026-11-20)
 - **Depends on:** T0-07 (implementation merged in PR #9); [open question No. 11](../../docs/open-questions.md) — answered 2026-11-19, the task can start
 - **Owner:** agent
 
@@ -43,11 +43,15 @@ Make CI deterministic, turn the 1 ms bound into a measured latency target, and r
 
 ## Acceptance criteria
 
-- [ ] The functional interruption test is deterministic in CI: 20 consecutive local runs with all cores busy pass (report the machine).
-- [ ] The latency measurement exists, runs on demand, and its p50/p99/max (quiet and under load) are in performance-budgets with machine and run count.
-- [ ] The overrun breakdown (watchdog wake / trap / preemption) is in the task report.
-- [ ] Every kept optimization has before/after numbers; rejected ones are listed in the report.
-- [ ] Docs (PRD, wasm-api, performance-budgets, T0-07 task) agree with the owner's answer to No. 11.
+- [x] The functional interruption test is deterministic in CI: 20 consecutive local runs with all cores busy pass (report the machine).
+- [x] The latency measurement exists, runs on demand, and its p50/p99/max (quiet and under load) are in performance-budgets with machine and run count.
+- [x] The overrun breakdown (watchdog wake / trap / preemption) is in the task report.
+- [x] Every kept optimization has before/after numbers; rejected ones are listed in the report.
+- [x] Docs (PRD, wasm-api, performance-budgets, T0-07 task) agree with the owner's answer to No. 11.
+
+## Verification status (2026-11-20)
+
+All steps implemented; see the [task report](../../task-reports/t0-13-modhost-interruption-latency.md). Machine: ASUS TUF FX505DU, Ryzen 7 3750H (8 logical CPUs), Windows 11 build 28000, physical. Functional test (debug, ≤ 10 ms): 20/20 consecutive runs under full CPU load, maxima 356.4–973.2 µs. Latency (release, 3 runs × 1,000 interruptions per condition): quiet p99 0.633–0.637 ms, loaded p99 0.534–0.539 ms — the quiet-desktop 1 ms p99 target met in all six runs. Kept: backtraces off, watchdog priority, per-call worker priority (owner-approved, ≈ +1 µs/hook), in-flight gating; rejected: 100 µs tick. Evidence: [docs/research/modhost/](../../docs/research/modhost/), script `research/modhost/run-latency.cmd`. Local verification green: 79 tests + 2 doctests, fmt, strict clippy, `cargo bench --workspace --no-run`.
 
 ## Out of scope
 

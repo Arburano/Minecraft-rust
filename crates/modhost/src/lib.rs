@@ -4,7 +4,9 @@ mod state;
 
 use std::path::Path;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+#[cfg(test)]
+use std::sync::atomic::AtomicU64;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
@@ -58,32 +60,111 @@ pub enum Error {
 
 struct EpochWatchdog {
     stop: Arc<AtomicBool>,
+    in_flight: Arc<AtomicUsize>,
+    unparker: thread::Thread,
     thread: Option<JoinHandle<()>>,
+    #[cfg(test)]
+    ticks: Arc<AtomicU64>,
+}
+
+/// Raises the calling thread's priority for the duration of a guest call so
+/// CPU-bound background load cannot preempt the worker past its deadline
+/// (T0-13: the epoch check runs on the worker thread, so an off-CPU worker
+/// cannot observe the watchdog's increment). Best-effort and restored on
+/// every exit path; a failure keeps the caller's current priority.
+struct CallPriority {
+    previous: Option<thread_priority::ThreadPriority>,
+}
+
+impl CallPriority {
+    fn raise() -> Self {
+        let previous = thread_priority::get_current_thread_priority().ok();
+        if thread_priority::set_current_thread_priority(thread_priority::ThreadPriority::Max)
+            .is_err()
+        {
+            return Self { previous: None };
+        }
+        Self { previous }
+    }
+}
+
+impl Drop for CallPriority {
+    fn drop(&mut self) {
+        if let Some(priority) = self.previous {
+            let _ = priority.set_for_current();
+        }
+    }
 }
 
 impl EpochWatchdog {
     fn start(engine: Engine) -> Result<Self, Error> {
         let stop = Arc::new(AtomicBool::new(false));
         let stopped = Arc::clone(&stop);
+        let in_flight = Arc::new(AtomicUsize::new(0));
+        let idle = Arc::clone(&in_flight);
+        #[cfg(test)]
+        let ticks = Arc::new(AtomicU64::new(0));
+        #[cfg(test)]
+        let tick_counter = Arc::clone(&ticks);
         let thread = thread::Builder::new()
             .name("mod-epoch".into())
             .spawn(move || {
+                // Best-effort: a raised priority shortens wake latency when all
+                // cores are busy; on failure (e.g. unprivileged Linux) the
+                // watchdog keeps its normal priority.
+                let _ = thread_priority::ThreadPriority::Max.set_for_current();
                 while !stopped.load(Ordering::Acquire) {
+                    // Tick only while a guest call is in flight; an idle server
+                    // parks instead of waking 5,000 times per second. unpark
+                    // tokens are not lost: a call starting between the load and
+                    // park makes park return immediately.
+                    if idle.load(Ordering::Acquire) == 0 {
+                        thread::park();
+                        continue;
+                    }
                     // Windows sleep uses a high-resolution timer; park_timeout rounds to milliseconds.
                     thread::sleep(Duration::from_micros(200));
                     engine.increment_epoch();
+                    #[cfg(test)]
+                    tick_counter.fetch_add(1, Ordering::Relaxed);
                 }
             })?;
+        let unparker = thread.thread().clone();
         Ok(Self {
             stop,
+            in_flight,
+            unparker,
             thread: Some(thread),
+            #[cfg(test)]
+            ticks,
         })
+    }
+
+    fn enter(&self) -> InFlight {
+        self.in_flight.fetch_add(1, Ordering::Release);
+        self.unparker.unpark();
+        InFlight(Arc::clone(&self.in_flight))
+    }
+
+    #[cfg(test)]
+    fn tick_count(&self) -> u64 {
+        self.ticks.load(Ordering::Relaxed)
+    }
+}
+
+/// Decrements the watchdog's in-flight counter on every exit path.
+struct InFlight(Arc<AtomicUsize>);
+
+impl Drop for InFlight {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::Release);
     }
 }
 
 impl Drop for EpochWatchdog {
     fn drop(&mut self) {
         self.stop.store(true, Ordering::Release);
+        self.unparker.unpark();
         if let Some(thread) = self.thread.take() {
             let _ = thread.join();
         }
@@ -110,6 +191,7 @@ impl ModHost {
         config
             .wasm_component_model(true)
             .epoch_interruption(true)
+            .wasm_backtrace_max_frames(None)
             .allocation_strategy(InstanceAllocationStrategy::Pooling(pool));
         let engine = Engine::new(&config)?;
         let watchdog = Arc::new(EpochWatchdog::start(engine.clone())?);
@@ -142,9 +224,13 @@ pub struct PreparedMod {
 impl PreparedMod {
     /// Instantiates a component on a worker and bounds its start function as well.
     pub fn instantiate(&self, region: Region, budget: Duration) -> Result<ModWorker, Error> {
+        let _priority = CallPriority::raise();
+        let _in_flight = self.host.watchdog.enter();
         let mut store = Store::new(&self.host.engine, HostState::new(region));
-        store.epoch_deadline_callback(|state| {
-            Ok(if Instant::now() >= state.data().deadline {
+        store.epoch_deadline_callback(|mut state| {
+            let now = Instant::now();
+            Ok(if now >= state.data().deadline {
+                state.data_mut().interrupt_at = Some(now);
                 UpdateDeadline::Interrupt
             } else {
                 UpdateDeadline::Continue(1)
@@ -179,6 +265,21 @@ pub struct ModWorker {
     _watchdog: Arc<EpochWatchdog>,
 }
 
+/// Timing breakdown of a call that ended in a deadline overrun (T0-13
+/// diagnostics). All instants use the same monotonic clock as the deadline.
+#[derive(Clone, Copy, Debug)]
+pub struct InterruptionTiming {
+    /// The wall-clock deadline the call exceeded.
+    pub deadline: Instant,
+    /// When the epoch callback returned `UpdateDeadline::Interrupt`:
+    /// deadline → interrupt is the watchdog wake latency (tick granularity
+    /// plus OS scheduling).
+    pub interrupt: Instant,
+    /// When the guest call returned to the host: interrupt → returned is
+    /// the trap/unwind cost.
+    pub returned: Instant,
+}
+
 impl ModWorker {
     /// Declares the mod's systems and subscriptions.
     pub fn init(&mut self, budget: Duration) -> Result<ModDecl, Error> {
@@ -206,6 +307,18 @@ impl ModWorker {
         &self.store.data().region
     }
 
+    /// Timing breakdown of the most recent call, if it ended in a deadline
+    /// overrun. `None` after a successful call, a non-deadline trap, or before
+    /// the first call.
+    pub fn last_interruption(&self) -> Option<InterruptionTiming> {
+        let state = self.store.data();
+        Some(InterruptionTiming {
+            deadline: state.deadline,
+            interrupt: state.interrupt_at?,
+            returned: state.returned_at?,
+        })
+    }
+
     /// Releases the instance and returns committed state, including after a trap.
     pub fn into_region(self) -> Region {
         self.store.into_data().region
@@ -222,6 +335,8 @@ impl ModWorker {
         let deadline = Instant::now()
             .checked_add(budget)
             .ok_or(Error::InvalidBudget)?;
+        let _priority = CallPriority::raise();
+        let _in_flight = self._watchdog.enter();
         self.store.data_mut().begin(deadline);
         self.store.set_epoch_deadline(1);
         let result = call(&self.guest, &mut self.store);
@@ -230,6 +345,7 @@ impl ModWorker {
             self.trapped = true;
         }
         if finished >= deadline {
+            self.store.data_mut().returned_at = Some(finished);
             let discarded_blocks = self.store.data().pending_blocks();
             self.store.data_mut().discard();
             return Err(Error::Deadline {
@@ -247,5 +363,33 @@ impl ModWorker {
                 Err(Error::Runtime(error))
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn watchdog_parks_while_idle_and_ticks_while_in_flight() {
+        let host = ModHost::new().expect("host");
+        let idle_ticks = host.watchdog.tick_count();
+        thread::sleep(Duration::from_millis(50));
+        assert_eq!(
+            host.watchdog.tick_count(),
+            idle_ticks,
+            "an idle watchdog must park, not tick"
+        );
+        let guard = host.watchdog.enter();
+        thread::sleep(Duration::from_millis(50));
+        assert!(
+            host.watchdog.tick_count() > idle_ticks,
+            "an in-flight watchdog must tick"
+        );
+        drop(guard);
+        let settled = host.watchdog.tick_count();
+        thread::sleep(Duration::from_millis(50));
+        // A tick already sleeping when the counter dropped may still land.
+        assert!(host.watchdog.tick_count() <= settled + 1);
     }
 }

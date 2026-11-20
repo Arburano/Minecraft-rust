@@ -1,0 +1,38 @@
+    Finished `bench` profile [optimized + debuginfo] target(s) in 0.55s
+     Running benches\hooks.rs (target\release\deps\hooks-1a92e0645544c7ea.exe)
+Gnuplot not found, using plotters backend
+    Finished `release` profile [optimized + debuginfo] target(s) in 0.26s
+Benchmarking modhost/empty_run_system
+Benchmarking modhost/empty_run_system: Warming up for 1.0000 s
+Benchmarking modhost/empty_run_system: Collecting 30 samples in estimated 3.0005 s (1.3M iterations)
+Benchmarking modhost/empty_run_system: Analyzing
+modhost/empty_run_system
+                        time:   [2.1603 µs 2.2675 µs 2.3949 µs]
+                        change: [−1.1005% +3.7299% +8.4205%] (p = 0.13 > 0.05)
+                        No change in performance detected.
+Benchmarking modhost/on_events_1000_strings
+Benchmarking modhost/on_events_1000_strings: Warming up for 1.0000 s
+Benchmarking modhost/on_events_1000_strings: Collecting 30 samples in estimated 3.0139 s (14k iterations)
+Benchmarking modhost/on_events_1000_strings: Analyzing
+modhost/on_events_1000_strings
+                        time:   [190.03 µs 196.90 µs 205.82 µs]
+                        thrpt:  [4.8587 Melem/s 5.0787 Melem/s 5.2622 Melem/s]
+                 change:
+                        time:   [−11.655% −7.4281% −2.5088%] (p = 0.00 < 0.05)
+                        thrpt:  [+2.5733% +8.0242% +13.192%]
+                        Performance has improved.
+Found 2 outliers among 30 measurements (6.67%)
+  2 (6.67%) high mild
+Benchmarking modhost/set_blocks_4000
+Benchmarking modhost/set_blocks_4000: Warming up for 1.0000 s
+Benchmarking modhost/set_blocks_4000: Collecting 30 samples in estimated 3.0356 s (35k iterations)
+Benchmarking modhost/set_blocks_4000: Analyzing
+modhost/set_blocks_4000 time:   [86.700 µs 90.742 µs 94.505 µs]
+                        thrpt:  [42.326 Melem/s 44.081 Melem/s 46.136 Melem/s]
+                 change:
+                        time:   [−9.0474% −5.1864% −1.1208%] (p = 0.02 < 0.05)
+                        thrpt:  [+1.1335% +5.4701% +9.9474%]
+                        Performance has improved.
+Found 4 outliers among 30 measurements (13.33%)
+  4 (13.33%) high severe
+
