@@ -3,6 +3,7 @@
 - **Status:** done (2026-11-20)
 - **Depends on:** T0-07 (implementation merged in PR #9); [open question No. 11](../../docs/open-questions.md) — answered 2026-11-19, the task can start
 - **Owner:** agent
+- **PR:** https://github.com/Arburano/Minecraft-rust/pull/15
 
 ## Background
 
