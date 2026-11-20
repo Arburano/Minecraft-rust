@@ -1,0 +1,19 @@
+    Finished `release` profile [optimized + debuginfo] target(s) in 1.20s
+     Running tests\interruption_latency.rs (target\release\deps\interruption_latency-f51fee8cae66cfc5.exe)
+
+running 1 test
+    Finished `release` profile [optimized + debuginfo] target(s) in 2.07s
+test interruption_latency has been running for over 60 seconds
+interruption-latency measurement (T0-13, owner decision No. 11)
+machine: windows x86_64, 8 logical CPUs; build profile: release
+interruptions: 1000, hook budget: 100ms, load: external (none spawned by this test)
+metric                                    p50        p90        p99        max
+deadline-to-return overrun           0.281 ms   0.488 ms   0.558 ms   1.000 ms
+watchdog wake (deadline->interrupt)   0.273 ms   0.478 ms   0.545 ms   0.992 ms
+trap/unwind (interrupt->return)      0.008 ms   0.010 ms   0.014 ms   0.063 ms
+post-return (return->observer)       0.006 ms   0.008 ms   0.013 ms  15.777 ms
+quiet-desktop target p99 <= 1 ms: MET (informational; under load this is expected to fail)
+test interruption_latency ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 102.77s
+

@@ -181,7 +181,7 @@ We do not support native `.dll`/`.so` files from third-party authors: Rust has n
 ### Security and control
 
 - Permissions in the manifest (`network`, `filesystem:mod_data`). A client mod has no access to the network or files by default.
-- Per-mod budgets: time per tick (epoch interruption), memory (linear memory limit). On overrun — a warning in the profiler, then the mod is terminated. Epoch here is a watchdog against hangs, not precise accounting: accuracy equals the epoch timer period (e.g. 1 ms), and time per tick is counted by the profiler. In scenario tests (engine-cli test) fuel is used instead of epoch, so runs are repeatable.
+- Per-mod budgets: time per tick (epoch interruption), memory (linear memory limit). On overrun — a warning in the profiler, then the mod is terminated. Epoch here is a watchdog against hangs, not precise accounting: the watchdog ticks every 200 µs while a hook is in flight, the CI functional bound on the deadline-to-return overrun is ≤ 10 ms, and ≤ 1 ms p99 on a quiet desktop is a measured latency target, not an OS guarantee (owner decision, open question 11); time per tick is counted by the profiler. In scenario tests (engine-cli test) fuel is used instead of epoch, so runs are repeatable.
 - The built-in profiler shows each mod's time per tick (the `/profile mods` command).
 - Mods for public servers are signed (ed25519); the launcher verifies the signature and hash.
 

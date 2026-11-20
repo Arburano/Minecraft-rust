@@ -52,10 +52,10 @@ those targets. They stay unchanged.
 
 | What | Value | Status |
 | --- | --- | --- |
-| Batched hook dispatch | ≤ 1 µs | Measured deviation: 1.1508 µs end-to-end empty hook on Ryzen 7 3750H, Windows; T0-07 below |
+| Batched hook dispatch | ≤ 1 µs | Measured deviation: 2.2675–2.2873 µs end-to-end empty hook on Ryzen 7 3750H, Windows (T0-13, 2026-11-20; includes the owner-approved per-call thread-priority elevation, ≈ +1 µs over the same-session baseline 1.2994 µs); T0-07 below |
 | Event in a batch | ≤ 5 ns | Measured deviation: 308.27 ns/event in a 1,000-string-event batch on the same machine; T0-07 below |
 | Epoch cost | ≤ 10% | Measured (VM: 0–9%; earlier research, not remeasured in T0-07) |
-| Deadline-to-interruption overrun | ≤ 1 ms p99 on a quiet desktop (measured, not a CI assertion); CI functional bound ≤ 10 ms — owner decision, open question 11 | To be measured in T0-13 with ≥ 1,000 interruptions. Earlier data: final quiet repetitions ≤ 0.6894 ms; earlier corrected-timer run during compilation reached 1.5101 ms; Linux VM 4 vCPU with all cores busy: 1.66–5.80 ms (5/5 runs failed against the old hard 1 ms assertion) |
+| Deadline-to-interruption overrun | ≤ 1 ms p99 on a quiet desktop (measured, not a CI assertion); CI functional bound ≤ 10 ms — owner decision, open question 11 | Measured (bare-metal Ryzen 7 3750H, Windows, 3 runs × 1,000 interruptions per condition, 2026-11-20: quiet p99 0.633–0.637 ms, max ≤ 2.961 ms; all cores busy p99 0.534–0.539 ms, max ≤ 4.038 ms; 20/20 debug functional runs under load passed with maxima 356–973 µs; T0-13 below) |
 | Cold start of a mod with cache | ≤ 50 ms | Hypothesis |
 | Default mod | 0.5 ms per tick per region, 32 MB | Target |
 
@@ -84,5 +84,20 @@ The engine, pre-linked component, instance, initialization and host event constr
 **Interruption:** `park_timeout(200 µs)` initially produced 4.7229 ms and 4.3402 ms overruns on Windows. Switching the watchdog to `thread::sleep(200 µs)` uses the platform's high-resolution sleep timer. With that correction, one repeated test during concurrent compilation still failed at 1.5101 ms. After compilation finished, three complete integration-suite repetitions (10 interruptions each) passed with maxima 689.4, 458.4 and 593.2 µs. A further ten focused repetitions (100 interruptions total) passed with maxima 604.6, 476.9, 550.6, 565.9, 603.0, 444.1, 562.8, 579.2, 583.7 and 534.1 µs. Each uses a 10 ms hook budget and requires all 4,000 writes to be staged before the infinite loop, then discarded while another worker continues the tick. The strict 1 ms assertion remains enabled; quiet passes do not resolve the observed failure under load or prove an OS scheduling guarantee. T0-07 remains in progress pending that acceptance criterion; the follow-up is [T0-13](../../tasks/stage-0/T0-13-modhost-interruption-latency.md).
 
 See the [T0-07 report](../../task-reports/t0-07-wit-and-modhost-spike.md) for verification and limitations.
+
+### T0-13 measurements (2026-11-20)
+
+Same machine and toolchain as T0-07 (ASUS TUF FX505DU, Ryzen 7 3750H, 8 logical CPUs, Windows 11 build 28000, physical; Rust 1.97.1, Wasmtime 50.0.2). Release profile, 100 ms hook budget so every interruption is epoch-driven; "quiet" = heavy applications closed by the owner, background activity not controlled; "loaded" = a spin thread on every logical CPU. Evidence: `research/modhost/run-latency.cmd`, raw outputs and per-interruption samples in [docs/research/modhost/](../research/modhost/), diagnosis and kept/rejected optimizations in the [T0-13 report](../../task-reports/t0-13-modhost-interruption-latency.md).
+
+Three runs per condition, 1,000 interruptions each, deadline-to-return overrun:
+
+| Condition | p50 (3 runs) | p99 (3 runs) | max (3 runs) |
+| --- | --- | --- | --- |
+| Quiet | 0.327 / 0.324 / 0.353 ms | 0.633 / 0.633 / 0.637 ms | 2.070 / 1.340 / 2.961 ms |
+| All cores busy | 0.301 / 0.300 / 0.312 ms | 0.539 / 0.534 / 0.534 ms | 0.694 / 4.038 / 0.984 ms |
+
+The quiet-desktop p99 ≤ 1 ms target was met in all six runs (informational; under load it is expected to be fragile on other machines). The CI functional test (debug, ≤ 10 ms bound per owner decision No. 11) passed 20/20 consecutive runs under full CPU load with per-run maxima 356.4–973.2 µs.
+
+Same-session baseline reference (original always-ticking watchdog, backtraces on, normal priorities): quiet p99 1.019 ms / max 26.041 ms; loaded p99 35.199 ms / max 78.794 ms. The kept reductions are interruption backtraces off, raised watchdog priority, per-call worker-thread priority elevation (owner-approved; ≈ +1 µs per hook, three syscalls) and in-flight gating of the watchdog (no idle wakeups); a 100 µs tick was measured and rejected (no gain, +5% empty-hook cost). Final empty-hook bench on the idle machine: 2.2873 and 2.2675 µs (two runs, 30 samples each) vs the same-session baseline 1.2994 µs; a first post-load measurement of 3.5844 µs was discarded as a machine-state outlier and re-measured. Breakdown: watchdog wake dominates (p50 ≈ 0.3 ms), trap/unwind ≈ 13–15 µs p50, measuring-thread preemption is reported separately (post-return max up to ≈ 35 ms under load while the engine-internal overrun stayed ≤ 4.038 ms).
 
 Earlier "VM" figures — 2 vCPU Xeon 2.1 GHz, noise ±30%: `docs/research/optimization-tests.md`.

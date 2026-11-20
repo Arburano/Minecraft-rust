@@ -1,0 +1,19 @@
+    Finished `bench` profile [optimized + debuginfo] target(s) in 0.66s
+     Running benches\hooks.rs (target\release\deps\hooks-1a92e0645544c7ea.exe)
+Gnuplot not found, using plotters backend
+    Finished `release` profile [optimized + debuginfo] target(s) in 0.30s
+Benchmarking modhost/empty_run_system
+Benchmarking modhost/empty_run_system: Warming up for 1.0000 s
+Benchmarking modhost/empty_run_system: Collecting 30 samples in estimated 3.0009 s (1.2M iterations)
+Benchmarking modhost/empty_run_system: Analyzing
+modhost/empty_run_system
+                        time:   [2.3154 µs 2.4406 µs 2.5629 µs]
+                        change: [+0.6776% +4.9488% +9.8896%] (p = 0.03 < 0.05)
+                        Change within noise threshold.
+Benchmarking modhost/set_blocks_4000
+Benchmarking modhost/set_blocks_4000: Warming up for 1.0000 s
+Benchmarking modhost/set_blocks_4000: Collecting 30 samples in estimated 3.0109 s (29k iterations)
+Benchmarking modhost/set_blocks_4000: Analyzing
+modhost/set_blocks_4000 time:   [90.763 µs 94.246 µs 98.614 µs]
+                        thrpt:  [40.562 Melem/s 42.442 Melem/s 44.071 Melem/s]
+
