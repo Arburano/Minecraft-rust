@@ -18,6 +18,7 @@ Crates: `protocol` (message types), `net` (transport). ADR: 0007 (QUIC + custom 
 
 - A datagram is ≤ ~1,200 bytes; anything larger goes into a stream.
 - Per-client limit: a maximum of concurrent chunk streams (e.g. 16) so as not to clog the congestion control queue.
+- Congestion control: BBR on the server (`net::server_endpoint`). The T0-11 spike showed loss-based Cubic misses the "nearest 3×3 ≤ 1 s" test below at 2% random loss / RTT 100 ms, while BBR meets it with margin ([measurements](../research/net-quic-spike-2026-11-19.md)).
 
 ## Versioning
 
@@ -51,6 +52,6 @@ The "login ≤ 5 s" metric is counted up to the moment of controlling the charac
 
 ## Tests
 
-- `tc netem` 2% loss + RTT 100 ms: the nearest 3×3 columns appear in ≤ 1 s.
+- `tc netem` 2% loss + RTT 100 ms: the nearest 3×3 columns appear in ≤ 1 s. In CI (no root) the same path is emulated by `net::lossy::LossyRelay` — see `crates/net/tests/quic_spike.rs` and the [T0-11 measurements](../research/net-quic-spike-2026-11-19.md).
 - 500 bot clients per node: network thread CPU ≤ 1 core per 10,000 packets/s.
 - Fuzz test of decoding all messages (the server never panics on garbage input).
