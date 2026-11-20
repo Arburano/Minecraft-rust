@@ -1,6 +1,6 @@
 # T0-08. Incremental light add/remove
 
-- **Status:** todo
+- **Status:** done
 - **Depends on:** T0-03
 - **Owner:** agent
 
@@ -21,8 +21,12 @@ In the `light` crate: nibble arrays with a Single variant, BFS for additions, re
 
 ## Acceptance criteria
 
-- [ ] After any sequence of edits, incremental lighting is bitwise equal to a full recalculation (proptest).
-- [ ] Numbers recorded in performance-budgets.md; target of ≤ 100/200 µs p95 verified, or the deviation explained.
+- [x] After any sequence of edits, incremental lighting is bitwise equal to a full recalculation (proptest).
+- [x] Numbers recorded in performance-budgets.md; target of ≤ 100/200 µs p95 verified, or the deviation explained.
+
+## Result
+
+Implemented in `crates/light` (snapshot, add/remove BFS, sky run, `Nibbles` storage, naive reference, proptest, `light` bench on the T0-12 corpus). Targets met with a wide margin on a VM; see the [task report](../../task-reports/t0-08-light-incremental-bfs.md).
 
 ## Out of scope
 

@@ -10,5 +10,14 @@ publish = false
 [dependencies]
 world = { path = "../world" }
 
+[dev-dependencies]
+criterion = { workspace = true }
+proptest = { workspace = true }
+worldgen = { path = "../worldgen" }
+
+[[bench]]
+name = "light"
+harness = false
+
 [lints]
 workspace = true
