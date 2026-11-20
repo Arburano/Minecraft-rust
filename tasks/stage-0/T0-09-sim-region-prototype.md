@@ -1,6 +1,6 @@
 # T0-09. Server regions prototype
 
-- **Status:** todo
+- **Status:** in-progress (2026-11-20)
 - **Depends on:** T0-02
 - **Owner:** agent
 
