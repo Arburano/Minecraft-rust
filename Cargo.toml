@@ -51,6 +51,7 @@ reqwest = { version = "0.13", default-features = false, features = ["rustls", "j
 wasmtime = "50"       # 51 is still a release candidate; tests in docs/research used 50.0.1
 wit-bindgen = { version = "0.63", default-features = false, features = ["macros", "realloc"] }
 dlmalloc = { version = "0.2", features = ["global"] }
+thread-priority = "3"
 
 # Config, serialization, security
 serde = { version = "1", features = ["derive"] }

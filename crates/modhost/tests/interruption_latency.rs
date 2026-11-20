@@ -22,7 +22,10 @@ use modhost::{BlockPos, Error, ModHost, Region};
 use world::BlockStateId;
 
 const BUDGET: Duration = Duration::from_secs(1);
-const HOOK_BUDGET: Duration = Duration::from_millis(10);
+// Large enough that the 4,000-write staging phase completes even under full
+// CPU load, so every measured interruption is the epoch watchdog stopping the
+// infinite loop, not the host-import deadline check firing during staging.
+const HOOK_BUDGET: Duration = Duration::from_millis(100);
 
 fn percentile(sorted: &[Duration], fraction: f64) -> Duration {
     let index = ((sorted.len() - 1) as f64 * fraction).round() as usize;
@@ -114,7 +117,11 @@ fn interruption_latency() -> anyhow::Result<()> {
         "machine: {} {}, {cpus} logical CPUs; build profile: {}",
         std::env::consts::OS,
         std::env::consts::ARCH,
-        option_env!("PROFILE").unwrap_or("unknown"),
+        if cfg!(debug_assertions) {
+            "debug"
+        } else {
+            "release"
+        },
     );
     println!(
         "interruptions: {count}, hook budget: {HOOK_BUDGET:?}, \
