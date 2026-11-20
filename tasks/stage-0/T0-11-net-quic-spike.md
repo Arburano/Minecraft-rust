@@ -1,8 +1,10 @@
 # T0-11. QUIC transport spike
 
-- **Status:** todo
+- **Status:** done
 - **Depends on:** T0-01
 - **Owner:** agent
+- **PR:** [#14](https://github.com/Arburano/Minecraft-rust/pull/14)
+- **Evidence:** [docs/research/net-quic-spike-2026-11-19.md](../../docs/research/net-quic-spike-2026-11-19.md), [task report](../../task-reports/t0-11-net-quic-spike.md)
 
 ## Goal
 
@@ -20,8 +22,8 @@ In the `net` crate: a server and client on `quinn` with the channels from networ
 
 ## Acceptance criteria
 
-- [ ] At 2% loss and RTT 100 ms, the nearest 3×3 columns arrive ≤ 1 s; deltas are not blocked by column streaming.
-- [ ] Numbers in docs/research/.
+- [x] At 2% loss and RTT 100 ms, the nearest 3×3 columns arrive ≤ 1 s; deltas are not blocked by column streaming. (BBR: 3×3 in 0.46–0.77 s over 6 seeds; delta p95 52–58 ms ≈ the 50 ms one-way delay while ~1 MB/s of columns stream. quinn's default Cubic misses the budget — the spike server defaults to BBR; see the research doc.)
+- [x] Numbers in docs/research/.
 
 ## Out of scope
 

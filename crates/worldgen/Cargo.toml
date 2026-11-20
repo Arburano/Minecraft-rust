@@ -8,7 +8,11 @@ license.workspace = true
 publish = false
 
 [dependencies]
+noise = { workspace = true }
 world = { path = "../world" }
+
+[dev-dependencies]
+proptest = { workspace = true }
 
 [lints]
 workspace = true

@@ -8,6 +8,7 @@ Materials from which the PRD and ADRs grew (November 2026).
 | [optimization-tests.md](optimization-tests.md) | Benchmark results from `research/bench` (VM 2 vCPU, ±30%) | English |
 | [optimization-analysis.md](optimization-analysis.md) | Analysis and recommendations (the same as PRD §13) | English |
 | [job-scheduler-2026-11-15.md](job-scheduler-2026-11-15.md) | T0-02 job scheduler overhead (VM 4 vCPU, ±30%) | English |
+| [net-quic-spike-2026-11-19.md](net-quic-spike-2026-11-19.md) | T0-11 QUIC transport spike: 3×3 columns and delta latency under 2% loss / RTT 100 ms, BBR vs Cubic (VM 4 vCPU, ±30%) | English |
 | [review-budget.py](review-budget.py) | Reviewer calculations: memory, VRAM, traffic, login time | Python |
 | [gpu/README.md](gpu/README.md) | T0-06 capability probe and B/C quad benchmark; human hardware run instructions | English |
 
