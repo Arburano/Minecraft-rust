@@ -1,6 +1,6 @@
 # T1-07. Fallback asset set, asset cache and texture arrays
 
-- **Status:** todo
+- **Status:** done (2026-11-21)
 - **Depends on:** T0-01
 - **Owner:** agent (cloud)
 
@@ -23,9 +23,9 @@ The game must look like a game without any Mojang files: our own fallback textur
 
 ## Acceptance criteria
 
-- [ ] Golden tests pass; CI uses fallback assets only.
-- [ ] Cache invalidates on converter version change (test).
-- [ ] Conversion time and memory of the full fallback set measured.
+- [x] Golden tests pass; CI uses fallback assets only.
+- [x] Cache invalidates on converter version change (test).
+- [x] Conversion time and memory of the full fallback set measured.
 
 ## Out of scope
 

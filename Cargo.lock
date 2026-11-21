@@ -183,6 +183,10 @@ dependencies = [
 [[package]]
 name = "assets"
 version = "0.0.1"
+dependencies = [
+ "criterion",
+ "sha2 0.11.0",
+]
 
 [[package]]
 name = "async-executor"
