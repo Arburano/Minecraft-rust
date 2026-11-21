@@ -1,6 +1,6 @@
 # T0-09 report: server regions prototype
 
-Date: 2026-11-20. Branch: `t0-09-sim-region-prototype`. Task: [T0-09](../tasks/stage-0/T0-09-sim-region-prototype.md).
+Date: 2026-11-20. Branch: `t0-09-sim-region-prototype`. PR: [#18](https://github.com/Arburano/Minecraft-rust/pull/18). Task: [T0-09](../tasks/stage-0/T0-09-sim-region-prototype.md).
 
 ## What was done
 

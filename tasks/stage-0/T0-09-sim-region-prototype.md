@@ -1,6 +1,7 @@
 # T0-09. Server regions prototype
 
 - **Status:** done (2026-11-20)
+- **PR:** [#18](https://github.com/Arburano/Minecraft-rust/pull/18)
 - **Depends on:** T0-02
 - **Owner:** agent
 
