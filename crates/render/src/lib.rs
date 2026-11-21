@@ -1,5 +1,7 @@
 //! GPU capability reporting and stage 0–1 rendering path selection.
 
+pub mod selection;
+
 use serde::Serialize;
 use wgpu::{Adapter, AdapterInfo, DownlevelCapabilities, DownlevelFlags, Features, Limits};
 
