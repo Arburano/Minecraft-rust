@@ -132,15 +132,27 @@ async fn lossless_full_transfer() -> anyhow::Result<()> {
     assert_eq!(stats.columns_sent, 625);
     assert_eq!(report.deltas_lost, 0);
     assert!(report.time_to_first_3x3.is_some());
-    // Distance order: with 16 streams in flight, completion order within
-    // the first flight is arbitrary, but the nearest 3×3 must complete
-    // long before far columns: all 9 are among the first 20 arrivals.
-    let first20 = &report.columns[..20];
-    for x in -1..=1 {
-        for z in -1..=1 {
-            assert!(first20.contains(&(x, z)), "3x3 member ({x},{z}) late");
-        }
-    }
+    // Distance order is a property of the sender: the server opens one
+    // stream per column in distance order with descending priority, so the
+    // columns sorted by stream index must be exactly `columns_by_distance`.
+    // (The client's completion order is NOT asserted: on a lossless
+    // localhost link the link is not the bottleneck, priorities have nothing
+    // to reorder, and reader-task scheduling decides the order — T0-15.
+    // Prioritised delivery under a real bottleneck is asserted by the
+    // 3×3-within-1-s test above.)
+    let mut by_stream: Vec<(u64, (i32, i32))> = report
+        .column_streams
+        .iter()
+        .copied()
+        .zip(report.columns.iter().copied())
+        .collect();
+    by_stream.sort_unstable();
+    let sent_order: Vec<(i32, i32)> = by_stream.into_iter().map(|(_, c)| c).collect();
+    assert_eq!(
+        sent_order,
+        net::spike::wire::columns_by_distance(ServerParams::default().grid_side),
+        "server must open column streams in distance order"
+    );
     Ok(())
 }
 

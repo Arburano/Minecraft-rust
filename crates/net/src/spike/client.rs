@@ -64,8 +64,15 @@ pub struct ClientReport {
     pub time_to_first_3x3: Option<Duration>,
     /// Time until the first complete column arrived.
     pub time_to_first_column: Option<Duration>,
-    /// Columns received completely, in arrival order.
+    /// Columns received completely, in the order the client's reader tasks
+    /// finished. On a link that is not the bottleneck this order reflects
+    /// task scheduling, not the protocol; use [`Self::column_streams`] for
+    /// the order the server sent them in.
     pub columns: Vec<(i32, i32)>,
+    /// QUIC stream index of each entry of [`Self::columns`] (same order).
+    /// The server opens column streams in distance order, so sorting by
+    /// this index gives the server's send order.
+    pub column_streams: Vec<u64>,
     /// Total column payload bytes received.
     pub column_bytes_received: usize,
     /// Delta samples in arrival order.
@@ -142,7 +149,7 @@ pub async fn run_client(
     let mut report = ClientReport::default();
     let mut near_seen: HashSet<(i32, i32)> = HashSet::new();
     let mut max_seq = 0u64;
-    let mut reads: JoinSet<Result<(i32, i32, usize), SpikeError>> = JoinSet::new();
+    let mut reads: JoinSet<Result<(i32, i32, usize, u64), SpikeError>> = JoinSet::new();
     let deadline = start + params.observe;
 
     loop {
@@ -150,6 +157,7 @@ pub async fn run_client(
             () = tokio::time::sleep_until(deadline.into()) => break,
             incoming = conn.accept_uni() => {
                 let mut recv = incoming?;
+                let stream = recv.id().index();
                 let column_bytes = params.column_bytes;
                 reads.spawn(async move {
                     let data = recv.read_to_end(column_bytes + COLUMN_HEADER_LEN + 1).await?;
@@ -164,7 +172,7 @@ pub async fn run_client(
                     if data[COLUMN_HEADER_LEN..] != expected[..] {
                         return Err(SpikeError::MalformedColumn);
                     }
-                    Ok((header.x, header.z, header.len as usize))
+                    Ok((header.x, header.z, header.len as usize, stream))
                 });
             }
             datagram = conn.read_datagram() => {
@@ -181,7 +189,7 @@ pub async fn run_client(
                 }
             }
             joined = reads.join_next(), if !reads.is_empty() => {
-                let (x, z, len) = match joined {
+                let (x, z, len, stream) = match joined {
                     Some(res) => res.map_err(SpikeError::TaskPanic)??,
                     None => break, // guarded by is_empty; cannot happen
                 };
@@ -189,6 +197,7 @@ pub async fn run_client(
                     report.time_to_first_column = Some(start.elapsed());
                 }
                 report.columns.push((x, z));
+                report.column_streams.push(stream);
                 report.column_bytes_received += len;
                 if x.abs() <= 1 && z.abs() <= 1 {
                     near_seen.insert((x, z));

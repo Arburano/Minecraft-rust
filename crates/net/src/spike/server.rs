@@ -178,13 +178,15 @@ async fn send_columns(
                 None => break,
             }
         }
-        let conn = conn.clone();
+        // Open the stream and set its priority here, not in the spawned task:
+        // stream IDs and priorities then follow distance rank exactly,
+        // independent of how the runtime schedules the writer tasks.
+        let mut send = conn.open_uni().await?;
+        // Nearer columns get higher priority (rank 0 = nearest).
+        send.set_priority(-(rank as i32))?;
         let stats = Arc::clone(stats);
         let column_bytes = params.column_bytes;
         streams.spawn(async move {
-            let mut send = conn.open_uni().await?;
-            // Nearer columns get higher priority (rank 0 = nearest).
-            send.set_priority(-(rank as i32))?;
             let header = wire::ColumnHeader {
                 x,
                 z,

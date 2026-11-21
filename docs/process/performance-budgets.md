@@ -83,7 +83,7 @@ All configurations are far under the 25 ms tick budget with this load. This meas
 | Event in a batch | ≤ 5 ns | Measured deviation: 308.27 ns/event in a 1,000-string-event batch on the same machine; T0-07 below |
 | Epoch cost | ≤ 10% | Measured (VM: 0–9%; earlier research, not remeasured in T0-07) |
 | Deadline-to-interruption overrun | ≤ 1 ms p99 on a quiet desktop (measured, not a CI assertion); CI functional bound ≤ 10 ms — owner decision, open question 11 | Measured (bare-metal Ryzen 7 3750H, Windows, 3 runs × 1,000 interruptions per condition, 2026-11-20: quiet p99 0.633–0.637 ms, max ≤ 2.961 ms; all cores busy p99 0.534–0.539 ms, max ≤ 4.038 ms; 20/20 debug functional runs under load passed with maxima 356–973 µs; T0-13 below) |
-| Cold start of a mod with cache | ≤ 50 ms | Hypothesis |
+| Cold start of a mod with cache | ≤ 50 ms | Measured upper bound (VM 4 vCPU Xeon 2.1 GHz, 3 runs): **without** a cache, compile + link + instantiate + `init` of the 127 KB hello component 12.3–13.9 ms; the disk compilation cache is not implemented and larger mods compile longer; `modhost` bench `modhost_cold_start`, [stage 0 exit review](../research/stage-0-exit-2026-11-21.md) |
 | Default mod | 0.5 ms per tick per region, 32 MB | Target |
 
 ### T0-07 measurements (2026-11-19)
