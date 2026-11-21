@@ -25,7 +25,7 @@ Register an Azure application and submit a form for Minecraft API access; obtain
 
 ## Interim owner decision (2026-11-21)
 
-Until the answers arrive, development assumes "yes" to open questions 4 and 5 (see [open-questions.md](../../docs/open-questions.md)). The development rules in [docs/legal.md](../../docs/legal.md) stay in force unchanged.
+Development does not wait for the answers: offline mode replaces Microsoft login for testing, and developers test with assets from their own licensed installation (see [open-questions.md](../../docs/open-questions.md) No. 4 and 5 and [docs/legal.md](../../docs/legal.md) rules 2 and 7). Nothing is launched publicly until the answers arrive.
 
 ## Out of scope
 

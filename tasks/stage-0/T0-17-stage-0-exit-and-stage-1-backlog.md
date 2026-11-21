@@ -25,7 +25,8 @@ Create `tasks/stage-1/T1-NN-<slug>.md` files with the same template (goal, specs
 - Loading queue with priorities (direction of movement, height, speed).
 - Renderer: real mesh upload, culling, texture arrays, quality profiles, backend/adapter selection with fallback (carry-over), B vs C decision (open question 13), CPU recording statistic (open question 14).
 - Player physics, digging and placing blocks.
-- Assets: loader with local cache + fallback asset set; Mojang asset import on the player's machine (open question 5 interim decision; never in repo/CI/builds).
+- Assets: loader with local cache + fallback asset set; Mojang asset import on the player's machine, and reading a developer's own licensed installation for local tests (open question 5, legal.md rule 2; never in repo/CI/builds).
+- Offline mode for client and server (no Microsoft login; legal.md rule 7, auth-and-assets.md); Microsoft login itself once T0-10 is answered.
 - Menu, cold start ≤ 5 s, lazy asset loading.
 - CI with benchmarks and Tracy tracing.
 - Stage 1 exit measurement harness: 60 FPS on iGPU at 12 chunks (1% low ≥ 45), RAM ≤ 1.5 GB, 30 min without spikes > 33 ms (on the Vega 10 per open question 12).

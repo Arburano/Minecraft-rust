@@ -44,7 +44,7 @@ research/      benchmarks that justified decisions
 
 ## Rules that must not be broken
 
-1. **Legal** ([`docs/legal.md`](docs/legal.md)): no code decompiled from Minecraft; no Mojang assets in the repository, tests, CI or builds. The game and all tests run on fallback assets. Do not write "Minecraft" in crate names, types and UI.
+1. **Legal** ([`docs/legal.md`](docs/legal.md)): no code decompiled from Minecraft; no Mojang assets in the repository, tests, CI or builds. The game and all CI tests run on fallback assets; opt-in local tests may read the developer's own licensed installation. Offline mode (no Microsoft login) is for development and private tests only; nothing is launched publicly before the lawyer's answer (T0-10). Do not write "Minecraft" in crate names, types and UI.
 2. **Architectural boundaries**: the direction of dependencies between crates is as in overview.md. The engine does not know specific blocks and mobs — they are in `mods/core`. Region code does not read another region (ADR-0008). Mods only through the WIT contract (ADR-0006).
 3. **Performance**: no allocations in the hot loop; no `Mutex`/`RwLock` around the world; optimizations come with a before/after benchmark; numbers live in [`docs/process/performance-budgets.md`](docs/process/performance-budgets.md).
 4. **Quality**: `unsafe` is forbidden (exception — a module with `// SAFETY:` and an ADR); no `unwrap()` in libraries; public API is documented; new logic comes with tests, an optimized implementation comes with a reference one for comparison.

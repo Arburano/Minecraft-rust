@@ -20,6 +20,15 @@ game servers/gateway verify only our JWT (public key)
 - The refresh token lives in the OS secret store (`keyring`: Keychain, Credential Manager, libsecret). Never in plain files.
 - A short-lived JWT is needed so that bans and session theft take effect quickly.
 - Fallback login (own accounts) is for the case of a Microsoft outage (PRD §10 risk). Not in stage 1.
+
+### Offline mode (development and tests)
+
+Owner decision 2026-11-21 (legal.md rule 7): development does not wait for Microsoft API approval (T0-10).
+
+- The client starts with a local player name; no Microsoft, Xbox or Mojang calls. The player id is derived deterministically from the name (offline UUID), so saves and tests are repeatable.
+- The server accepts offline clients only when started with an explicit flag (e.g. `--offline`); the default is online. A server in offline mode binds to localhost/LAN by default and logs a warning on start.
+- Offline mode never issues our session JWT for a public gateway; it is a separate, clearly marked code path that can be removed or disabled in release builds.
+- All automated tests and CI use offline mode or the mock login server.
 - Reference: [wiki.vg MSA](https://www.wiki.vg/MSA), Rust example: `lighty-auth`.
 
 ## Assets
@@ -28,6 +37,7 @@ game servers/gateway verify only our JWT (public key)
 - Conversion (local): textures → texture arrays with mipmaps; models → baked templates; sounds → the audio engine format. The result goes to `<data>/cache/assets/<version>/`.
 - Cache key: hash of the source file + converter version.
 - **Fallback assets** (`core:fallback/*`): our own minimal textures, models, sounds. The game and all tests must work without Mojang assets. CI never downloads Mojang assets.
+- **Local installation for development** (owner decision 2026-11-21): the loader can be pointed at a developer's own licensed Minecraft installation (config or environment variable, e.g. `ASSETS_LOCAL_INSTALL=<path to .minecraft>`), reading the client jar and the asset index directly, without the ownership check. Converted output goes to the normal local cache. Tests with real assets are opt-in: they skip with a message when the variable is not set, so CI stays on fallback assets.
 - Lazy loading: at startup only what is needed for the menu and nearest blocks; mob and zone models/sounds on approach.
 
 ## Tests
