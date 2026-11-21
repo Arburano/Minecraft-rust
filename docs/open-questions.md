@@ -9,7 +9,7 @@ Questions that cannot be decided without the product owner (or a lawyer). An age
 | 3 | Source of truth for entity ownership between shards: JetStream or PostgreSQL with a record version? | Not implemented until stage 6 | architect | stage 6 |
 | 4 | Can the Minecraft token be passed to our login service? | Implement per the scheme in auth-and-assets.md, but do not launch publicly | lawyer | stage 0 |
 | 5 | Mojang assets in a custom engine: download and conversion on the player's machine | Prepare the code, the game and CI run on fallback assets | lawyer | stage 0 |
-| 6 | Capacity of one region (players at tick ≤ 25 ms) | Unknown | benchmark | stage 2 |
+| 6 | Capacity of one region (players at tick ≤ 25 ms) | Unknown. First data from T0-09: 2 000 lightweight bots in one region tick at p99 ≈ 0.18–0.21 ms (flat-world machinery overhead, not gameplay capacity; [details](research/sim-regions-2026-11-20.md)) | benchmark | stage 2 |
 | 7 | Real compressed column size and server RAM for 500 players | Estimates from PRD §8 | benchmark on a real world | stage 1–2 |
 | 8 | Re-copy a render batch entirely or 8 sub-ranges | Re-copy entirely — confirmed by T0-05 (VM: full re-copy ≈ 1.6 µs vs ≈ 0.2 µs sub-range, budget ≤ 50 µs; the ~1.4 µs saving does not justify 48 ranges with per-slot counters). Bare-metal confirmation pending | benchmark T0-05 | done (stage 0) |
 | 9 | Project name and trademark | Working name of the repository | owner + lawyer | before the open beta |

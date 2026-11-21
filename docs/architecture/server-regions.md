@@ -39,6 +39,10 @@ Sizes are tuned automatically from metrics; starting values come from Folia expe
 
 500 scattered players × 15,000 sections — ≈ 8.9 GB of voxels alone (estimate). Therefore: simulation distance 6–8 chunks, the rest of the view radius is an LRU cache of compressed columns for sending; light only where gameplay needs it.
 
+## Prototype (T0-09)
+
+`crates/sim` implements the core of this design: region = `bevy_ecs::World`, stable `NetId`, the four tick phases, sorted inter-region transfer messages, merge/split between ticks with the buffer invariant enforced at new borders (split deferred while entities occupy the border sections). Prototype relaxations, to be lifted in later stages: a flat single-layer world with rectangular territories on the x/z plane; entity ownership by territory containment, so a walking entity transiently occupies the buffer ring before its transfer is delivered; intents for in-flight entities are dropped deterministically; the load is scripted kinematic bots, not gameplay. Measurements: [T0-09 summary](../research/sim-regions-2026-11-20.md).
+
 ## Tests
 
 - 500 bots on 8 regions and on 1 region, 16 cores: tick p99 ≤ 25 ms on 8 regions; find the maximum for 1 region.
