@@ -27,7 +27,7 @@ The backlog is split by stage of the roadmap ([docs/process/roadmap.md](../docs/
 | [T0-11](stage-0/T0-11-net-quic-spike.md) | QUIC transport spike | T0-01 | agent | done |
 | [T0-12](stage-0/T0-12-worldgen-test-corpus.md) | Deterministic test terrain | T0-03 | agent | done |
 | [T0-13](stage-0/T0-13-modhost-interruption-latency.md) | Mod interruption latency: split criterion, diagnose overrun | T0-07 (open question 11 answered) | agent | done |
-| [T0-15](stage-0/T0-15-net-flaky-test.md) | Stabilize the flaky QUIC spike test | T0-11 | agent (cloud) | todo |
+| [T0-15](stage-0/T0-15-net-flaky-test.md) | Stabilize the flaky QUIC spike test | T0-11 | agent (cloud) | done |
 | [T0-16](stage-0/T0-16-bare-metal-benchmarks.md) | Bare-metal confirmation of VM-only benchmarks | T0-03/04/05/08/12 | agent on the owner's laptop | todo |
 | [T0-17](stage-0/T0-17-stage-0-exit-and-stage-1-backlog.md) | Stage 0 exit review and stage 1 backlog | T0-15, T0-16 | agent prepares, owner approves | todo |
 | [T0-14](stage-0/T0-14-gpu-hardware-evidence.md) | GPU hardware evidence for T0-06 (Vega 10 + GTX 1660 Ti) | T0-06 implementation | agent + human runs on the laptop | done |
@@ -36,13 +36,13 @@ Recommended order for a single agent: T0-01 → T0-03 → T0-12 → T0-04 → T0
 
 ### Remaining stage 0: order and parallel work (2026-11-21)
 
-Done: T0-01…T0-09, T0-11…T0-14. Open: T0-10 (waiting for external answers, does not block engine work), T0-15, T0-16, T0-17.
+Done: T0-01…T0-09, T0-11…T0-15. Open: T0-10 (waiting for external answers, does not block engine work), T0-16, T0-17.
 
 | Wave | Tasks that can run in parallel | Where | Waits for |
 | --- | --- | --- | --- |
-| 1 | **T0-15** flaky QUIC test | cloud | — |
+| 1 | **T0-15** flaky QUIC test — done | cloud | — |
 | 1 | **T0-16** bare-metal benchmarks | owner's laptop, local agent | — |
-| 2 | **T0-17** stage 0 exit review, then stage 1 backlog | cloud + owner decision | T0-15, T0-16 |
+| 2 | **T0-17** stage 0 exit review, then stage 1 backlog | cloud + owner decision | T0-16 |
 | — | **T0-10** answers from the lawyer and Microsoft | human | external; interim decision recorded in open questions 4 and 5 |
 
 ### Carry-over for stage 1 (from stage 0 results)
