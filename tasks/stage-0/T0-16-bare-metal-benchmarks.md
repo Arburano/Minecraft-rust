@@ -1,6 +1,6 @@
 # T0-16. Bare-metal confirmation of VM-only benchmarks
 
-- **Status:** todo
+- **Status:** in-progress (2026-11-21)
 - **Depends on:** T0-03, T0-04, T0-05, T0-08, T0-12 (all done)
 - **Owner:** agent running **on the owner's laptop** (Claude Code locally); human only keeps the laptop on AC power and idle
 

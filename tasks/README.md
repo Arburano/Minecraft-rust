@@ -28,7 +28,7 @@ The backlog is split by stage of the roadmap ([docs/process/roadmap.md](../docs/
 | [T0-12](stage-0/T0-12-worldgen-test-corpus.md) | Deterministic test terrain | T0-03 | agent | done |
 | [T0-13](stage-0/T0-13-modhost-interruption-latency.md) | Mod interruption latency: split criterion, diagnose overrun | T0-07 (open question 11 answered) | agent | done |
 | [T0-15](stage-0/T0-15-net-flaky-test.md) | Stabilize the flaky QUIC spike test | T0-11 | agent (cloud) | todo |
-| [T0-16](stage-0/T0-16-bare-metal-benchmarks.md) | Bare-metal confirmation of VM-only benchmarks | T0-03/04/05/08/12 | agent on the owner's laptop | todo |
+| [T0-16](stage-0/T0-16-bare-metal-benchmarks.md) | Bare-metal confirmation of VM-only benchmarks | T0-03/04/05/08/12 | agent on the owner's laptop | in-progress |
 | [T0-17](stage-0/T0-17-stage-0-exit-and-stage-1-backlog.md) | Stage 0 exit review and stage 1 backlog | T0-15, T0-16 | agent prepares, owner approves | todo |
 | [T0-14](stage-0/T0-14-gpu-hardware-evidence.md) | GPU hardware evidence for T0-06 (Vega 10 + GTX 1660 Ti) | T0-06 implementation | agent + human runs on the laptop | done |
 
