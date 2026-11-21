@@ -21,7 +21,7 @@ In the `worldgen` crate: a simple deterministic generator (heightmap + caves + o
 ## Acceptance criteria
 
 - [x] Column hash does not depend on generation order (test).
-- [x] Benchmarks T0-03/04/08 use this corpus. (T0-03: `world` bench `section_corpus`; T0-04/05: `mesh` benches. T0-08's benchmark does not exist yet — `light` is a skeleton; the wave plan in `tasks/README.md` binds it to this corpus.)
+- [x] Benchmarks T0-03/04/08 use this corpus. (T0-03: `world` bench `section_corpus`; T0-04/05: `mesh` benches. T0-08: `light` bench uses this corpus, PR #17.)
 
 ## Out of scope
 
