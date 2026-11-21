@@ -28,7 +28,7 @@ The backlog is split by stage of the roadmap ([docs/process/roadmap.md](../docs/
 | [T0-12](stage-0/T0-12-worldgen-test-corpus.md) | Deterministic test terrain | T0-03 | agent | done |
 | [T0-13](stage-0/T0-13-modhost-interruption-latency.md) | Mod interruption latency: split criterion, diagnose overrun | T0-07 (open question 11 answered) | agent | done |
 | [T0-15](stage-0/T0-15-net-flaky-test.md) | Stabilize the flaky QUIC spike test | T0-11 | agent (cloud) | done |
-| [T0-16](stage-0/T0-16-bare-metal-benchmarks.md) | Bare-metal confirmation of VM-only benchmarks | T0-03/04/05/08/12 | agent on the owner's laptop | todo |
+| [T0-16](stage-0/T0-16-bare-metal-benchmarks.md) | Bare-metal confirmation of VM-only benchmarks | T0-03/04/05/08/12 | agent on the owner's laptop | done |
 | [T0-17](stage-0/T0-17-stage-0-exit-and-stage-1-backlog.md) | Stage 0 exit review and stage 1 backlog | T0-15, T0-16 | agent prepares, owner approves | todo |
 | [T0-14](stage-0/T0-14-gpu-hardware-evidence.md) | GPU hardware evidence for T0-06 (Vega 10 + GTX 1660 Ti) | T0-06 implementation | agent + human runs on the laptop | done |
 
@@ -36,13 +36,13 @@ Recommended order for a single agent: T0-01 → T0-03 → T0-12 → T0-04 → T0
 
 ### Remaining stage 0: order and parallel work (2026-11-21)
 
-Done: T0-01…T0-09, T0-11…T0-15. Open: T0-10 (waiting for external answers, does not block engine work), T0-16, T0-17.
+Done: T0-01…T0-09, T0-11…T0-16. Open: T0-10 (waiting for external answers, does not block engine work), T0-17.
 
 | Wave | Tasks that can run in parallel | Where | Waits for |
 | --- | --- | --- | --- |
 | 1 | **T0-15** flaky QUIC test — done | cloud | — |
-| 1 | **T0-16** bare-metal benchmarks | owner's laptop, local agent | — |
-| 2 | **T0-17** stage 0 exit review, then stage 1 backlog | cloud + owner decision | T0-16 |
+| 1 | **T0-16** bare-metal benchmarks — done (2026-11-21), [summary](../docs/research/bare-metal-2026-11-21/summary.md) | owner's laptop, local agent | — |
+| 2 | **T0-17** stage 0 exit review, then stage 1 backlog | cloud + owner decision | T0-15, T0-16 |
 | — | **T0-10** answers from the lawyer and Microsoft | human | external; interim decision recorded in open questions 4 and 5 |
 
 ### Carry-over for stage 1 (from stage 0 results)
@@ -52,6 +52,7 @@ Turn these into stage 1 tasks; do not drop them:
 - Renderer backend selection with fallback when Vulkan enumerates no adapters (AMD switchable-graphics laptops), adapter choice by type/capability rather than index, and a GL shutdown test on AMD iGPU — T0-14, [meshing-and-rendering](../docs/architecture/meshing-and-rendering.md).
 - Re-measure B vs C (indexed B variant, real terrain corpus) and decide the iGPU default — open question 13.
 - CPU command recording: decide the statistic (open question 14); single frames reached 1.32 ms on Vega 10 + DX12.
-- Bare-metal confirmation of VM-only numbers from T0-03/T0-04/T0-05/T0-08 — now task T0-16 (stage 0).
+- Bare-metal confirmation of VM-only numbers from T0-03/T0-04/T0-05/T0-08 — done in T0-16 (2026-11-21), [summary](../docs/research/bare-metal-2026-11-21/summary.md): light add/remove, `fast_mesh`, mask update, render batch copy and `unpack_into` confirmed; `get`, `set` and gather + masks missed (recorded as deviations, targets kept).
+- Optimize the memory-latency-bound hot paths that missed on bare metal (from T0-16): section `get` (8.3–8.8 ns vs ≈ 3.8 ns reference), `set` (12.7–29.4 ns vs ≤ 10 ns), gather + masks (112.8 µs vs ≤ 100 µs p50) on Ryzen 7 3750H. Profile cache behavior, 4K aliasing and data layout before renegotiating any target. Note: the laptop drops to base clock after sustained load (≈ 1.5× slower) — stable measurements need frequency control or a different machine. [T0-16 summary](../docs/research/bare-metal-2026-11-21/summary.md).
 - Bare-metal re-run of the T0-11 QUIC spike with a shaped link (bandwidth cap + jitter, `tc netem`), and BBR fairness on a shared congested bottleneck — [net-quic-spike-2026-11-19](../docs/research/net-quic-spike-2026-11-19.md).
 - GTX 1050 targets remain unverified (open question 12).

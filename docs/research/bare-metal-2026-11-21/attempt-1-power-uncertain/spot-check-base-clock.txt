@@ -1,0 +1,54 @@
+Spot-check after the 3-run protocol, machine idle (same session, 2026-11-21):
+
+
+Name              : AMD Ryzen 7 3750H with Radeon Vega Mobile Gfx  
+CurrentClockSpeed : 2300
+MaxClockSpeed     : 2300
+
+
+
+
+    Finished `bench` profile [optimized + debuginfo] target(s) in 0.79s
+     Running benches\section.rs (target\release\deps\section-24592c27140fd10e.exe)
+Gnuplot not found, using plotters backend
+Benchmarking section_get/random/2bit
+Benchmarking section_get/random/2bit: Warming up for 3.0000 s
+Benchmarking section_get/random/2bit: Collecting 100 samples in estimated 5.2473 s (96k iterations)
+Benchmarking section_get/random/2bit: Analyzing
+section_get/random/2bit time:   [54.657 µs 54.862 µs 55.092 µs]
+                        change: [+61.549% +63.517% +65.295%] (p = 0.00 < 0.05)
+                        Performance has regressed.
+Found 6 outliers among 100 measurements (6.00%)
+  2 (2.00%) high mild
+  4 (4.00%) high severe
+
+Benchmarking section_set/existing/2bit
+Benchmarking section_set/existing/2bit: Warming up for 3.0000 s
+Benchmarking section_set/existing/2bit: Collecting 100 samples in estimated 5.2978 s (40k iterations)
+Benchmarking section_set/existing/2bit: Analyzing
+section_set/existing/2bit
+                        time:   [130.93 µs 131.27 µs 131.69 µs]
+                        change: [+59.860% +61.309% +62.623%] (p = 0.00 < 0.05)
+                        Performance has regressed.
+Found 12 outliers among 100 measurements (12.00%)
+  10 (10.00%) high mild
+  2 (2.00%) high severe
+
+    Finished `bench` profile [optimized + debuginfo] target(s) in 0.73s
+     Running benches\mesh_chunk.rs (target\release\deps\mesh_chunk-1e23f69211a050ed.exe)
+Gnuplot not found, using plotters backend
+corpus: air 28.8%  opaque 65.5%  transparent 5.7%
+Benchmarking mesh_chunk/gather_masks
+Benchmarking mesh_chunk/gather_masks: Warming up for 3.0000 s
+Benchmarking mesh_chunk/gather_masks: Collecting 100 samples in estimated 5.1331 s (30k iterations)
+Benchmarking mesh_chunk/gather_masks: Analyzing
+mesh_chunk/gather_masks time:   [168.72 µs 170.58 µs 172.75 µs]
+                        change: [+54.095% +58.706% +64.283%] (p = 0.00 < 0.05)
+                        Performance has regressed.
+Found 5 outliers among 100 measurements (5.00%)
+  4 (4.00%) high mild
+  1 (1.00%) high severe
+quads/chunk 599 (4.7 KB at 8 B/quad)
+
+corpus: air 28.8%  opaque 65.5%  transparent 5.7%
+render batch: 5410 quads (42.3 KB at 8 B/quad)

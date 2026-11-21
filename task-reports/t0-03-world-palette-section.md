@@ -82,6 +82,11 @@ Benchmarks — `cargo bench -p world --bench section` (criterion, 100 samples,
   are within the documented VM noise and need confirmation on bare metal with a
   fixed frequency (per `docs/process/testing-and-benchmarks.md`). Recorded as
   "Measured (VM …)" in `performance-budgets.md`, not as a confirmed desktop number.
+  **Bare-metal follow-up (T0-16, 2026-11-21):** on the owner's laptop `set` reads
+  12.7–29.4 ns across widths — the ≤ 10 ns target is missed at *every* width, not
+  only the aliasing-affected ones, though the relative 6–8-bit elevation persists.
+  The budget row now reads "Measured deviation" (target kept); see the
+  [T0-16 summary](../docs/research/bare-metal-2026-11-21/summary.md).
 - **`Direct` size differs from the research prototype.** The spec enum mandates a
   flat `Box<[BlockStateId; 4096]>` (8192 B data, 8248 B with the struct), while the
   research prototype's 6616 B was a 12-bit packed direct. Implemented the flat

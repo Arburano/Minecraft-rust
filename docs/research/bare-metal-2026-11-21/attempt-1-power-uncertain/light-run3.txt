@@ -1,0 +1,93 @@
+    Finished `bench` profile [optimized + debuginfo] target(s) in 0.40s
+     Running unittests src\lib.rs (target\release\deps\light-645f3cb9b25c4752.exe)
+
+running 3 tests
+test nibbles::tests::packed_round_trip_and_compact ... ignored
+test nibbles::tests::set_expands_single_and_keeps_neighbors ... ignored
+test nibbles::tests::uniform_levels_are_single ... ignored
+
+test result: ok. 0 passed; 0 failed; 3 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running benches\light.rs (target\release\deps\light-66ea8f84c48b1e96.exe)
+Gnuplot not found, using plotters backend
+corpus: 13 snapshots, 832 air / 832 surface edit cells
+light/add_torch: 2496 edits  p50 0.9 us  p95 2.7 us  p99 4.0 us  max 8.3 us
+light/remove_torch: 2496 edits  p50 5.1 us  p95 10.7 us  p99 12.8 us  max 47.5 us
+light/break_block: 2496 edits  p50 0.1 us  p95 0.2 us  p99 0.4 us  max 4.8 us
+light/place_block: 2496 edits  p50 0.7 us  p95 3.4 us  p99 4.7 us  max 9.2 us
+light/full_relight_3x3x3: 65 runs  p50 818 us  max 1263 us
+light/worst_dark_torch_add: 500 edits  p50 15.8 us  p95 15.9 us  max 42.1 us
+light/worst_dark_torch_remove: 500 edits  p50 13.1 us  p95 13.1 us  max 22.8 us
+light/worst_cave_roof_add: 500 edits  p50 14.2 us  p95 14.3 us  max 35.7 us
+light/worst_cave_roof_remove: 500 edits  p50 12.1 us  p95 12.7 us  max 21.6 us
+Benchmarking light/add_torch
+Benchmarking light/add_torch: Warming up for 3.0000 s
+Benchmarking light/add_torch: Collecting 100 samples in estimated 5.0134 s (662k iterations)
+Benchmarking light/add_torch: Analyzing
+light/add_torch         time:   [1.1193 µs 1.1536 µs 1.1861 µs]
+                        change: [−5.8648% −2.9915% −0.0439%] (p = 0.06 > 0.05)
+                        No change in performance detected.
+Found 1 outliers among 100 measurements (1.00%)
+  1 (1.00%) high mild
+Benchmarking light/remove_torch
+Benchmarking light/remove_torch: Warming up for 3.0000 s
+Benchmarking light/remove_torch: Collecting 100 samples in estimated 5.0112 s (687k iterations)
+Benchmarking light/remove_torch: Analyzing
+light/remove_torch      time:   [6.0275 µs 6.1929 µs 6.3669 µs]
+                        change: [−2.5786% +0.5239% +3.6092%] (p = 0.74 > 0.05)
+                        No change in performance detected.
+Benchmarking light/break_block
+Benchmarking light/break_block: Warming up for 3.0000 s
+Benchmarking light/break_block: Collecting 100 samples in estimated 5.0004 s (12M iterations)
+Benchmarking light/break_block: Analyzing
+light/break_block       time:   [158.20 ns 162.22 ns 166.27 ns]
+                        change: [−5.1315% −2.4759% +0.3382%] (p = 0.09 > 0.05)
+                        No change in performance detected.
+Benchmarking light/place_block
+Benchmarking light/place_block: Warming up for 3.0000 s
+Benchmarking light/place_block: Collecting 100 samples in estimated 5.0050 s (3.2M iterations)
+Benchmarking light/place_block: Analyzing
+light/place_block       time:   [1.2415 µs 1.2736 µs 1.3058 µs]
+                        change: [−7.9139% −4.8537% −1.6051%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Benchmarking light/worst_dark_torch_add
+Benchmarking light/worst_dark_torch_add: Warming up for 3.0000 s
+Benchmarking light/worst_dark_torch_add: Collecting 100 samples in estimated 5.1428 s (157k iterations)
+Benchmarking light/worst_dark_torch_add: Analyzing
+light/worst_dark_torch_add
+                        time:   [18.110 µs 18.590 µs 19.076 µs]
+                        change: [−8.1210% −5.4394% −2.7913%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Benchmarking light/worst_dark_torch_remove
+Benchmarking light/worst_dark_torch_remove: Warming up for 3.0000 s
+Benchmarking light/worst_dark_torch_remove: Collecting 100 samples in estimated 5.0336 s (152k iterations)
+Benchmarking light/worst_dark_torch_remove: Analyzing
+light/worst_dark_torch_remove
+                        time:   [14.890 µs 15.305 µs 15.733 µs]
+                        change: [−0.3517% +2.8565% +5.8620%] (p = 0.07 > 0.05)
+                        No change in performance detected.
+Benchmarking light/worst_cave_roof_add
+Benchmarking light/worst_cave_roof_add: Warming up for 3.0000 s
+Benchmarking light/worst_cave_roof_add: Collecting 100 samples in estimated 5.0476 s (167k iterations)
+Benchmarking light/worst_cave_roof_add: Analyzing
+light/worst_cave_roof_add
+                        time:   [16.260 µs 16.727 µs 17.183 µs]
+                        change: [+1.0950% +4.0532% +6.9466%] (p = 0.01 < 0.05)
+                        Performance has regressed.
+Benchmarking light/worst_cave_roof_remove
+Benchmarking light/worst_cave_roof_remove: Warming up for 3.0000 s
+Benchmarking light/worst_cave_roof_remove: Collecting 100 samples in estimated 5.1215 s (172k iterations)
+Benchmarking light/worst_cave_roof_remove: Analyzing
+light/worst_cave_roof_remove
+                        time:   [14.216 µs 14.577 µs 14.930 µs]
+                        change: [−8.4689% −6.0952% −3.6150%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Benchmarking light/full_relight_3x3x3
+Benchmarking light/full_relight_3x3x3: Warming up for 3.0000 s
+Benchmarking light/full_relight_3x3x3: Collecting 100 samples in estimated 9.5784 s (10k iterations)
+Benchmarking light/full_relight_3x3x3: Analyzing
+light/full_relight_3x3x3
+                        time:   [923.37 µs 944.59 µs 965.99 µs]
+                        change: [+5.2275% +7.9553% +10.731%] (p = 0.00 < 0.05)
+                        Performance has regressed.
+
