@@ -8,6 +8,8 @@ license.workspace = true
 publish = false
 
 [dependencies]
+auth = { path = "../auth" }
+clap = { workspace = true }
 engine-core = { path = "../engine-core" }
 world = { path = "../world" }
 net = { path = "../net" }

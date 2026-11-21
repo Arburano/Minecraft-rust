@@ -25,8 +25,8 @@ game servers/gateway verify only our JWT (public key)
 
 Owner decision 2026-11-21 (legal.md rule 7): development does not wait for Microsoft API approval (T0-10).
 
-- The client starts with a local player name; no Microsoft, Xbox or Mojang calls. The player id is derived deterministically from the name (offline UUID), so saves and tests are repeatable.
-- The server accepts offline clients only when started with an explicit flag (e.g. `--offline`); the default is online. A server in offline mode binds to localhost/LAN by default and logs a warning on start.
+- The client starts with a local player name (`--offline-name <NAME>`, 3–16 characters `A-Z a-z 0-9 _`); no Microsoft, Xbox or Mojang calls — the `auth` crate has no network dependency. The player id is derived deterministically from the name: SHA-256 of `"offline-player:" + lowercase name`, first 16 bytes, UUID version 8 (case-insensitive, so saves and tests are repeatable).
+- The server admits offline identities only when started with `--offline` (`auth::AdmissionPolicy`); the default is online. In offline mode it listens on `127.0.0.1` by default, accepts `--bind` only for loopback or private LAN addresses (RFC 1918, IPv6 ULA/link-local) and refuses `0.0.0.0`/`::` and public addresses; it logs a warning on start. Default port 47777.
 - Offline mode never issues our session JWT for a public gateway; it is a separate, clearly marked code path that can be removed or disabled in release builds.
 - All automated tests and CI use offline mode or the mock login server.
 - Reference: [wiki.vg MSA](https://www.wiki.vg/MSA), Rust example: `lighty-auth`.
