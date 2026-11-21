@@ -186,21 +186,46 @@ fn index_mask(bits: u8) -> u64 {
     (1u64 << bits) - 1
 }
 
+/// `64 / bits`, indexed by bit width 0..=8 (0 is unused).
+const PER_WORD: [u32; 9] = [1, 64, 32, 21, 16, 12, 10, 9, 8];
+
+/// Multiplier for dividing an index `< 4096` by `PER_WORD[bits]` without a
+/// hardware divide: `i / per == (i * MAGIC[bits]) >> MAGIC_SHIFT`
+/// (`MAGIC = ceil(2^20 / per)`; the product stays below 2^32; exhaustively tested). Integer division by a
+/// run-time value is slow on some CPUs (Zen+: the T0-16 `get`/`set` misses).
+const MAGIC: [u32; 9] = {
+    let mut m = [0u32; 9];
+    let mut b = 1;
+    while b < 9 {
+        m[b] = (1u32 << MAGIC_SHIFT).div_ceil(PER_WORD[b]);
+        b += 1;
+    }
+    m
+};
+const MAGIC_SHIFT: u32 = 20;
+
+/// Word index and bit shift of packed index `i` at this width.
+#[inline]
+fn locate(bits: u8, i: usize) -> (usize, usize) {
+    let b = bits as usize;
+    let word = ((i as u32 * MAGIC[b]) >> MAGIC_SHIFT) as usize;
+    let slot = i - word * PER_WORD[b] as usize;
+    (word, slot * b)
+}
+
 /// Reads packed index `i` from `data`.
 #[inline]
 fn get_raw(data: &[u64], bits: u8, i: usize) -> u64 {
-    let per = entries_per_word(bits);
-    let word = data[i / per];
-    (word >> ((i % per) * bits as usize)) & index_mask(bits)
+    let (word, shift) = locate(bits, i);
+    (data[word] >> shift) & index_mask(bits)
 }
 
 /// Writes packed index `i` into `data`, leaving neighbouring indices intact.
 #[inline]
 fn set_raw(data: &mut [u64], bits: u8, i: usize, value: u64) {
-    let per = entries_per_word(bits);
-    let shift = (i % per) * bits as usize;
+    let (word, shift) = locate(bits, i);
     let mask = index_mask(bits) << shift;
-    let word = &mut data[i / per];
+    let word = &mut data[word];
     *word = (*word & !mask) | (value << shift);
 }
 
@@ -505,6 +530,21 @@ impl Section {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn magic_division_is_exact_for_every_width_and_index() {
+        for bits in 1u8..=8 {
+            let per = entries_per_word(bits);
+            assert_eq!(PER_WORD[bits as usize] as usize, per);
+            for i in 0..VOLUME {
+                assert_eq!(
+                    locate(bits, i),
+                    (i / per, (i % per) * bits as usize),
+                    "bits {bits} i {i}"
+                );
+            }
+        }
+    }
 
     fn ids(values: &[u16]) -> [BlockStateId; VOLUME] {
         let mut arr = [BlockStateId::AIR; VOLUME];

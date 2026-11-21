@@ -1,6 +1,6 @@
 # T1-04. Optimize section get/set and gather + masks
 
-- **Status:** todo
+- **Status:** in-progress (2026-11-21: division-free packed addressing done and measured on a VM; laptop confirmation pending)
 - **Depends on:** T0-16
 - **Owner:** agent (cloud for the work, owner's laptop for confirmation)
 
