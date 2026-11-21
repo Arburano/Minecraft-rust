@@ -41,14 +41,29 @@ those targets. They stay unchanged.
 | What | Value | Status |
 | --- | --- | --- |
 | Tick with 500 players per node (16+ cores, players in ≥ 8 regions) | ≤ 25 ms p99, hard 50 ms | Target |
-| Capacity of one region | determined by the stage 2 benchmark | Open |
-| Entity transfer between `World`s | ≤ 5 µs | Hypothesis |
+| Capacity of one region | determined by the stage 2 benchmark | Open (first data: T0-09, 2 000 lightweight bots in 1 region at p99 ≈ 0.18–0.21 ms — machinery overhead only, not gameplay capacity) |
+| Entity transfer between `World`s | ≤ 5 µs | Measured (bare-metal Ryzen 7 3750H: ≈ 168.5 ns despawn + spawn by `NetId` incl. index updates; `sim` bench `region_tick/entity_transfer_between_worlds`, T0-09, [details](../research/sim-regions-2026-11-20.md)) |
 | Entity handoff between nodes | ≤ 50 ms p99, 0 dupes | Target (stage 6) |
 | Network CPU | ≤ 1 core per 10,000 packets/s | Hypothesis |
 | Nearest 3×3 columns at 2% loss, RTT 100 ms | ≤ 1 s | Measured (VM, T0-11 spike, 8 KB random columns, BBR: 0.46–0.77 s over 6 seeds; quinn's default Cubic misses it — 1.13 s worst; [details](../research/net-quic-spike-2026-11-19.md)) |
 | Entity-delta latency while columns stream (2% loss, RTT 100 ms) | not blocked by chunk streams | Measured (VM, T0-11 spike, BBR: p95 52–58 ms ≈ the 50 ms one-way path delay; [details](../research/net-quic-spike-2026-11-19.md)) |
 | Traffic per player, steady state | ≤ 50 kbit/s (≤ 20 moving entities nearby) | Target |
 | Node RAM, 500 scattered players | ≤ 16 GB | Hypothesis |
+
+### T0-09 measurements (2026-11-20)
+
+Same machine and toolchain as T0-07 (ASUS TUF FX505DU, Ryzen 7 3750H, 8 logical CPUs, Windows 11 build 28000, physical; Rust 1.97.1). Region prototype: flat world 64 × 8 sections, scripted wandering bodies (4 blocks/s, turn every 32 ticks). Full tick = PreTick + Simulate + Exchange; pool of `min(regions, logical CPUs)` threads. 3 runs × 1 000 ticks (+100 warmup), release profile; Criterion tick benchmarks with 30 samples, 1 s warmup, 3 s measurement. Raw outputs in [docs/research/sim/](../research/sim/), tables and interpretation in the [T0-09 summary](../research/sim-regions-2026-11-20.md).
+
+| Configuration | p50 (3 runs) | p99 (3 runs) | Criterion tick estimate |
+| --- | --- | --- | --- |
+| 100 bots, 1 region | 0.003–0.005 ms | 0.016–0.035 ms | 4.8651 µs |
+| 500 bots, 1 region | 0.018–0.022 ms | 0.054–0.062 ms | 21.358 µs |
+| 2 000 bots, 1 region | 0.056–0.060 ms | 0.180–0.206 ms | 66.573 µs |
+| 100 bots, 8 regions | 0.003–0.004 ms | 0.016–0.020 ms | 4.7017 µs |
+| 500 bots, 8 regions | 0.013–0.014 ms | 0.066–0.071 ms | 19.537 µs |
+| 2 000 bots, 8 regions | 0.029–0.045 ms | 0.151–0.269 ms | 45.038 µs |
+
+All configurations are far under the 25 ms tick budget with this load. This measures the region machinery with light kinematic bodies, **not** player capacity; the 500-player / 16-core Target above stays unverified (this machine has 8 logical CPUs). 8 regions give ≈ 1.5× p50 speedup at 2 000 bots with comparable p99 — exchange and pool synchronization dominate the tail at this load. CPU frequency was not pinned and background activity was not controlled.
 
 ## Mods
 

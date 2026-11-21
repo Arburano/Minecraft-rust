@@ -10,6 +10,20 @@ publish = false
 [dependencies]
 engine-core = { path = "../engine-core" }
 world = { path = "../world" }
+bevy_ecs = { workspace = true }
+rayon = { workspace = true }
+glam = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+proptest = { workspace = true }
+criterion = { workspace = true }
+anyhow = { workspace = true }
+world = { path = "../world" }
+
+[[bench]]
+name = "region_tick"
+harness = false
 
 [lints]
 workspace = true

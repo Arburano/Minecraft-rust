@@ -1,0 +1,16 @@
+    Finished `release` profile [optimized + debuginfo] target(s) in 0.54s
+     Running tests\tick_latency.rs (target\release\deps\tick_latency-882ef266d10105c8.exe)
+
+running 1 test
+ticks per config: 1000 (+100 warmup), logical CPUs: 8
+arena: 64 x 8 sections (1024 x 128 blocks), flat ground
+  100 bots / 1 region(s), 1 thread(s): p50 0.004 / p90 0.005 / p99 0.024 / max 0.029 ms
+  500 bots / 1 region(s), 1 thread(s): p50 0.018 / p90 0.019 / p99 0.054 / max 0.119 ms
+ 2000 bots / 1 region(s), 1 thread(s): p50 0.056 / p90 0.078 / p99 0.181 / max 1.159 ms
+  100 bots / 8 region(s), 8 thread(s): p50 0.003 / p90 0.006 / p99 0.020 / max 0.029 ms
+  500 bots / 8 region(s), 8 thread(s): p50 0.014 / p90 0.019 / p99 0.071 / max 0.190 ms
+ 2000 bots / 8 region(s), 8 thread(s): p50 0.031 / p90 0.070 / p99 0.173 / max 0.350 ms
+test tick_latency_matrix ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.19s
+
