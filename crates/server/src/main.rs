@@ -73,6 +73,7 @@ fn configure(args: &Args) -> Result<ServerConfig, String> {
 }
 
 fn main() -> ExitCode {
+    let _profiler = engine_core::profile::start();
     let args = Args::parse();
     let config = match configure(&args) {
         Ok(c) => c,

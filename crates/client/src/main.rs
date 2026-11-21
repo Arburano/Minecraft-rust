@@ -35,6 +35,7 @@ fn identity(args: &Args) -> Result<Identity, String> {
 }
 
 fn main() -> ExitCode {
+    let _profiler = engine_core::profile::start();
     let args = Args::parse();
     match identity(&args) {
         Ok(id) => {

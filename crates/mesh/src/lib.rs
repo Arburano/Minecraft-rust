@@ -410,6 +410,7 @@ impl MeshChunkBuilder {
         is_transparent: impl Fn(BlockStateId) -> bool,
         out: &mut MeshChunkQuads,
     ) {
+        engine_core::zone!("mesh::build");
         self.gather(neighborhood, is_transparent);
         self.remesh_into(out);
     }
@@ -447,6 +448,7 @@ impl MeshChunkBuilder {
     /// Re-meshes with the cached masks, reusing the capacity of `out`.
     /// Skips the mesher for empty and solid chunks.
     pub fn remesh_into(&mut self, out: &mut MeshChunkQuads) {
+        engine_core::zone!("mesh::remesh");
         out.clear();
         if self.non_air_core == 0 || self.solid {
             return;

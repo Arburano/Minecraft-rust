@@ -330,6 +330,7 @@ fn run_job(shared: &Shared, job: Job) {
     if job.token.is_cancelled() {
         return; // Cancelled before start: the body never runs.
     }
+    crate::zone!("jobs::run");
     let result = (job.body)(&job.token);
     if job.token.is_cancelled() {
         return; // Cancelled while running: discard the result.

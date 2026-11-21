@@ -58,4 +58,5 @@ Budget values are in [`../process/performance-budgets.md`](../process/performanc
 
 - `tracing` zones for each phase, each region, each system, and each mod.
 - Tracy (`tracy-client`) behind the `profiling` feature flag.
+- Implementation (T1-06): `engine_core::zone!("crate::what")` opens a Tracy zone until the end of the block. The macro is chosen when `engine-core` is compiled: without `profiling` it expands to nothing (measured: no change beyond VM noise on the `light` and `mesh` benches); with it, a zone costs one atomic check while no Tracy client runs. Binaries start the client with `engine_core::profile::start()` and forward the feature: `cargo run --release -p client --features profiling`, then connect the Tracy profiler GUI (version matching `tracy-client` 0.19). Zones so far: `jobs::run`, `sim::tick` with its phases, `mesh::build`, `mesh::remesh`, `light::full_relight`, `light::relight`, `modhost::call`. Zones are for coarse work units — never per block or per cell.
 - Server commands `/profile` (tick, regions) and `/profile mods`.

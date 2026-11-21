@@ -250,6 +250,7 @@ impl LightNeighborhood {
 
     /// Recomputes both channels from scratch (BFS from every source).
     pub fn full_relight(&mut self) {
+        engine_core::zone!("light::full_relight");
         for channel in [&mut self.block, &mut self.sky] {
             channel.light.fill(0);
             self.inc.clear();
@@ -385,6 +386,7 @@ impl LightNeighborhood {
     }
 
     fn apply(&mut self, pos: BlockPos, i: usize, props: LightProps) {
+        engine_core::zone!("light::relight");
         let old_emission = self.block.src[i];
         let old_opacity = self.opacity[i];
         self.opacity[i] = props.opacity;

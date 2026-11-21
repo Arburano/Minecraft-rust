@@ -8,6 +8,7 @@
 //! stage-1 task in `tasks/`.
 
 pub mod jobs;
+pub mod profile;
 
 use std::time::Duration;
 

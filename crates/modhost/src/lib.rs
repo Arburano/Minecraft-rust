@@ -329,6 +329,7 @@ impl ModWorker {
         budget: Duration,
         call: impl FnOnce(&bindings::ModWorld, &mut Store<HostState>) -> wasmtime::Result<T>,
     ) -> Result<T, Error> {
+        engine_core::zone!("modhost::call");
         if self.trapped {
             return Err(Error::Trapped);
         }

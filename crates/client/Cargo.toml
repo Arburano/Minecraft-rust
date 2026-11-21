@@ -17,5 +17,9 @@ sim = { path = "../sim" }
 assets = { path = "../assets" }
 auth = { path = "../auth" }
 
+[features]
+# Tracy profiler zones: `cargo run -p client --features profiling`.
+profiling = ["engine-core/profiling"]
+
 [lints]
 workspace = true

@@ -16,5 +16,9 @@ net = { path = "../net" }
 sim = { path = "../sim" }
 modhost = { path = "../modhost" }
 
+[features]
+# Tracy profiler zones: `cargo run -p server --features profiling`.
+profiling = ["engine-core/profiling"]
+
 [lints]
 workspace = true
