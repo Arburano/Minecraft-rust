@@ -13,13 +13,14 @@ pub mod coords;
 pub mod map;
 pub mod registry;
 pub mod section;
+pub mod storage;
 
 pub use column::{Column, ColumnPos, ColumnState, WorldBounds};
 pub use map::{DirtyKind, WorldError, WorldMap};
 pub use registry::{
     BlockDef, BlockProps, Collision, IdTable, Registry, RegistryBuilder, RegistryError,
 };
-pub use section::Section;
+pub use section::{Section, SectionDecodeError};
 
 /// Edge length of a storage section in blocks (16^3 = 4096 blocks).
 pub const SECTION_SIZE: i32 = 16;

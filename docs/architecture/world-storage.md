@@ -91,6 +91,11 @@ Separate from blocks: `SectionLight { block: Nibbles, sky: Nibbles }`, each is `
 - Copy-on-write writes: the new column version is written to free space, the offset is updated atomically; the tick does not stop.
 - World index and metadata — `redb`.
 - The format is versioned; migrations are separate `vN → vN+1` functions with tests on golden files.
+- Implementation, format v1 (T1-02, `world::storage`):
+  - Region file `<world>/region/r.X.Z.bin`: magic `VXRG`, u32 format version, 1,024 header entries `{offset u64, length u32, FNV-1a-32 checksum u32}` (16,392-byte header). Column records are zstd-3 compressed and appended; a single save writes the record, syncs, rewrites the 16-byte entry and syncs; `save_all` batches a region (append all, sync, update all entries, sync). A crash leaves each column at its old or new version; a torn record fails its checksum (tested). "Free space" is the end of the file; old versions become garbage reclaimed by `compact` (temporary file + rename).
+  - Column record: u32 format version, u32 ID-table number, x, z, min section y, section count, sections (`Section::encode`: tag + single u16 / bits + palette + packed words / 4,096 u16), then two length-prefixed blobs — light (owned by the `light` crate) and entities — so `world` keeps its dependency direction. Decoding validates every packed index against its palette.
+  - ID tables live in `<world>/world.redb` (table `id_tables`: number → newline-joined state names; `meta`: format version) rather than in each region header, and every record names its table: a world saved under several mod sets stays readable, and columns are remapped on load (`Registry::remap`, unknown → `core:missing`). The heightmap is recomputed on load, not stored.
+  - Golden file: `crates/world/tests/golden/r.0.0.bin` (16 corpus columns).
 
 ## Network format
 

@@ -11,6 +11,8 @@ publish = false
 engine-core = { path = "../engine-core" }
 serde = { workspace = true }
 toml = { workspace = true }
+zstd = { workspace = true }
+redb = { workspace = true }
 
 [dev-dependencies]
 criterion = { workspace = true }
@@ -24,6 +26,10 @@ harness = false
 
 [[bench]]
 name = "map"
+harness = false
+
+[[bench]]
+name = "storage"
 harness = false
 
 [lints]
