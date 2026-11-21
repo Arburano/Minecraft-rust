@@ -21,20 +21,30 @@ The single source of numbers. Change here and in PRD §1 at the same time. Statu
 | Joining a server until control | ≤ 5 s with asset cache | Target |
 | GPU geometry time | ≤ 8 ms per frame on iGPU | Measured (Radeon RX Vega 10, path B as the engine would select: 2.417 ms p50 / 2.619 ms p95 on DX12, worst backend GL 2.612 / 2.821; path C 1.637–1.948 ms p50; bare-metal ASUS FX505DU, 3 runs per combination, [T0-14 summary](../research/gpu/summary-2026-11-19.md)) |
 | CPU command recording | ≤ 1 ms per frame | Measured (Ryzen 7 3750H, worst adapter/backend Vega 10 + DX12: 0.535 ms p50 / 0.821 ms p95 median of 3 runs, worst single-run p95 0.923 ms; judged at p95 — the budget does not name a statistic; single-frame maxima exceed 1 ms: 1.323 ms Vega 10 DX12 B, 1.061 ms Vega 10 DX12 C; [T0-14 summary](../research/gpu/summary-2026-11-19.md)) |
-| `fast_mesh` of a 32³ mesh chunk | ≤ 0.2 ms p50 on a 4-core desktop | Measured (VM: ≈ 49 µs on the T0-12 corpus, seed 0; `mesh` bench `mesh_chunk/fast_mesh`) |
-| Gather + masks of a 32³ mesh chunk | ≤ 100 µs p50 | Measured (VM: ≈ 89 µs on the T0-12 corpus, seed 0; was ≈ 60 µs on the pre-T0-12 corpus — ores make deep sections paletted instead of uniform; `mesh` bench `mesh_chunk/gather_masks`, [details](../../task-reports/t0-12-worldgen-test-corpus.md)) |
-| Mask update per edit | ≤ 20 ns | Measured (VM: ≈ 3.7 ns on the T0-12 corpus; `mesh` bench `mesh_chunk/mask_update`) |
-| Render batch copy after an edit | ≤ 50 µs | Measured (VM: ≈ 1.2 µs full re-copy of a 64³ batch, 5 410 quads / 42.3 KB on the T0-12 corpus; sub-range copy ≈ 0.15 µs; `mesh` bench `mesh_chunk/render_batch`, [details](../../task-reports/t0-12-worldgen-test-corpus.md)) |
-| Lighting: add / remove per edit | ≤ 100 / ≤ 200 µs p95 | Measured (VM 4 vCPU Xeon 2.1 GHz, 3 runs: T0-12 corpus with 8 torches/section — add ≤ 3.4 µs p95, remove ≤ 16.8 µs p95; synthetic worst cases ≤ 24.5 µs p95; `light` bench, [details](../../task-reports/t0-08-light-incremental-bfs.md); bare-metal confirmation pending) |
-| `get` in a section | ≈ 3.8 ns | Measured (VM: ≈ 3.4 ns paletted, 0.5 ns single, 0.7 ns direct; `world` bench `section_get`; T0-12 corpus group `section_corpus/get`: ≈ 4.0 ns paletted, 0.6 ns single) |
-| `set` in a section, any bit width | ≤ 10 ns | Measured (VM: ≈ 6 ns typical; 6–8-bit readings of 13–15 ns are 4K-aliasing stalls on this VM, see [T0-03 report](../../task-reports/t0-03-world-palette-section.md); T0-12 corpus group `section_corpus/set`: 12–13 ns on 2–3-bit terrain sections, same VM caveat; bare-metal confirmation pending) |
-| `unpack_into` per section | ≤ 5 µs | Measured (VM: ≈ 2.9–4.1 µs paletted, < 0.1 µs single/direct; `world` bench `section_unpack_into`; T0-12 corpus group `section_corpus/unpack`: ≈ 3.3 µs paletted, 0.08 µs single) |
+| `fast_mesh` of a 32³ mesh chunk | ≤ 0.2 ms p50 on a 4-core desktop | Measured (bare-metal Ryzen 7 3750H: ≈ 54 µs on the T0-12 corpus, seed 0, median of 3 runs [VM: ≈ 49 µs]; `mesh` bench `mesh_chunk/fast_mesh`, [T0-16 summary](../research/bare-metal-2026-11-21/summary.md)) |
+| Gather + masks of a 32³ mesh chunk | ≤ 100 µs p50 | Measured deviation (bare-metal Ryzen 7 3750H: 112.0–113.1 µs, median 112.8 µs — all 3 runs over target [VM: ≈ 89 µs on the T0-12 corpus, seed 0; was ≈ 60 µs on the pre-T0-12 corpus]; target kept, follow-up in the stage 1 carry-over; `mesh` bench `mesh_chunk/gather_masks`, [T0-16 summary](../research/bare-metal-2026-11-21/summary.md)) |
+| Mask update per edit | ≤ 20 ns | Measured (bare-metal Ryzen 7 3750H: ≈ 4.4 ns on the T0-12 corpus [VM: ≈ 3.7 ns]; `mesh` bench `mesh_chunk/mask_update`, [T0-16 summary](../research/bare-metal-2026-11-21/summary.md)) |
+| Render batch copy after an edit | ≤ 50 µs | Measured (bare-metal Ryzen 7 3750H: ≈ 1.7 µs full re-copy of a 64³ batch, 5 410 quads / 42.3 KB on the T0-12 corpus; sub-range copy ≈ 0.17 µs [VM: ≈ 1.2 µs / 0.15 µs]; `mesh` bench `mesh_chunk/render_batch`, [T0-16 summary](../research/bare-metal-2026-11-21/summary.md), [T0-05 report](../../task-reports/t0-05-mesh-render-batches.md)) |
+| Lighting: add / remove per edit | ≤ 100 / ≤ 200 µs p95 | Measured (bare-metal Ryzen 7 3750H, 3 runs: T0-12 corpus with 8 torches/section — add ≤ 2.8 µs p95, remove ≤ 14.2 µs p95; synthetic worst cases ≤ 24.7 / ≤ 20.5 µs p95 [VM 4 vCPU Xeon 2.1 GHz: add ≤ 3.4 µs, remove ≤ 16.8 µs, worst ≤ 24.5 µs p95]; `light` bench, [T0-16 summary](../research/bare-metal-2026-11-21/summary.md), [T0-08 report](../../task-reports/t0-08-light-incremental-bfs.md)) |
+| `get` in a section | ≈ 3.8 ns | Measured deviation (bare-metal Ryzen 7 3750H: ≈ 8.3–8.8 ns paletted, 0.96 ns single, 1.20 ns direct; T0-12 corpus ≈ 8.4–8.8 ns paletted, 0.96 ns single [VM: ≈ 3.4 ns paletted, 0.5 ns single, 0.7 ns direct; corpus ≈ 4.0 / 0.6 ns]; reference kept, follow-up in the stage 1 carry-over; `world` bench `section_get` / `section_corpus/get`, [T0-16 summary](../research/bare-metal-2026-11-21/summary.md)) |
+| `set` in a section, any bit width | ≤ 10 ns | Measured deviation (bare-metal Ryzen 7 3750H: 12.7–29.4 ns across widths; T0-12 corpus 12.3–30.3 ns [VM: ≈ 6 ns typical, 13–15 ns 4K-aliasing readings at 6–8 bit, corpus 12–13 ns — see [T0-03 report](../../task-reports/t0-03-world-palette-section.md)]; target kept, follow-up in the stage 1 carry-over; `world` bench `section_set` / `section_corpus/set`, [T0-16 summary](../research/bare-metal-2026-11-21/summary.md)) |
+| `unpack_into` per section | ≤ 5 µs | Measured (bare-metal Ryzen 7 3750H: ≈ 2.8–3.0 µs paletted, 0.14–0.16 µs single/direct; T0-12 corpus ≤ 3.91 µs paletted, 0.15 µs single [VM: ≈ 2.9–4.1 µs paletted, < 0.1 µs single/direct; corpus ≈ 3.3 µs / 0.08 µs]; `world` bench `section_unpack_into` / `section_corpus/unpack`, [T0-16 summary](../research/bare-metal-2026-11-21/summary.md)) |
 
 GTX 1050 targets (FPS on iGPU / GTX 1050 and 64-chunk LOD distance) remain
 **not verified on GTX 1050**: no such hardware is available (owner decision,
 [open question No. 12](../open-questions.md)); the T0-14 discrete-GPU evidence
 was taken on a GTX 1660 Ti, which is considerably faster and does not verify
 those targets. They stay unchanged.
+
+Bare-metal confirmation of the VM-only client rows was taken in T0-16
+(2026-11-21) on the owner's laptop: three criterion runs per crate
+(`world`, `mesh`, `light`), AC power, best-performance mode, machine idle.
+CPU frequency could not be pinned; after ≈ 35 minutes of sustained load the
+laptop dropped to its base clock (≈ 1.5× slower), so the confirmed numbers
+are the boost-state ones. The misses (`get`, `set`, gather + masks) are
+recorded as deviations with targets unchanged, per the owner decision —
+see the [T0-16 summary](../research/bare-metal-2026-11-21/summary.md) and the
+stage 1 carry-over in `tasks/README.md`.
 
 ## Server
 

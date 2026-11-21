@@ -1,0 +1,101 @@
+    Finished `bench` profile [optimized + debuginfo] target(s) in 0.58s
+     Running unittests src\lib.rs (target\release\deps\mesh-2ee592de730cc1fd.exe)
+
+running 14 tests
+test batch::tests::boundary_faces_decode_to_block_63 ... ignored
+test batch::tests::offset_flips_bit5_only ... ignored
+test batch::tests::pack_concatenates_slots_in_order ... ignored
+test batch::tests::set_chunk_replaces_and_keeps_other_slots ... ignored
+test batch::tests::shifted_faces_equal_chunk_faces_plus_offset ... ignored
+test tests::boundary_edit_marks_face_neighbors ... ignored
+test tests::corner_edit_marks_four_chunks ... ignored
+test tests::empty_and_solid_chunks_skip_mesher ... ignored
+test tests::gather_matches_source_field ... ignored
+test tests::interior_edit_affects_only_own_chunk ... ignored
+test tests::set_block_updates_buffer_and_masks_incrementally ... ignored
+test tests::single_block_mesh_matches_reference ... ignored
+test tests::solid_core_with_air_padding_still_meshes_boundary ... ignored
+test tests::uniform_and_paletted_gather_agree ... ignored
+
+test result: ok. 0 passed; 0 failed; 14 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running benches\mesh_chunk.rs (target\release\deps\mesh_chunk-1e23f69211a050ed.exe)
+Gnuplot not found, using plotters backend
+corpus: air 28.8%  opaque 65.5%  transparent 5.7%
+Benchmarking mesh_chunk/gather_masks
+Benchmarking mesh_chunk/gather_masks: Warming up for 3.0000 s
+Benchmarking mesh_chunk/gather_masks: Collecting 100 samples in estimated 5.5395 s (45k iterations)
+Benchmarking mesh_chunk/gather_masks: Analyzing
+mesh_chunk/gather_masks time:   [117.97 µs 124.14 µs 131.66 µs]
+Found 8 outliers among 100 measurements (8.00%)
+  4 (4.00%) high mild
+  4 (4.00%) high severe
+quads/chunk 599 (4.7 KB at 8 B/quad)
+Benchmarking mesh_chunk/fast_mesh
+Benchmarking mesh_chunk/fast_mesh: Warming up for 3.0000 s
+Benchmarking mesh_chunk/fast_mesh: Collecting 100 samples in estimated 5.1425 s (91k iterations)
+Benchmarking mesh_chunk/fast_mesh: Analyzing
+mesh_chunk/fast_mesh    time:   [57.237 µs 60.531 µs 64.776 µs]
+Found 14 outliers among 100 measurements (14.00%)
+  1 (1.00%) low mild
+  6 (6.00%) high mild
+  7 (7.00%) high severe
+Benchmarking mesh_chunk/build
+Benchmarking mesh_chunk/build: Warming up for 3.0000 s
+Benchmarking mesh_chunk/build: Collecting 100 samples in estimated 5.2023 s (30k iterations)
+Benchmarking mesh_chunk/build: Analyzing
+mesh_chunk/build        time:   [173.85 µs 179.37 µs 186.00 µs]
+Found 1 outliers among 100 measurements (1.00%)
+  1 (1.00%) high severe
+Benchmarking mesh_chunk/remesh
+Benchmarking mesh_chunk/remesh: Warming up for 3.0000 s
+Benchmarking mesh_chunk/remesh: Collecting 100 samples in estimated 5.0591 s (81k iterations)
+Benchmarking mesh_chunk/remesh: Analyzing
+mesh_chunk/remesh       time:   [64.000 µs 65.941 µs 68.005 µs]
+Found 4 outliers among 100 measurements (4.00%)
+  3 (3.00%) high mild
+  1 (1.00%) high severe
+Benchmarking mesh_chunk/mask_update
+Benchmarking mesh_chunk/mask_update: Warming up for 3.0000 s
+Benchmarking mesh_chunk/mask_update: Collecting 100 samples in estimated 5.0000 s (1.1B iterations)
+Benchmarking mesh_chunk/mask_update: Analyzing
+mesh_chunk/mask_update  time:   [4.3332 ns 4.4617 ns 4.6113 ns]
+Found 1 outliers among 100 measurements (1.00%)
+  1 (1.00%) high mild
+Benchmarking mesh_chunk/mask_rebuild
+Benchmarking mesh_chunk/mask_rebuild: Warming up for 3.0000 s
+Benchmarking mesh_chunk/mask_rebuild: Collecting 100 samples in estimated 5.2443 s (101k iterations)
+Benchmarking mesh_chunk/mask_rebuild: Analyzing
+mesh_chunk/mask_rebuild time:   [51.374 µs 52.808 µs 54.230 µs]
+Found 2 outliers among 100 measurements (2.00%)
+  2 (2.00%) high mild
+
+corpus: air 28.8%  opaque 65.5%  transparent 5.7%
+render batch: 5410 quads (42.3 KB at 8 B/quad)
+Benchmarking render_batch/edit_subrange
+Benchmarking render_batch/edit_subrange: Warming up for 3.0000 s
+Benchmarking render_batch/edit_subrange: Collecting 100 samples in estimated 5.0006 s (27M iterations)
+Benchmarking render_batch/edit_subrange: Analyzing
+render_batch/edit_subrange
+                        time:   [174.07 ns 181.06 ns 188.79 ns]
+Found 9 outliers among 100 measurements (9.00%)
+  7 (7.00%) high mild
+  2 (2.00%) high severe
+Benchmarking render_batch/pack_all
+Benchmarking render_batch/pack_all: Warming up for 3.0000 s
+Benchmarking render_batch/pack_all: Collecting 100 samples in estimated 5.0040 s (3.0M iterations)
+Benchmarking render_batch/pack_all: Analyzing
+render_batch/pack_all   time:   [1.5538 µs 1.5970 µs 1.6441 µs]
+Found 5 outliers among 100 measurements (5.00%)
+  4 (4.00%) high mild
+  1 (1.00%) high severe
+Benchmarking render_batch/edit_recopy_all
+Benchmarking render_batch/edit_recopy_all: Warming up for 3.0000 s
+Benchmarking render_batch/edit_recopy_all: Collecting 100 samples in estimated 5.0035 s (2.6M iterations)
+Benchmarking render_batch/edit_recopy_all: Analyzing
+render_batch/edit_recopy_all
+                        time:   [1.6707 µs 1.7241 µs 1.8018 µs]
+Found 10 outliers among 100 measurements (10.00%)
+  5 (5.00%) high mild
+  5 (5.00%) high severe
+

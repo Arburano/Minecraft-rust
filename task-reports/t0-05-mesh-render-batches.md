@@ -22,7 +22,7 @@ Benchmark (criterion, 100 samples per bench, cloud VM 4 vCPU Xeon Platinum, numb
 | A: full re-copy (`edit_recopy_all` = set_chunk + pack) | ≈ 1.63 µs | ≤ 50 µs ✓ (≈ 30× margin) |
 | pack alone (`pack_all`) | ≈ 1.42 µs | — |
 
-**Recommendation (open question No. 8): keep the full re-copy.** It is ~30× under budget; the sub-range variant saves only ~1.4 µs per edited chunk but needs 48 GPU sub-ranges with their own counters (or 48 draws instead of 6). Even an edit dirtying 4 mesh chunks stays at ≈ 6.5 µs of copying. `RenderBatch` keeps the per-slot storage so the sub-range variant remains available if bare-metal or real-world numbers ever demand it. Bare-metal confirmation pending, as with T0-03/T0-04.
+**Recommendation (open question No. 8): keep the full re-copy.** It is ~30× under budget; the sub-range variant saves only ~1.4 µs per edited chunk but needs 48 GPU sub-ranges with their own counters (or 48 draws instead of 6). Even an edit dirtying 4 mesh chunks stays at ≈ 6.5 µs of copying. `RenderBatch` keeps the per-slot storage so the sub-range variant remains available if bare-metal or real-world numbers ever demand it. Bare-metal confirmation: T0-16 (2026-11-21) — full re-copy ≈ 1.7 µs on the owner's laptop, budget met with ≈ 29× margin; see the [T0-16 summary](../docs/research/bare-metal-2026-11-21/summary.md).
 
 ## What went wrong
 
