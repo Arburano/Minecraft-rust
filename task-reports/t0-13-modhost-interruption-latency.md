@@ -54,7 +54,7 @@ The quiet-desktop p99 ≤ 1 ms target was met in all six runs, including the loa
 
 ### Verification
 
-Local, 2026-11-20, all green: `cargo test --workspace` — 79 tests + 2 doctests passed, 0 failed (includes the functional interruption test and the new watchdog-gating unit test); `cargo fmt --all --check`; `cargo clippy --workspace --all-targets -- -D warnings` — no warnings; `cargo bench --workspace --no-run`. Evidence matrix: 3 quiet + 3 loaded latency runs and 20/20 loaded functional runs (above). PR CI: to be confirmed green before the PR is marked ready.
+Local, 2026-11-20, all green: `cargo test --workspace` — 79 tests + 2 doctests passed before the main merge and 99 tests after it (T0-11/T0-12 suites included), 0 failed (includes the functional interruption test and the new watchdog-gating unit test); `cargo fmt --all --check`; `cargo clippy --workspace --all-targets -- -D warnings` — no warnings; `cargo bench --workspace --no-run`. Evidence matrix: 3 quiet + 3 loaded latency runs and 20/20 loaded functional runs (above). `origin/main` (T0-11/T0-12, PR #13/#14) was merged into the branch before the PR; conflicts in `tasks/README.md` and `Cargo.lock` resolved keeping both sides. [PR #15](https://github.com/Arburano/Minecraft-rust/pull/15) CI green on the merged tree (run 44691005658).
 
 ## What went wrong
 
@@ -75,5 +75,6 @@ Local, 2026-11-20, all green: `cargo test --workspace` — 79 tests + 2 doctests
 - One release build was interrupted by the owner mid-session; process state was checked (no stray cargo/rustc/cpu_load), the working tree was intact, and the build was restarted without data loss.
 - The first final-configuration hooks bench, taken immediately after the loaded evidence phase, reported 3.5844 µs for the empty hook while the longer benchmarks stayed normal; two re-runs on the idle machine gave 2.2873 / 2.2675 µs. The outlier was discarded and re-measured, not averaged in.
 - Running the evidence `.cmd` from Git Bash required `MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' cmd /c …`: MSYS otherwise mangles the script path and the quoted machine string (semicolons/spaces) passed to cmd.exe.
+- The post-merge local verification first failed with "no space on device" (os error 112): the C: drive filled up during the session's many profile builds. Deleted the regenerable `target/debug/incremental` cache and re-ran; GitHub CI on the same tree was already green.
 
 **Limitations.** All numbers are from one physical laptop; frequency not pinned; the load is a spin loop, not a real server workload. The final configuration was not re-measured on the Linux VM — the CI functional bound (≤ 10 ms) is exercised on GitHub runners by the PR CI itself. The quiet-desktop 1 ms p99 target is informational and can legitimately fail on a busy desktop.

@@ -3,7 +3,7 @@
 - **Status:** done (closed with T0-13, 2026-11-20)
 - **Depends on:** T0-01
 - **Owner:** agent
-- **PR:** https://github.com/Arburano/Minecraft-rust/pull/9 (merged; interruption criterion still open)
+- **PR:** https://github.com/Arburano/Minecraft-rust/pull/9 (merged; interruption criterion closed by [PR #15](https://github.com/Arburano/Minecraft-rust/pull/15), T0-13)
 
 ## Goal
 
