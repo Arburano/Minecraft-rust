@@ -1,6 +1,6 @@
 # T0-17. Stage 0 exit review and stage 1 backlog
 
-- **Status:** todo
+- **Status:** in-progress (part A done 2026-11-21: [exit review](../../docs/research/stage-0-exit-2026-11-21.md); waiting for the owner's exit decision before part B)
 - **Depends on:** T0-15, T0-16 (T0-10 may still be waiting for external answers — see below)
 - **Owner:** agent (cloud) prepares, owner approves
 
@@ -35,6 +35,6 @@ Then set "Current stage: 1" in `docs/process/roadmap.md`.
 
 ## Acceptance criteria
 
-- [ ] Exit review document with every budget row classified; owner decision recorded.
+- [ ] Exit review document with every budget row classified ([done](../../docs/research/stage-0-exit-2026-11-21.md)); owner decision recorded (pending).
 - [ ] Stage 1 task files and table created; every carry-over item is covered by a task.
 - [ ] Roadmap current stage updated; report `task-reports/t0-17-stage-0-exit-and-stage-1-backlog.md`.
