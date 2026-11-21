@@ -11,7 +11,7 @@ Decision priority (PRD §14): when an optimization conflicts with game feel, fee
 ## Before any work
 
 1. Read [`docs/README.md`](docs/README.md) and [`docs/architecture/overview.md`](docs/architecture/overview.md).
-2. Find your task in [`tasks/`](tasks/README.md). The current stage is **0** ([`docs/process/roadmap.md`](docs/process/roadmap.md)).
+2. Find your task in [`tasks/`](tasks/README.md). The current stage is **1** ([`docs/process/roadmap.md`](docs/process/roadmap.md)).
 3. Read the specifications the task refers to and the relevant ADRs in [`docs/adr/`](docs/adr/README.md).
 4. Do not start a task if its dependencies are not `done`.
 

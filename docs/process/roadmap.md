@@ -2,7 +2,7 @@
 
 The full description of stages and risks is PRD §9–10. Here is the working view: what is included, the exit criterion, tasks.
 
-**Current stage: 0.** Tasks — [`../../tasks/stage-0/`](../../tasks/stage-0/).
+**Current stage: 1** (stage 0 closed 2026-11-21, [exit review](../research/stage-0-exit-2026-11-21.md)). Tasks — [`../../tasks/stage-1/`](../../tasks/stage-1/).
 
 | Stage | Duration (estimate) | Result | Exit criterion |
 | --- | --- | --- | --- |
