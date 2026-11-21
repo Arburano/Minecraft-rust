@@ -1,6 +1,6 @@
 # T0-10. Lawyer and Minecraft API access
 
-- **Status:** todo
+- **Status:** in-progress (2026-11-21: the owner has sent the requests — waiting for answers)
 - **Depends on:** —
 - **Owner:** human (not an agent)
 
@@ -22,6 +22,10 @@ Register an Azure application and submit a form for Minecraft API access; obtain
 ## Acceptance criteria
 
 - [ ] Open questions No. 4 and No. 5 are closed or reformulated.
+
+## Interim owner decision (2026-11-21)
+
+Until the answers arrive, development assumes "yes" to open questions 4 and 5 (see [open-questions.md](../../docs/open-questions.md)). The development rules in [docs/legal.md](../../docs/legal.md) stay in force unchanged.
 
 ## Out of scope
 

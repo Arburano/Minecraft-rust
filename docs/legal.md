@@ -11,6 +11,8 @@ This is not legal advice. It is a list of rules the team follows until a lawyer'
 5. **Microsoft tokens** are not stored on our servers.
 6. **Monetization** — only after consultation (Mojang's server rules restrict selling gameplay advantages).
 
+**Status 2026-11-21:** the questions below were sent (T0-10). Until the answer, development assumes "yes" for open questions 4 and 5, **within** the rules above: real assets only on a developer's or player's own machine from their own licensed copy, never in the repository, committed tests, CI, builds or on our servers; no public launch.
+
 ## Questions for the lawyer
 
 - Do the EULA and Usage Guidelines allow the owner of the game to download and locally convert Minecraft assets for a third-party engine?
