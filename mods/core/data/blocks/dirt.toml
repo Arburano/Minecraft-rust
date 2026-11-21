@@ -1,0 +1,6 @@
+id = "core:dirt"
+model = "core:models/cube_all"
+textures = { all = "minecraft:block/dirt" }   # fallback: core:fallback/dirt
+hardness = 0.5
+tool = "shovel"
+opaque = true

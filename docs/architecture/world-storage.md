@@ -69,11 +69,18 @@ Separate from blocks: `SectionLight { block: Nibbles, sky: Nibbles }`, each is `
 - At startup the server builds a registry from all mods (deterministic order: mod by id, then by declaration order) and assigns numeric `BlockStateId`s. `AIR = 0` always.
 - The client receives the table on login; numeric IDs on the client are never "guessed".
 - A saved world contains a `string state ID → number` table with which its sections were written. When loading with a different set of mods, sections are re-encoded through this table. A missing state → `core:missing` (a visible placeholder block; the block data is preserved so the mod can be restored without loss).
+- Implementation (T1-01, `world::registry`): `core:air` = 0 and `core:missing` = 1 are provided by the engine (a mod may redefine their properties); then mods sorted by id, blocks in declaration order (`data/blocks/*.toml` in file-name order), states in canonical order — properties sorted by name, the last one varying fastest, canonical name `ns:path[a=x,b=y]`. More than 65,536 states is a load error. The registry is immutable after startup and shared as `Arc<Registry>` (no locks). `Registry::remap(&IdTable)` re-encodes saved numeric IDs. Engine-relevant properties per state: `opaque`, `transparent`, `light_emission`, `light_opacity` (default 15 for opaque blocks, 0 otherwise), `collision`.
 
 ## Column and loading
 
 - Column: an array of sections by height + a height map (for sky and LOD) + block entities in a separate map.
 - Column loading states: `Requested → Generating/Loading → Lit → Ready → Unloading`. Meshing and simulation only for `Ready`.
+- Implementation (T1-01, `world::column`, `world::map`):
+  - Default dimension bounds `WorldBounds { min_section_y: -4, section_count: 24 }` = y `-64..320` (configurable per dimension).
+  - Heightmap per block column: the world y from which the column is open to the sky (topmost block with `light_opacity > 0`, plus one); maintained on every `set`, recomputed after generation/loading. Used by sky light (`lighting.md`).
+  - `WorldMap` owns the loaded columns of a dimension on one thread (no locks); worker jobs get section snapshots. Columns live in a direct-mapped 64×64 slot grid (`x mod 64, z mod 64`), colliding columns in an overflow hash map, so a loaded area up to 1,024 blocks wide needs no hashing.
+  - Dirty tracking per consumer (`Mesh`, `Light`, `Save`): `set_block` queues the edited section once per consumer; `take_dirty` drains it. Mesh consumers add border neighbors themselves (`mesh::affected_mesh_chunks`).
+  - Light is not part of `Column`: it lives in the `light` crate under the same `SectionPos` key (the dependency direction is `light → world`).
 
 ## On-disk storage
 

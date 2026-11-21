@@ -25,6 +25,7 @@ tool = "pickaxe"
 opaque = false
 transparent = true                      # goes into the transparent mask
 light_emission = 0
+light_opacity = 1                       # 0..=15, attenuation of light entering the block; default 15 if opaque, else 0
 collision = "model"                     # full | none | model
 states = { facing = ["north", "south", "east", "west", "up", "down"], waterlogged = [false, true] }
 components = ["copper_pipes:flow"]      # behavior from WASM

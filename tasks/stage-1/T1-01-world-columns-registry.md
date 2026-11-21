@@ -1,6 +1,6 @@
 # T1-01. World columns, block registry and ID table
 
-- **Status:** todo
+- **Status:** done (2026-11-21; the map-access budget waits for the owner — see the report)
 - **Depends on:** T0-03
 - **Owner:** agent (cloud)
 
@@ -23,9 +23,9 @@ Turn sections into a playable world store in `world`: 16×384×16 columns (24 se
 
 ## Acceptance criteria
 
-- [ ] Proptest against the naive reference passes.
-- [ ] Benchmark numbers recorded in performance-budgets (new rows), machine stated.
-- [ ] No locks around the world; dependency direction as in overview.md.
+- [x] Proptest against the naive reference passes.
+- [x] Benchmark numbers recorded in performance-budgets (new rows), machine stated. The proposed "within 2×" is not met (get 2.8×, set 2.4×); the owner decides the budget.
+- [x] No locks around the world; dependency direction as in overview.md.
 
 ## Out of scope
 

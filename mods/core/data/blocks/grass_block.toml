@@ -1,0 +1,6 @@
+id = "core:grass_block"
+model = "core:models/cube_all"
+textures = { all = "minecraft:block/grass_block" }   # fallback: core:fallback/grass_block
+hardness = 0.6
+tool = "shovel"
+opaque = true

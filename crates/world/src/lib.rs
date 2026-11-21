@@ -4,13 +4,21 @@
 //! Spec:
 //! - `docs/architecture/world-storage.md`
 //!
-//! Status: coordinate types and constants are final; `Section` palette storage is
-//! implemented (task T0-03). Chunk columns, registries and the ID table are later
-//! tasks in `tasks/stage-0/`.
+//! Status: coordinates, `Section` palette storage (T0-03), block-state registry
+//! with the persisted ID table, columns with a sky heightmap and the lock-free
+//! `WorldMap` of loaded columns with dirty tracking (T1-01).
 
+pub mod column;
 pub mod coords;
+pub mod map;
+pub mod registry;
 pub mod section;
 
+pub use column::{Column, ColumnPos, ColumnState, WorldBounds};
+pub use map::{DirtyKind, WorldError, WorldMap};
+pub use registry::{
+    BlockDef, BlockProps, Collision, IdTable, Registry, RegistryBuilder, RegistryError,
+};
 pub use section::Section;
 
 /// Edge length of a storage section in blocks (16^3 = 4096 blocks).

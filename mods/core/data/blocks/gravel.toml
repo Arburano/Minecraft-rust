@@ -1,0 +1,6 @@
+id = "core:gravel"
+model = "core:models/cube_all"
+textures = { all = "minecraft:block/gravel" }   # fallback: core:fallback/gravel
+hardness = 0.6
+tool = "shovel"
+opaque = true

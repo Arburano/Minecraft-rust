@@ -1,0 +1,6 @@
+id = "core:oak_planks"
+model = "core:models/cube_all"
+textures = { all = "minecraft:block/oak_planks" }   # fallback: core:fallback/oak_planks
+hardness = 2.0
+tool = "axe"
+opaque = true

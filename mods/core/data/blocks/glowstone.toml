@@ -1,0 +1,6 @@
+id = "core:glowstone"
+model = "core:models/cube_all"
+textures = { all = "minecraft:block/glowstone" }   # fallback: core:fallback/glowstone
+hardness = 0.3
+opaque = true
+light_emission = 15

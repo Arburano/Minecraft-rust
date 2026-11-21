@@ -4542,6 +4542,8 @@ dependencies = [
  "criterion",
  "engine-core",
  "proptest",
+ "serde",
+ "toml",
  "worldgen",
 ]
 

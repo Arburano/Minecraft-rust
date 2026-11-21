@@ -55,7 +55,7 @@ Core and single-player world ([roadmap](../docs/process/roadmap.md), PRD §9). E
 
 | Task | Name | Depends on | Owner | Status |
 | --- | --- | --- | --- | --- |
-| [T1-01](stage-1/T1-01-world-columns-registry.md) | World columns, block registry and ID table | T0-03 | agent (cloud) | todo |
+| [T1-01](stage-1/T1-01-world-columns-registry.md) | World columns, block registry and ID table | T0-03 | agent (cloud) | done |
 | [T1-02](stage-1/T1-02-world-save-format.md) | On-disk world format: save and load | T1-01 | agent (cloud) | todo |
 | [T1-03](stage-1/T1-03-worldgen-pipeline.md) | Terrain generator pipeline | T1-01, T0-12 | agent (cloud) | todo |
 | [T1-04](stage-1/T1-04-section-mesh-hot-paths.md) | Optimize section get/set and gather + masks | T0-16 | agent (cloud) + laptop confirmation | todo |
