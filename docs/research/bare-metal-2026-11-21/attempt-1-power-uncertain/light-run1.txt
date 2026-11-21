@@ -1,0 +1,96 @@
+    Finished `bench` profile [optimized + debuginfo] target(s) in 0.61s
+     Running unittests src\lib.rs (target\release\deps\light-645f3cb9b25c4752.exe)
+
+running 3 tests
+test nibbles::tests::packed_round_trip_and_compact ... ignored
+test nibbles::tests::set_expands_single_and_keeps_neighbors ... ignored
+test nibbles::tests::uniform_levels_are_single ... ignored
+
+test result: ok. 0 passed; 0 failed; 3 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running benches\light.rs (target\release\deps\light-66ea8f84c48b1e96.exe)
+Gnuplot not found, using plotters backend
+corpus: 13 snapshots, 832 air / 832 surface edit cells
+light/add_torch: 2496 edits  p50 1.0 us  p95 2.9 us  p99 5.0 us  max 14.7 us
+light/remove_torch: 2496 edits  p50 6.0 us  p95 13.7 us  p99 17.1 us  max 45.7 us
+light/break_block: 2496 edits  p50 0.2 us  p95 0.5 us  p99 1.1 us  max 9.4 us
+light/place_block: 2496 edits  p50 0.8 us  p95 3.8 us  p99 5.6 us  max 9.9 us
+light/full_relight_3x3x3: 65 runs  p50 899 us  max 1887 us
+light/worst_dark_torch_add: 500 edits  p50 19.7 us  p95 36.6 us  max 73.3 us
+light/worst_dark_torch_remove: 500 edits  p50 16.4 us  p95 30.0 us  max 305.9 us
+light/worst_cave_roof_add: 500 edits  p50 14.4 us  p95 22.5 us  max 36.9 us
+light/worst_cave_roof_remove: 500 edits  p50 12.7 us  p95 19.3 us  max 66.9 us
+Benchmarking light/add_torch
+Benchmarking light/add_torch: Warming up for 3.0000 s
+Benchmarking light/add_torch: Collecting 100 samples in estimated 5.0321 s (631k iterations)
+Benchmarking light/add_torch: Analyzing
+light/add_torch         time:   [1.4093 µs 1.6028 µs 1.8409 µs]
+Found 8 outliers among 100 measurements (8.00%)
+  1 (1.00%) high mild
+  7 (7.00%) high severe
+Benchmarking light/remove_torch
+Benchmarking light/remove_torch: Warming up for 3.0000 s
+Benchmarking light/remove_torch: Collecting 100 samples in estimated 5.0257 s (641k iterations)
+Benchmarking light/remove_torch: Analyzing
+light/remove_torch      time:   [6.7488 µs 7.1115 µs 7.5799 µs]
+Found 4 outliers among 100 measurements (4.00%)
+  2 (2.00%) high mild
+  2 (2.00%) high severe
+Benchmarking light/break_block
+Benchmarking light/break_block: Warming up for 3.0000 s
+Benchmarking light/break_block: Collecting 100 samples in estimated 5.0020 s (11M iterations)
+Benchmarking light/break_block: Analyzing
+light/break_block       time:   [161.53 ns 165.51 ns 169.64 ns]
+Found 1 outliers among 100 measurements (1.00%)
+  1 (1.00%) high mild
+Benchmarking light/place_block
+Benchmarking light/place_block: Warming up for 3.0000 s
+Benchmarking light/place_block: Collecting 100 samples in estimated 5.0058 s (3.1M iterations)
+Benchmarking light/place_block: Analyzing
+light/place_block       time:   [1.3325 µs 1.3636 µs 1.3997 µs]
+Found 6 outliers among 100 measurements (6.00%)
+  4 (4.00%) high mild
+  2 (2.00%) high severe
+Benchmarking light/worst_dark_torch_add
+Benchmarking light/worst_dark_torch_add: Warming up for 3.0000 s
+Benchmarking light/worst_dark_torch_add: Collecting 100 samples in estimated 5.0629 s (141k iterations)
+Benchmarking light/worst_dark_torch_add: Analyzing
+light/worst_dark_torch_add
+                        time:   [18.756 µs 19.142 µs 19.536 µs]
+Found 2 outliers among 100 measurements (2.00%)
+  1 (1.00%) high mild
+  1 (1.00%) high severe
+Benchmarking light/worst_dark_torch_remove
+Benchmarking light/worst_dark_torch_remove: Warming up for 3.0000 s
+Benchmarking light/worst_dark_torch_remove: Collecting 100 samples in estimated 5.1400 s (146k iterations)
+Benchmarking light/worst_dark_torch_remove: Analyzing
+light/worst_dark_torch_remove
+                        time:   [14.789 µs 15.026 µs 15.289 µs]
+Found 3 outliers among 100 measurements (3.00%)
+  2 (2.00%) high mild
+  1 (1.00%) high severe
+Benchmarking light/worst_cave_roof_add
+Benchmarking light/worst_cave_roof_add: Warming up for 3.0000 s
+Benchmarking light/worst_cave_roof_add: Collecting 100 samples in estimated 5.0883 s (167k iterations)
+Benchmarking light/worst_cave_roof_add: Analyzing
+light/worst_cave_roof_add
+                        time:   [15.826 µs 16.027 µs 16.253 µs]
+Found 2 outliers among 100 measurements (2.00%)
+  1 (1.00%) high mild
+  1 (1.00%) high severe
+Benchmarking light/worst_cave_roof_remove
+Benchmarking light/worst_cave_roof_remove: Warming up for 3.0000 s
+Benchmarking light/worst_cave_roof_remove: Collecting 100 samples in estimated 5.1244 s (167k iterations)
+Benchmarking light/worst_cave_roof_remove: Analyzing
+light/worst_cave_roof_remove
+                        time:   [13.371 µs 13.641 µs 13.944 µs]
+Found 4 outliers among 100 measurements (4.00%)
+  2 (2.00%) high mild
+  2 (2.00%) high severe
+Benchmarking light/full_relight_3x3x3
+Benchmarking light/full_relight_3x3x3: Warming up for 3.0000 s
+Benchmarking light/full_relight_3x3x3: Collecting 100 samples in estimated 9.5653 s (10k iterations)
+Benchmarking light/full_relight_3x3x3: Analyzing
+light/full_relight_3x3x3
+                        time:   [937.08 µs 952.11 µs 967.56 µs]
+

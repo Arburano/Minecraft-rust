@@ -1,0 +1,331 @@
+    Finished `bench` profile [optimized + debuginfo] target(s) in 8.66s
+     Running unittests src\lib.rs (target\release\deps\world-3784b15fac079c8e.exe)
+
+running 15 tests
+test coords::tests::index_in_section_covers_0_to_4095 ... ignored
+test coords::tests::mesh_chunk_is_two_sections_wide ... ignored
+test coords::tests::negative_blocks_map_to_negative_sections ... ignored
+test section::tests::air_section_flags ... ignored
+test section::tests::all_opaque_uses_predicate ... ignored
+test section::tests::compact_shrinks_width_and_drops_unused ... ignored
+test section::tests::compact_uniform_becomes_single ... ignored
+test section::tests::non_air_counter_tracks_edits ... ignored
+test section::tests::reverse_index_handles_index_255_and_key_zero ... ignored
+test section::tests::reverse_index_keeps_large_palette_correct ... ignored
+test section::tests::section_struct_is_56_bytes ... ignored
+test section::tests::set_grows_through_all_widths_to_direct ... ignored
+test section::tests::storage_sizes_match_spec_table ... ignored
+test section::tests::uniform_section_round_trips ... ignored
+test section::tests::unpack_matches_get_for_every_width ... ignored
+
+test result: ok. 0 passed; 0 failed; 15 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running benches\section.rs (target\release\deps\section-24592c27140fd10e.exe)
+Gnuplot not found, using plotters backend
+Benchmarking section_get/random/single
+Benchmarking section_get/random/single: Warming up for 3.0000 s
+Benchmarking section_get/random/single: Collecting 100 samples in estimated 5.0091 s (1.3M iterations)
+Benchmarking section_get/random/single: Analyzing
+section_get/random/single
+                        time:   [3.8198 µs 3.9235 µs 4.0240 µs]
+                        change: [−2.5908% +2.2466% +7.7243%] (p = 0.45 > 0.05)
+                        No change in performance detected.
+Found 3 outliers among 100 measurements (3.00%)
+  1 (1.00%) high mild
+  2 (2.00%) high severe
+Benchmarking section_get/random/1bit
+Benchmarking section_get/random/1bit: Warming up for 3.0000 s
+Benchmarking section_get/random/1bit: Collecting 100 samples in estimated 5.0529 s (146k iterations)
+Benchmarking section_get/random/1bit: Analyzing
+section_get/random/1bit time:   [34.707 µs 35.390 µs 36.137 µs]
+                        change: [+2.0953% +3.7152% +5.5309%] (p = 0.00 < 0.05)
+                        Performance has regressed.
+Found 11 outliers among 100 measurements (11.00%)
+  4 (4.00%) high mild
+  7 (7.00%) high severe
+Benchmarking section_get/random/2bit
+Benchmarking section_get/random/2bit: Warming up for 3.0000 s
+Benchmarking section_get/random/2bit: Collecting 100 samples in estimated 5.0798 s (131k iterations)
+Benchmarking section_get/random/2bit: Analyzing
+section_get/random/2bit time:   [33.555 µs 34.066 µs 34.666 µs]
+                        change: [−7.1005% −4.9455% −2.6024%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 6 outliers among 100 measurements (6.00%)
+  2 (2.00%) high mild
+  4 (4.00%) high severe
+Benchmarking section_get/random/3bit
+Benchmarking section_get/random/3bit: Warming up for 3.0000 s
+Benchmarking section_get/random/3bit: Collecting 100 samples in estimated 5.0425 s (146k iterations)
+Benchmarking section_get/random/3bit: Analyzing
+section_get/random/3bit time:   [35.194 µs 35.983 µs 36.824 µs]
+                        change: [+3.1486% +5.4482% +7.7539%] (p = 0.00 < 0.05)
+                        Performance has regressed.
+Benchmarking section_get/random/4bit
+Benchmarking section_get/random/4bit: Warming up for 3.0000 s
+Benchmarking section_get/random/4bit: Collecting 100 samples in estimated 5.0888 s (141k iterations)
+Benchmarking section_get/random/4bit: Analyzing
+section_get/random/4bit time:   [36.217 µs 37.211 µs 38.179 µs]
+                        change: [+0.2069% +4.0326% +7.8245%] (p = 0.03 < 0.05)
+                        Change within noise threshold.
+Benchmarking section_get/random/5bit
+Benchmarking section_get/random/5bit: Warming up for 3.0000 s
+Benchmarking section_get/random/5bit: Collecting 100 samples in estimated 5.0079 s (136k iterations)
+Benchmarking section_get/random/5bit: Analyzing
+section_get/random/5bit time:   [35.177 µs 35.654 µs 36.213 µs]
+                        change: [+2.6958% +5.3393% +7.9698%] (p = 0.00 < 0.05)
+                        Performance has regressed.
+Benchmarking section_get/random/6bit
+Benchmarking section_get/random/6bit: Warming up for 3.0000 s
+Benchmarking section_get/random/6bit: Collecting 100 samples in estimated 5.0938 s (141k iterations)
+Benchmarking section_get/random/6bit: Analyzing
+section_get/random/6bit time:   [37.817 µs 38.806 µs 39.780 µs]
+                        change: [+1.7376% +4.6890% +7.7820%] (p = 0.00 < 0.05)
+                        Performance has regressed.
+Benchmarking section_get/random/7bit
+Benchmarking section_get/random/7bit: Warming up for 3.0000 s
+Benchmarking section_get/random/7bit: Collecting 100 samples in estimated 5.1268 s (141k iterations)
+Benchmarking section_get/random/7bit: Analyzing
+section_get/random/7bit time:   [37.309 µs 38.330 µs 39.365 µs]
+                        change: [+7.1368% +10.628% +14.276%] (p = 0.00 < 0.05)
+                        Performance has regressed.
+Found 2 outliers among 100 measurements (2.00%)
+  2 (2.00%) high severe
+Benchmarking section_get/random/8bit
+Benchmarking section_get/random/8bit: Warming up for 3.0000 s
+Benchmarking section_get/random/8bit: Collecting 100 samples in estimated 5.0608 s (136k iterations)
+Benchmarking section_get/random/8bit: Analyzing
+section_get/random/8bit time:   [34.014 µs 34.400 µs 34.860 µs]
+                        change: [+2.1413% +4.1299% +6.1073%] (p = 0.00 < 0.05)
+                        Performance has regressed.
+Found 3 outliers among 100 measurements (3.00%)
+  3 (3.00%) high mild
+Benchmarking section_get/random/direct
+Benchmarking section_get/random/direct: Warming up for 3.0000 s
+Benchmarking section_get/random/direct: Collecting 100 samples in estimated 5.0024 s (1.0M iterations)
+Benchmarking section_get/random/direct: Analyzing
+section_get/random/direct
+                        time:   [4.8027 µs 4.9395 µs 5.0784 µs]
+                        change: [+3.9180% +7.3851% +10.778%] (p = 0.00 < 0.05)
+                        Performance has regressed.
+Found 6 outliers among 100 measurements (6.00%)
+  6 (6.00%) high mild
+
+Benchmarking section_set/existing/single
+Benchmarking section_set/existing/single: Warming up for 3.0000 s
+Benchmarking section_set/existing/single: Collecting 100 samples in estimated 5.1961 s (101k iterations)
+Benchmarking section_set/existing/single: Analyzing
+section_set/existing/single
+                        time:   [51.717 µs 53.081 µs 54.430 µs]
+                        change: [−5.3699% −2.6353% +0.1714%] (p = 0.07 > 0.05)
+                        No change in performance detected.
+Benchmarking section_set/existing/1bit
+Benchmarking section_set/existing/1bit: Warming up for 3.0000 s
+Benchmarking section_set/existing/1bit: Collecting 100 samples in estimated 5.2486 s (61k iterations)
+Benchmarking section_set/existing/1bit: Analyzing
+section_set/existing/1bit
+                        time:   [84.397 µs 86.398 µs 88.501 µs]
+                        change: [−0.4900% +1.8612% +4.1707%] (p = 0.12 > 0.05)
+                        No change in performance detected.
+Found 1 outliers among 100 measurements (1.00%)
+  1 (1.00%) high mild
+Benchmarking section_set/existing/2bit
+Benchmarking section_set/existing/2bit: Warming up for 3.0000 s
+Benchmarking section_set/existing/2bit: Collecting 100 samples in estimated 5.0876 s (61k iterations)
+Benchmarking section_set/existing/2bit: Analyzing
+section_set/existing/2bit
+                        time:   [88.064 µs 90.476 µs 92.842 µs]
+                        change: [−31.816% −30.504% −29.025%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Benchmarking section_set/existing/3bit
+Benchmarking section_set/existing/3bit: Warming up for 3.0000 s
+Benchmarking section_set/existing/3bit: Collecting 100 samples in estimated 5.3469 s (61k iterations)
+Benchmarking section_set/existing/3bit: Analyzing
+section_set/existing/3bit
+                        time:   [88.467 µs 101.17 µs 126.68 µs]
+                        change: [+4.5720% +13.850% +29.506%] (p = 0.02 < 0.05)
+                        Performance has regressed.
+Found 1 outliers among 100 measurements (1.00%)
+  1 (1.00%) high severe
+Benchmarking section_set/existing/4bit
+Benchmarking section_set/existing/4bit: Warming up for 3.0000 s
+Benchmarking section_set/existing/4bit: Collecting 100 samples in estimated 5.2939 s (61k iterations)
+Benchmarking section_set/existing/4bit: Analyzing
+section_set/existing/4bit
+                        time:   [81.823 µs 83.192 µs 84.745 µs]
+                        change: [−3.4813% −1.1587% +1.3817%] (p = 0.36 > 0.05)
+                        No change in performance detected.
+Benchmarking section_set/existing/5bit
+Benchmarking section_set/existing/5bit: Warming up for 3.0000 s
+Benchmarking section_set/existing/5bit: Collecting 100 samples in estimated 5.0950 s (61k iterations)
+Benchmarking section_set/existing/5bit: Analyzing
+section_set/existing/5bit
+                        time:   [85.600 µs 87.539 µs 89.567 µs]
+                        change: [+0.5177% +3.1933% +5.9175%] (p = 0.02 < 0.05)
+                        Change within noise threshold.
+Benchmarking section_set/existing/6bit
+Benchmarking section_set/existing/6bit: Warming up for 3.0000 s
+Benchmarking section_set/existing/6bit: Collecting 100 samples in estimated 5.5335 s (50k iterations)
+Benchmarking section_set/existing/6bit: Analyzing
+section_set/existing/6bit
+                        time:   [104.78 µs 107.31 µs 109.98 µs]
+                        change: [−4.4144% −1.9358% +0.7783%] (p = 0.16 > 0.05)
+                        No change in performance detected.
+Benchmarking section_set/existing/7bit
+Benchmarking section_set/existing/7bit: Warming up for 3.0000 s
+Benchmarking section_set/existing/7bit: Collecting 100 samples in estimated 5.1731 s (45k iterations)
+Benchmarking section_set/existing/7bit: Analyzing
+section_set/existing/7bit
+                        time:   [121.15 µs 124.20 µs 127.21 µs]
+                        change: [+0.1006% +3.2682% +6.1210%] (p = 0.03 < 0.05)
+                        Change within noise threshold.
+Benchmarking section_set/existing/8bit
+Benchmarking section_set/existing/8bit: Warming up for 3.0000 s
+Benchmarking section_set/existing/8bit: Collecting 100 samples in estimated 5.2519 s (45k iterations)
+Benchmarking section_set/existing/8bit: Analyzing
+section_set/existing/8bit
+                        time:   [110.28 µs 112.78 µs 115.45 µs]
+                        change: [+1.5602% +4.0905% +6.9174%] (p = 0.00 < 0.05)
+                        Performance has regressed.
+Benchmarking section_set/existing/direct
+Benchmarking section_set/existing/direct: Warming up for 3.0000 s
+Benchmarking section_set/existing/direct: Collecting 100 samples in estimated 5.0196 s (81k iterations)
+Benchmarking section_set/existing/direct: Analyzing
+section_set/existing/direct
+                        time:   [66.244 µs 67.786 µs 69.292 µs]
+                        change: [−0.1885% +3.5252% +7.1209%] (p = 0.06 > 0.05)
+                        No change in performance detected.
+
+Benchmarking section_unpack_into/section/single
+Benchmarking section_unpack_into/section/single: Warming up for 3.0000 s
+Benchmarking section_unpack_into/section/single: Collecting 100 samples in estimated 5.0007 s (17M iterations)
+Benchmarking section_unpack_into/section/single: Analyzing
+section_unpack_into/section/single
+                        time:   [145.40 ns 148.59 ns 152.32 ns]
+                        change: [−0.3573% +2.6643% +5.6628%] (p = 0.07 > 0.05)
+                        No change in performance detected.
+Found 3 outliers among 100 measurements (3.00%)
+  2 (2.00%) high mild
+  1 (1.00%) high severe
+Benchmarking section_unpack_into/section/3bit
+Benchmarking section_unpack_into/section/3bit: Warming up for 3.0000 s
+Benchmarking section_unpack_into/section/3bit: Collecting 100 samples in estimated 5.0077 s (1.6M iterations)
+Benchmarking section_unpack_into/section/3bit: Analyzing
+section_unpack_into/section/3bit
+                        time:   [2.7730 µs 2.8717 µs 2.9779 µs]
+                        change: [−1.0873% +2.3822% +5.8655%] (p = 0.19 > 0.05)
+                        No change in performance detected.
+Found 1 outliers among 100 measurements (1.00%)
+  1 (1.00%) high mild
+Benchmarking section_unpack_into/section/4bit
+Benchmarking section_unpack_into/section/4bit: Warming up for 3.0000 s
+Benchmarking section_unpack_into/section/4bit: Collecting 100 samples in estimated 5.0109 s (1.8M iterations)
+Benchmarking section_unpack_into/section/4bit: Analyzing
+section_unpack_into/section/4bit
+                        time:   [2.7984 µs 2.8755 µs 2.9551 µs]
+                        change: [−3.2505% −0.1717% +3.0805%] (p = 0.92 > 0.05)
+                        No change in performance detected.
+Found 1 outliers among 100 measurements (1.00%)
+  1 (1.00%) high mild
+Benchmarking section_unpack_into/section/8bit
+Benchmarking section_unpack_into/section/8bit: Warming up for 3.0000 s
+Benchmarking section_unpack_into/section/8bit: Collecting 100 samples in estimated 5.0105 s (1.7M iterations)
+Benchmarking section_unpack_into/section/8bit: Analyzing
+section_unpack_into/section/8bit
+                        time:   [2.9394 µs 3.0166 µs 3.0917 µs]
+                        change: [−8.5081% −5.5644% −2.5664%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Benchmarking section_unpack_into/section/direct
+Benchmarking section_unpack_into/section/direct: Warming up for 3.0000 s
+Benchmarking section_unpack_into/section/direct: Collecting 100 samples in estimated 5.0006 s (31M iterations)
+Benchmarking section_unpack_into/section/direct: Analyzing
+section_unpack_into/section/direct
+                        time:   [146.24 ns 150.25 ns 154.39 ns]
+                        change: [−10.357% −7.0222% −3.5395%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 5 outliers among 100 measurements (5.00%)
+  5 (5.00%) high mild
+
+Benchmarking section_corpus/get/deep
+Benchmarking section_corpus/get/deep: Warming up for 3.0000 s
+Benchmarking section_corpus/get/deep: Collecting 100 samples in estimated 5.0816 s (146k iterations)
+Benchmarking section_corpus/get/deep: Analyzing
+section_corpus/get/deep time:   [33.113 µs 33.325 µs 33.556 µs]
+                        change: [+2.9025% +4.6972% +6.6904%] (p = 0.00 < 0.05)
+                        Performance has regressed.
+Found 13 outliers among 100 measurements (13.00%)
+  9 (9.00%) high mild
+  4 (4.00%) high severe
+Benchmarking section_corpus/set/deep
+Benchmarking section_corpus/set/deep: Warming up for 3.0000 s
+Benchmarking section_corpus/set/deep: Collecting 100 samples in estimated 5.5433 s (45k iterations)
+Benchmarking section_corpus/set/deep: Analyzing
+section_corpus/set/deep time:   [122.12 µs 125.40 µs 128.65 µs]
+                        change: [−0.0090% +2.7283% +5.4029%] (p = 0.05 > 0.05)
+                        No change in performance detected.
+Benchmarking section_corpus/unpack/deep
+Benchmarking section_corpus/unpack/deep: Warming up for 3.0000 s
+Benchmarking section_corpus/unpack/deep: Collecting 100 samples in estimated 5.0166 s (1.2M iterations)
+Benchmarking section_corpus/unpack/deep: Analyzing
+section_corpus/unpack/deep
+                        time:   [3.8240 µs 3.9110 µs 4.0005 µs]
+                        change: [−6.6328% −3.9315% −0.9670%] (p = 0.01 < 0.05)
+                        Change within noise threshold.
+Benchmarking section_corpus/get/surface
+Benchmarking section_corpus/get/surface: Warming up for 3.0000 s
+Benchmarking section_corpus/get/surface: Collecting 100 samples in estimated 5.0397 s (146k iterations)
+Benchmarking section_corpus/get/surface: Analyzing
+section_corpus/get/surface
+                        time:   [35.005 µs 35.917 µs 36.825 µs]
+                        change: [+0.5356% +2.4846% +4.3320%] (p = 0.01 < 0.05)
+                        Change within noise threshold.
+Found 13 outliers among 100 measurements (13.00%)
+  13 (13.00%) high mild
+Benchmarking section_corpus/set/surface
+Benchmarking section_corpus/set/surface: Warming up for 3.0000 s
+Benchmarking section_corpus/set/surface: Collecting 100 samples in estimated 5.6197 s (45k iterations)
+Benchmarking section_corpus/set/surface: Analyzing
+section_corpus/set/surface
+                        time:   [120.30 µs 123.42 µs 126.47 µs]
+                        change: [−2.6716% −0.1188% +2.5970%] (p = 0.92 > 0.05)
+                        No change in performance detected.
+Benchmarking section_corpus/unpack/surface
+Benchmarking section_corpus/unpack/surface: Warming up for 3.0000 s
+Benchmarking section_corpus/unpack/surface: Collecting 100 samples in estimated 5.0019 s (1.8M iterations)
+Benchmarking section_corpus/unpack/surface: Analyzing
+section_corpus/unpack/surface
+                        time:   [2.7224 µs 2.7907 µs 2.8625 µs]
+                        change: [−4.7163% −2.2351% +0.2981%] (p = 0.08 > 0.05)
+                        No change in performance detected.
+Benchmarking section_corpus/get/canopy
+Benchmarking section_corpus/get/canopy: Warming up for 3.0000 s
+Benchmarking section_corpus/get/canopy: Collecting 100 samples in estimated 5.0080 s (1.4M iterations)
+Benchmarking section_corpus/get/canopy: Analyzing
+section_corpus/get/canopy
+                        time:   [3.6392 µs 3.7379 µs 3.8347 µs]
+                        change: [−8.5756% −6.3341% −3.9763%] (p = 0.00 < 0.05)
+                        Performance has improved.
+Found 17 outliers among 100 measurements (17.00%)
+  4 (4.00%) high mild
+  13 (13.00%) high severe
+Benchmarking section_corpus/set/canopy
+Benchmarking section_corpus/set/canopy: Warming up for 3.0000 s
+Benchmarking section_corpus/set/canopy: Collecting 100 samples in estimated 5.1894 s (101k iterations)
+Benchmarking section_corpus/set/canopy: Analyzing
+section_corpus/set/canopy
+                        time:   [49.980 µs 51.065 µs 52.195 µs]
+                        change: [−2.2259% +0.5063% +3.2754%] (p = 0.72 > 0.05)
+                        No change in performance detected.
+Found 15 outliers among 100 measurements (15.00%)
+  15 (15.00%) high mild
+Benchmarking section_corpus/unpack/canopy
+Benchmarking section_corpus/unpack/canopy: Warming up for 3.0000 s
+Benchmarking section_corpus/unpack/canopy: Collecting 100 samples in estimated 5.0011 s (18M iterations)
+Benchmarking section_corpus/unpack/canopy: Analyzing
+section_corpus/unpack/canopy
+                        time:   [141.63 ns 145.49 ns 149.87 ns]
+                        change: [−0.2856% +2.1755% +4.8750%] (p = 0.11 > 0.05)
+                        No change in performance detected.
+Found 11 outliers among 100 measurements (11.00%)
+  8 (8.00%) high mild
+  3 (3.00%) high severe
+

@@ -27,7 +27,7 @@ Benchmark (VM 2 vCPU, ±30% noise, criterion, seeded Perlin terrain corpus 4×2�
 | mask update per edit | ≤ 20 ns (hypothesis) | ≈ 2.6 ns | ≤ 20 ns ✓ |
 | mask rebuild from scratch | 0.35 ms at 62³ | ≈ 41 µs | — |
 
-All numbers are VM measurements; bare-metal confirmation pending (same caveat as T0-03).
+All numbers are VM measurements. Bare-metal confirmation: T0-16 (2026-11-21) — gather + masks missed the ≤ 100 µs target on the owner's laptop (112.0–113.1 µs, median 112.8 µs, recorded as a deviation, target kept); `fast_mesh` and mask update confirmed. See the [T0-16 summary](../docs/research/bare-metal-2026-11-21/summary.md).
 
 ## What went wrong
 
