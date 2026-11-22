@@ -293,7 +293,58 @@ impl Menu {
                 ui.label("Autosave every");
                 ui.add(egui::Slider::new(&mut d.autosave_seconds, 10..=300).suffix(" s"));
                 ui.end_row();
+                ui.label("Textures");
+                ui.checkbox(
+                    &mut d.own_assets.enabled,
+                    "Use textures from my own licensed installation (read locally, never uploaded)",
+                );
+                ui.end_row();
+                ui.label("Installation folder");
+                let mut folder = d
+                    .own_assets
+                    .folder
+                    .as_ref()
+                    .map(|p| p.display().to_string())
+                    .unwrap_or_default();
+                let auto = d.own_assets.resolve_folder();
+                let hint = auto
+                    .as_ref()
+                    .map_or("not found; type the folder path".to_owned(), |p| {
+                        format!("auto: {}", p.display())
+                    });
+                if ui
+                    .add(egui::TextEdit::singleline(&mut folder).hint_text(hint))
+                    .changed()
+                {
+                    d.own_assets.folder =
+                        (!folder.trim().is_empty()).then(|| PathBuf::from(folder.trim()));
+                }
+                ui.end_row();
+                ui.label("Version");
+                let found = auto
+                    .as_deref()
+                    .and_then(|f| assets::local_install::versions(f).ok())
+                    .unwrap_or_default();
+                egui::ComboBox::from_id_salt("own_version")
+                    .selected_text(
+                        d.own_assets
+                            .version
+                            .clone()
+                            .unwrap_or_else(|| "Newest release".into()),
+                    )
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(&mut d.own_assets.version, None, "Newest release");
+                        for v in &found {
+                            ui.selectable_value(
+                                &mut d.own_assets.version,
+                                Some(v.id.clone()),
+                                format!("{} ({})", v.id, v.kind),
+                            );
+                        }
+                    });
+                ui.end_row();
             });
+        ui.small("Texture changes apply when a world is opened.");
         ui.small("GPU changes apply after a restart.");
         ui.small(&self.gpu_line);
         ui.add_space(12.0);

@@ -7,4 +7,5 @@ pub mod edit;
 pub mod loading;
 pub mod session;
 pub mod settings;
+pub mod textures;
 pub mod worlds;

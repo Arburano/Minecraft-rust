@@ -1,10 +1,10 @@
 //! The world on screen: the T1-11 terrain renderer fed from a session, with
-//! fallback textures, cave culling and the camera.
+//! block textures (own installation or fallback), cave culling and the camera.
 
 use std::collections::{HashMap, HashSet};
 
-use assets::{FALLBACK_KEYS, fallback_key, fallback_set};
 use client::session::Session;
+use client::textures::BlockTextures;
 use glam::{IVec3, Vec3};
 use render::terrain::camera::{look_to, perspective};
 use render::terrain::culling::{Frustum, cave_visible};
@@ -12,7 +12,6 @@ use render::terrain::profiles::RenderSettings;
 use render::terrain::renderer::{
     CameraParams, FrameStats, TerrainPath, TerrainRenderer, TerrainTextures,
 };
-use world::{BlockStateId, Registry};
 
 /// Quads the shared buffer holds (8 bytes each, 64 MiB): enough for 16 chunks.
 const QUAD_CAPACITY: u32 = 8 << 20;
@@ -28,39 +27,23 @@ pub struct WorldView {
 }
 
 impl WorldView {
-    /// Creates the renderer for `registry`'s blocks.
+    /// Creates the renderer with the block textures built for this world.
     pub fn new(
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         path: TerrainPath,
         format: wgpu::TextureFormat,
-        registry: &Registry,
+        textures: &BlockTextures,
     ) -> Self {
-        // One fallback texture per block, the same on every face (T1-14 brings
-        // the real per-face textures from the player's own assets).
-        let names: Vec<&str> = (0..registry.len() as u16)
-            .map(|i| {
-                let name = registry.name(BlockStateId(i)).unwrap_or("missing");
-                let key = fallback_key(name.split('[').next().unwrap_or(name));
-                if FALLBACK_KEYS.contains(&key) {
-                    key
-                } else {
-                    "missing"
-                }
-            })
-            .collect();
-        let mut keys = names.clone();
-        keys.sort_unstable();
-        keys.dedup();
-        let set = fallback_set(keys.iter().copied()).unwrap_or_default();
-        let layer_table: Vec<u32> = names
-            .iter()
-            .flat_map(|k| [u32::from(set.location(k).map_or(0, |l| l.layer)); 6])
-            .collect();
+        let layer_table = &textures.layer_table;
         let empty: Vec<Vec<u8>> = Vec::new();
-        let (size, layers, levels) = set.arrays().first().map_or((16, 0, empty.as_slice()), |a| {
-            (a.size(), a.layers() as u32, a.levels())
-        });
+        let (size, layers, levels) = textures
+            .set
+            .arrays()
+            .first()
+            .map_or((16, 0, empty.as_slice()), |a| {
+                (a.size(), a.layers() as u32, a.levels())
+            });
         let terrain = TerrainRenderer::new(
             device,
             queue,
@@ -71,7 +54,7 @@ impl WorldView {
                 layers,
                 levels,
             },
-            &layer_table,
+            layer_table,
             QUAD_CAPACITY,
         );
         Self {

@@ -131,6 +131,7 @@ pub struct App {
     frames: u32,
     first_frame_done: bool,
     grabbed: bool,
+    textures_line: String,
 }
 
 impl App {
@@ -155,6 +156,7 @@ impl App {
             frames: 0,
             first_frame_done: false,
             grabbed: false,
+            textures_line: String::new(),
         }
     }
 
@@ -238,12 +240,15 @@ impl App {
         config.autosave = Duration::from_secs(u64::from(self.settings.autosave_seconds.max(5)));
         match Session::open(&dir, config) {
             Ok(session) => {
+                let (textures, line) =
+                    block_textures(&self.settings, &self.opts.mods_dir, session.registry());
+                self.textures_line = line;
                 let view = WorldView::new(
                     &gpu.device,
                     &gpu.queue,
                     gpu.path,
                     gpu.config.format,
-                    session.registry(),
+                    &textures,
                 );
                 let hotbar = HOTBAR
                     .iter()
@@ -379,11 +384,14 @@ impl App {
         let mut menu_action = MenuAction::None;
         let mut pause_action = PauseAction::None;
         let (menu, settings, game) = (&mut self.menu, &self.settings, &self.game);
+        let textures_line = &self.textures_line;
         let full = self.egui_ctx.run_ui(raw, |ui| match game {
             None => menu_action = menu.show(ui, settings),
             Some(g) => {
                 let names: Vec<&str> = g.hotbar.iter().map(|h| h.1).collect();
-                let debug = g.debug.then(|| debug_text(g, &menu.gpu_line));
+                let debug = g
+                    .debug
+                    .then(|| format!("{}\n{textures_line}", debug_text(g, &menu.gpu_line)));
                 menu::hud(
                     ui,
                     &names,
@@ -552,6 +560,43 @@ impl App {
             PauseAction::SaveAndQuit => self.close_world(),
         }
     }
+}
+
+/// Builds the world's block textures: from the player's own installation if
+/// enabled and found, fallback textures for everything else. Returns a status
+/// line for the debug overlay.
+fn block_textures(
+    settings: &Settings,
+    mods_dir: &std::path::Path,
+    registry: &world::Registry,
+) -> (client::textures::BlockTextures, String) {
+    let faces = client::textures::read_block_faces(&mods_dir.join("blocks"));
+    let mut status = String::from("textures: fallback");
+    let mut installed = None;
+    if settings.own_assets.enabled {
+        match settings.own_assets.resolve_folder() {
+            None => status = "textures: fallback (no own installation found)".into(),
+            Some(dir) => match assets::local_install::InstalledTextures::open(
+                &dir,
+                settings.own_assets.version.as_deref(),
+            ) {
+                Ok(t) => installed = Some(t),
+                Err(e) => status = format!("textures: fallback ({e})"),
+            },
+        }
+    }
+    let t0 = Instant::now();
+    let version = installed.as_ref().map(|t| t.version.clone());
+    let built = client::textures::build(registry, &faces, installed.as_mut());
+    if let Some(v) = version {
+        status = format!(
+            "textures: own installation {v}, {} faces (+{} fallback), {:.0} ms",
+            built.from_installation,
+            built.fallback,
+            t0.elapsed().as_secs_f64() * 1000.0
+        );
+    }
+    (built, status)
 }
 
 fn debug_text(g: &Game, gpu_line: &str) -> String {
