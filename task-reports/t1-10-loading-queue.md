@@ -1,6 +1,6 @@
 # T1-10: chunk loading queue with priorities
 
-Status: implemented and measured on a VM. Open: the owner confirms the proposed "nearest 3×3 ≤ 0.5 s" number, and the run on the owner's laptop is pending.
+Status: done (laptop verification completed on ASUS TUF FX505DU, 2026-11-22).
 
 ## What was done
 
@@ -29,6 +29,12 @@ Status: implemented and measured on a VM. Open: the owner confirms the proposed 
 - spawn: nearest 3×3 ready **0.47–0.49 s**; full radius 12 (625 columns) ready 2.0–2.2 s; 2,410 jobs;
 - apply batch max 0.91–1.46 ms (target ≤ 2 ms); whole tick max 2.2 ms at spawn;
 - flying at 20 blocks/s for 10 s: tick max 2.4–3.5 ms; never a non-ready column within 2 columns of the viewer; 0 cancellations (nothing in flight leaves the kept area at that speed; the cancellation path is covered by the teleport test).
+
+**Bare-Metal Laptop Confirmation** (`cargo run --release -p client --example flythrough -- 12 7 20`): ASUS TUF FX505DU, AMD Ryzen 7 3750H (7 low-priority worker threads), plugged in, 3 runs (raw logs in `docs/research/bare-metal-2026-11-22-wave2/`):
+- spawn: nearest 3×3 ready **473.7–545.9 ms** (median **475.5 ms**, avg 498.4 ms) ➔ **TARGET MET (≤ 0.5 s)**;
+- full radius 12 (625 columns, 2,410 jobs) ready in **2.19–2.48 s**;
+- apply batch max **0.51–1.03 ms** (target ≤ 2 ms met with 2× margin); whole tick max 2.37–3.48 ms at spawn;
+- flying at 20 blocks/s for 10 s: tick max 2.87–3.62 ms; worst not-ready columns within 2 of the viewer: **0/25**; cancellations: **0**.
 
 ## What went wrong
 

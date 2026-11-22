@@ -1,0 +1,3 @@
+﻿workers: 7, low priority: true
+spawn: 3x3 ready Some(545.8619ms), radius 12 ready Some(2.4866832s); max apply 1.0298ms, max tick 2.7861ms (unload 145µs, scan 827.8µs, one submit 1.3743ms), jobs 2410
+flying 20 blocks/s for 10 s: max apply 1.0298ms, max tick 2.8667ms, cancelled 0, worst not-ready columns within 2 of the viewer: 0/25

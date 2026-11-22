@@ -1,0 +1,12 @@
+﻿world radius 12 loaded in 1.6027337s (8 workers)
+adapter: AMD Radeon(TM) RX Vega 10 Graphics (Dx12), path Pulling
+uploaded 147 non-empty batches, 17496 light sections in 343.8626ms
+surface at [8, 95, 8]: mesh chunks with geometry in frustum 284, after cave culling 224 (21% discarded), traversal 115µs
+cave at [-23.5, -49.5, -17.5]: mesh chunks with geometry in frustum 325, after cave culling 74 (77% discarded), traversal 60.7µs
+prepare (CPU culling + draw list): median 9µs; FrameStats { batches_resident: 147, batches_drawn: 66, draws: 161, quads_resident: 1085267, quads_drawn: 277441 }
+first frame: CPU 0.145 ms, GPU 1.813 ms
+next 299 frames, CPU prepare+record ms: median 0.061, p95 0.132, p99 0.185
+GPU pass ms: median 1.881, p95 3.288, p99 9.320
+pass recording: 13.7µs
+frame + readback: 2.7113ms (software adapters are not representative)
+saved C:\Users\aboba\Documents\Qoder\2026-11-18\89794042\Minecraft-rust\docs\research\bare-metal-2026-11-22-wave2\vega-b-run2.bmp
