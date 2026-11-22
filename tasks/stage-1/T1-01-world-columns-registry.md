@@ -1,6 +1,6 @@
 # T1-01. World columns, block registry and ID table
 
-- **Status:** done (2026-11-21; the map-access budget waits for the owner — see the report)
+- **Status:** done (2026-11-21). Owner decision 2026-11-22: the "within 2×" map-access target is kept; optimize later where possible (follow-up in `tasks/README.md`).
 - **Depends on:** T0-03
 - **Owner:** agent (cloud)
 

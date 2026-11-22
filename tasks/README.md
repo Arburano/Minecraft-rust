@@ -82,3 +82,7 @@ Core and single-player world ([roadmap](../docs/process/roadmap.md), PRD §9). E
 | 5 | T1-15 | everything above |
 
 Wave 1 tasks touch different crates (`world`, `mesh`, `render`, `engine-core`, `assets`, `auth`), so up to six agents can work at once; merge `main` before each PR and keep both sides' rows in shared files.
+
+### Stage 1 follow-ups
+
+- World map `get_block`/`set_block` are 2.8× / 2.4× the section access (VM, T1-01); the owner kept the 2× target (2026-11-22). Optimize when profiling shows map access in a hot path (physics, edits), e.g. a per-caller column cache or batched access APIs; re-measure on the laptop.
