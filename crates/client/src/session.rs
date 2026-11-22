@@ -91,6 +91,7 @@ pub struct Session {
     prev: PlayerBody,
     yaw: f64,
     pitch: f64,
+    fly_speed: f64,
     spawned: bool,
     unsaved: HashSet<ColumnPos>,
     dirty: Vec<SectionPos>,
@@ -142,6 +143,7 @@ impl Session {
                 true,
                 PlayerBody {
                     pos: DVec3::from_array(p),
+                    flying: info.player.flying,
                     ..PlayerBody::default()
                 },
             ),
@@ -158,6 +160,11 @@ impl Session {
             registry,
             dir: dir.to_owned(),
             yaw: info.player.yaw,
+            fly_speed: if info.player.fly_speed > 0.0 {
+                info.player.fly_speed
+            } else {
+                1.0
+            },
             pitch: info.player.pitch,
             info,
             store,
@@ -325,6 +332,7 @@ impl Session {
         }
         let input = PlayerInput {
             yaw: self.yaw,
+            fly_speed: self.fly_speed,
             ..*input
         };
         let world = MapBlocks {
@@ -332,6 +340,25 @@ impl Session {
             swim: &self.swim,
         };
         step(&mut self.body, &input, &self.physics, &world);
+    }
+
+    /// Whether the player is flying.
+    #[must_use]
+    pub fn is_flying(&self) -> bool {
+        self.body.flying
+    }
+
+    /// The fly speed multiplier.
+    #[must_use]
+    pub fn fly_speed(&self) -> f64 {
+        self.fly_speed
+    }
+
+    /// Changes the fly speed by mouse-wheel notches (×1.25 per notch), within
+    /// the movement profile's range.
+    pub fn adjust_fly_speed(&mut self, notches: i32) {
+        let [lo, hi] = self.physics.fly_speed_range;
+        self.fly_speed = (self.fly_speed * 1.25f64.powi(notches)).clamp(lo, hi);
     }
 
     /// Turns the view (radians); pitch is clamped to straight up/down.
@@ -444,6 +471,8 @@ impl Session {
             self.info.player.pos = Some(self.body.pos.to_array());
         }
         self.info.player.yaw = self.yaw;
+        self.info.player.flying = self.body.flying;
+        self.info.player.fly_speed = self.fly_speed;
         self.info.player.pitch = self.pitch;
         self.info.last_played = now();
         self.info.save(&self.dir)?;

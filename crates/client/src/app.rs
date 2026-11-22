@@ -78,7 +78,15 @@ struct Keys {
     right: bool,
     jump: bool,
     sprint: bool,
+    descend: bool,
+    /// Time of the last jump press, for the double tap that toggles flight.
+    last_jump: Option<Instant>,
+    /// A double tap waiting for the next tick.
+    toggle_fly: bool,
 }
+
+/// Two jump presses closer than this toggle flight.
+const DOUBLE_TAP: Duration = Duration::from_millis(300);
 
 impl Keys {
     fn input(&self) -> PlayerInput {
@@ -88,6 +96,9 @@ impl Keys {
             strafe: axis(self.right, self.left),
             jump: self.jump,
             sprint: self.sprint,
+            descend: self.descend,
+            toggle_fly: self.toggle_fly,
+            fly_speed: 0.0,
             yaw: 0.0,
         }
     }
@@ -314,8 +325,20 @@ impl App {
             KeyCode::KeyS => game.keys.back = down,
             KeyCode::KeyA => game.keys.left = down,
             KeyCode::KeyD => game.keys.right = down,
-            KeyCode::Space => game.keys.jump = down,
-            KeyCode::ControlLeft | KeyCode::ShiftLeft => game.keys.sprint = down,
+            KeyCode::Space => {
+                if down {
+                    let now = Instant::now();
+                    if game.keys.last_jump.is_some_and(|t| now - t < DOUBLE_TAP) {
+                        game.keys.toggle_fly = true;
+                        game.keys.last_jump = None;
+                    } else {
+                        game.keys.last_jump = Some(now);
+                    }
+                }
+                game.keys.jump = down;
+            }
+            KeyCode::ControlLeft => game.keys.sprint = down,
+            KeyCode::ShiftLeft => game.keys.descend = down,
             KeyCode::F3 if down => game.debug = !game.debug,
             KeyCode::Escape if down => {
                 game.paused = !game.paused;
@@ -364,8 +387,10 @@ impl App {
             }
             if !game.paused {
                 game.acc = (game.acc + dt).min(TICK * 5);
-                let input = game.keys.input();
                 while game.acc >= TICK {
+                    // The flight toggle is a one-tick event.
+                    let input = game.keys.input();
+                    game.keys.toggle_fly = false;
                     game.session.fixed_tick(&input);
                     game.acc -= TICK;
                 }
@@ -392,11 +417,16 @@ impl App {
                 let debug = g
                     .debug
                     .then(|| format!("{}\n{textures_line}", debug_text(g, &menu.gpu_line)));
+                let status = g
+                    .session
+                    .is_flying()
+                    .then(|| format!("Flying — speed ×{:.2} (mouse wheel)", g.session.fly_speed()));
                 menu::hud(
                     ui,
                     &names,
                     g.selected,
                     debug.as_deref(),
+                    status.as_deref(),
                     !g.session.is_playing(),
                 );
                 if g.paused {
@@ -806,6 +836,11 @@ impl ApplicationHandler for App {
                         MouseScrollDelta::LineDelta(_, y) => y > 0.0,
                         MouseScrollDelta::PixelDelta(p) => p.y > 0.0,
                     };
+                    // Flying: the wheel sets the fly speed; walking: the hotbar.
+                    if g.session.is_flying() {
+                        g.session.adjust_fly_speed(if up { 1 } else { -1 });
+                        return;
+                    }
                     let n = g.hotbar.len().max(1);
                     g.selected = if up {
                         (g.selected + n - 1) % n

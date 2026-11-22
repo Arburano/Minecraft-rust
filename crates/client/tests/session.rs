@@ -101,3 +101,46 @@ fn create_play_quit_load_returns_the_same_world() {
     s.close().expect("close");
     let _ = std::fs::remove_dir_all(root);
 }
+
+#[test]
+fn flight_and_fly_speed_are_saved() {
+    let root = std::env::temp_dir().join(format!("client-fly-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    let dir = worlds::create(&root, "Fly", 9).expect("create");
+    let mut s = Session::open(&dir, config()).expect("open");
+    run(&mut s, PlayerInput::default(), |s, _| s.is_playing());
+    for _ in 0..10 {
+        s.fixed_tick(&PlayerInput::default()); // stand on the ground
+    }
+    // Double tap: a jump, then the toggle while rising.
+    s.fixed_tick(&PlayerInput {
+        jump: true,
+        ..PlayerInput::default()
+    });
+    s.fixed_tick(&PlayerInput::default());
+    s.fixed_tick(&PlayerInput {
+        toggle_fly: true,
+        ..PlayerInput::default()
+    });
+    assert!(s.is_flying());
+    s.adjust_fly_speed(3);
+    assert!((s.fly_speed() - 1.25f64.powi(3)).abs() < 1e-12);
+    s.adjust_fly_speed(100);
+    assert_eq!(s.fly_speed(), 8.0, "clamped to the profile's range");
+    let up = PlayerInput {
+        jump: true,
+        ..PlayerInput::default()
+    };
+    for _ in 0..20 {
+        s.fixed_tick(&up);
+    }
+    let pos = s.player().pos;
+    s.close().expect("close");
+    let mut s = Session::open(&dir, config()).expect("reopen");
+    run(&mut s, PlayerInput::default(), |s, _| s.is_playing());
+    assert!(s.is_flying(), "still flying after loading");
+    assert_eq!(s.fly_speed(), 8.0);
+    assert_eq!(s.player().pos, pos);
+    s.close().expect("close");
+    let _ = std::fs::remove_dir_all(root);
+}

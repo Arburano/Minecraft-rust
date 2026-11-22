@@ -15,6 +15,12 @@ pub struct PlayerSave {
     pub yaw: f64,
     /// View pitch (radians).
     pub pitch: f64,
+    /// Flying when saved.
+    #[serde(default)]
+    pub flying: bool,
+    /// Fly speed multiplier (mouse wheel); 0 = ×1.
+    #[serde(default)]
+    pub fly_speed: f64,
 }
 
 /// `world.toml`.

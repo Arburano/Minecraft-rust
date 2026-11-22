@@ -20,3 +20,11 @@ fluid_gravity = 0.02
 swim_up = 0.04
 reach = 4.5
 swim_blocks = ["core:water"]
+# Flight (double-tap jump; jump = up, descend = down; landing ends it).
+# Fly ≈ 11 blocks/s, sprint flying ≈ 22 blocks/s, vertical ≈ 7.5 blocks/s at speed ×1.
+can_fly = true
+fly_accel = 0.05
+fly_vertical_accel = 0.15
+fly_vertical_drag = 0.6
+fly_sprint_multiplier = 2.0
+fly_speed_range = [0.25, 8.0]   # mouse wheel range of the fly speed multiplier
