@@ -72,6 +72,7 @@ Core and single-player world ([roadmap](../docs/process/roadmap.md), PRD §9). E
 | [T1-16](stage-1/T1-16-light-fast-world-path.md) | Faster world-path lighting (same look) | T1-09 | agent + laptop | in-progress (owner: laptop run; deep-shaft case and persistent grids open) |
 | [T1-17](stage-1/T1-17-worldgen-modes.md) | World generation modes: normal and extended (Tectonic as reference) | T1-03, T1-13 | agent + owner review | todo (later) |
 | [T1-18](stage-1/T1-18-gameplay-slots.md) | Gameplay slots: replaceable movement profile and generator (ADR-0013) | T1-12, T1-13 | agent (cloud) | todo |
+| [T1-19](stage-1/T1-19-resource-and-shader-packs.md) | Resource, texture and shader packs (ADR-0014) | T1-11, T1-13 | agent (cloud) + laptop | todo (ADR-0014 proposed) |
 | [T1-15](stage-1/T1-15-stage-1-exit-harness.md) | Stage 1 exit measurement | T1-01 … T1-14 | agent + owner's laptop | todo |
 
 ### Stage 1: order and parallel work
