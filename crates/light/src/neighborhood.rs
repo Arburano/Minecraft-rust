@@ -142,6 +142,17 @@ pub struct LightNeighborhood {
     /// Bit `(dy * 3 + dz) * 3 + dx` set when a cell of that section changed
     /// light since the last [`Self::take_touched`].
     touched: u32,
+    /// Lowest local y whose direct-sky source changed since the last
+    /// [`Self::take_sky_low`] (`EDGE` = none).
+    sky_low: u8,
+    /// Loaded box in local cells, `lo..hi` per axis (the whole 48³ unless a
+    /// smaller region was loaded); cells outside are opaque and dark.
+    lo: [usize; 3],
+    hi: [usize; 3],
+    /// Box written since the last reset (loaded cells plus the frozen layer),
+    /// in padded coordinates: the next `begin_load` clears only this.
+    dirty_lo: [usize; 3],
+    dirty_hi: [usize; 3],
 }
 
 /// Section bit of a padded index (border cells map to the nearest section).
@@ -238,6 +249,11 @@ impl LightNeighborhood {
             inc: Vec::with_capacity(2 * VOLUME),
             dec: Vec::with_capacity(VOLUME),
             touched: 0,
+            sky_low: EDGE as u8,
+            lo: [0; 3],
+            hi: [EDGE; 3],
+            dirty_lo: [0; 3],
+            dirty_hi: [P; 3],
         };
         for y in 0..EDGE {
             for z in 0..EDGE {
@@ -271,20 +287,30 @@ impl LightNeighborhood {
     pub fn full_relight(&mut self) {
         engine_core::zone!("light::full_relight");
         for channel in [&mut self.block, &mut self.sky] {
-            channel.light.fill(0);
-            self.inc.clear();
-            // Every cell with a source, including frozen border cells imported
-            // from the world (`from_world`).
-            for (i, &s) in channel.src.iter().enumerate() {
-                if s > 0 {
-                    channel.light[i] = s;
-                    self.inc.push(i as u32);
-                }
-            }
-            propagate_increase(channel, &self.opacity, &mut self.inc);
-            self.inc.clear();
+            relight_channel(channel, &self.opacity, &mut self.inc);
         }
         self.touched = (1 << 27) - 1;
+    }
+
+    /// Recomputes only the sky channel from scratch (block light untouched).
+    pub(crate) fn full_relight_sky(&mut self) {
+        engine_core::zone!("light::full_relight_sky");
+        relight_channel(&mut self.sky, &self.opacity, &mut self.inc);
+        self.touched = (1 << 27) - 1;
+    }
+
+    /// Exports the sky light of one section (`d* in 0..3`).
+    pub(crate) fn section_sky(&self, dx: usize, dy: usize, dz: usize) -> Nibbles {
+        let s = SECTION_SIZE as usize;
+        let mut sky = [0u8; SECTION_VOLUME];
+        for (j, v) in sky.iter_mut().enumerate() {
+            *v = self.sky.light[padded(
+                dx.min(2) * s + j % s,
+                dy.min(2) * s + j / (s * s),
+                dz.min(2) * s + j / s % s,
+            )];
+        }
+        Nibbles::from_levels(&sky)
     }
 
     /// Applies a block change that cannot darken anything (emission does not
@@ -380,23 +406,104 @@ impl LightNeighborhood {
     /// opaque and dark until the loaders below fill the interior.
     pub(crate) fn begin_load(&mut self, origin: BlockPos) {
         self.origin = origin;
-        self.opacity.fill(MAX_LIGHT);
-        for c in [&mut self.block, &mut self.sky] {
-            c.light.fill(0);
-            c.src.fill(0);
+        // Only the box written since the last reset can hold anything:
+        // BFS never raises a cell outside it (those cells are opaque).
+        let (lo, hi) = (self.dirty_lo, self.dirty_hi);
+        if lo == [0; 3] && hi == [P; 3] {
+            self.opacity.fill(MAX_LIGHT);
+            for c in [&mut self.block, &mut self.sky] {
+                c.light.fill(0);
+                c.src.fill(0);
+            }
+        } else {
+            for y in lo[1]..hi[1] {
+                for z in lo[2]..hi[2] {
+                    let row = (y * P + z) * P;
+                    let r = row + lo[0]..row + hi[0];
+                    self.opacity[r.clone()].fill(MAX_LIGHT);
+                    for c in [&mut self.block, &mut self.sky] {
+                        c.light[r.clone()].fill(0);
+                        c.src[r.clone()].fill(0);
+                    }
+                }
+            }
         }
         self.open_top.fill(false);
         self.touched = 0;
+        self.sky_low = EDGE as u8;
+        self.lo = [0; 3];
+        self.hi = [EDGE; 3];
+    }
+
+    /// Restricts the following loads to the box `lo..hi` (local cells).
+    pub(crate) fn set_region(&mut self, lo: [usize; 3], hi: [usize; 3]) {
+        self.lo = lo;
+        self.hi = hi.map(|v| v.min(EDGE));
+        // Padded coordinates are local + 1; the frozen layer adds one more.
+        self.dirty_lo = self.lo;
+        self.dirty_hi = self.hi.map(|v| v + 2);
+    }
+
+    /// Whether the loaded box is the whole snapshot.
+    fn full_region(&self) -> bool {
+        self.lo == [0; 3] && self.hi == [EDGE; 3]
+    }
+
+    /// The part of section `(dx, dy, dz)` inside the loaded box, as local
+    /// in-section ranges per axis; `None` if they do not overlap.
+    fn clip(&self, d: [usize; 3]) -> Option<[std::ops::Range<usize>; 3]> {
+        let s = SECTION_SIZE as usize;
+        let r = |a: usize| {
+            let (b0, b1) = (d[a] * s, d[a] * s + s);
+            let (c0, c1) = (b0.max(self.lo[a]), b1.min(self.hi[a]));
+            (c0 < c1).then(|| c0 - b0..c1 - b0)
+        };
+        Some([r(0)?, r(1)?, r(2)?])
     }
 
     /// Loads one section of cells with the same properties.
     pub(crate) fn load_uniform(&mut self, dx: usize, dy: usize, dz: usize, props: LightProps) {
         let s = SECTION_SIZE as usize;
-        for ly in 0..s {
-            for lz in 0..s {
+        let Some([xr, yr, zr]) = self.clip([dx, dy, dz]) else {
+            return;
+        };
+        for ly in yr {
+            for lz in zr.clone() {
                 let row = padded(dx * s, dy * s + ly, dz * s + lz);
-                self.opacity[row..row + s].fill(props.opacity);
-                self.block.src[row..row + s].fill(props.emission);
+                self.opacity[row + xr.start..row + xr.end].fill(props.opacity);
+                self.block.src[row + xr.start..row + xr.end].fill(props.emission);
+            }
+        }
+    }
+
+    /// Cells of section `(dx, dy, dz)` inside the loaded box.
+    pub(crate) fn clip_volume(&self, d: [usize; 3]) -> usize {
+        self.clip(d)
+            .map_or(0, |[x, y, z]| x.len() * y.len() * z.len())
+    }
+
+    /// Loads the boxed part of one section, asking `cell(index)` (YZX index
+    /// in the section) for each cell's properties.
+    pub(crate) fn load_cells(
+        &mut self,
+        dx: usize,
+        dy: usize,
+        dz: usize,
+        cell: impl Fn(usize) -> LightProps,
+    ) {
+        let s = SECTION_SIZE as usize;
+        let Some([xr, yr, zr]) = self.clip([dx, dy, dz]) else {
+            return;
+        };
+        for ly in yr {
+            for lz in zr.clone() {
+                let row = padded(dx * s, dy * s + ly, dz * s + lz);
+                let base = (ly * s + lz) * s;
+                for lx in xr.clone() {
+                    let p = cell(base + lx);
+                    self.opacity[row + lx] = p.opacity;
+                    self.block.src[row + lx] = p.emission;
+                }
             }
         }
     }
@@ -411,11 +518,14 @@ impl LightNeighborhood {
         props: &impl Fn(BlockStateId) -> LightProps,
     ) {
         let s = SECTION_SIZE as usize;
-        for ly in 0..s {
-            for lz in 0..s {
+        let Some([xr, yr, zr]) = self.clip([dx, dy, dz]) else {
+            return;
+        };
+        for ly in yr {
+            for lz in zr.clone() {
                 let row = padded(dx * s, dy * s + ly, dz * s + lz);
                 let base = (ly * s + lz) * s;
-                for lx in 0..s {
+                for lx in xr.clone() {
                     let p = props(ids[base + lx]);
                     self.opacity[row + lx] = p.opacity;
                     self.block.src[row + lx] = p.emission;
@@ -429,6 +539,13 @@ impl LightNeighborhood {
         self.open_top[z * EDGE + x] = open;
     }
 
+    /// Lowest local y whose direct-sky source changed since the last call
+    /// (`EDGE` if none). Light changes spread at most 14 cells from a changed
+    /// source, so with a result ≥ 15 nothing reaches the bottom border.
+    pub(crate) fn take_sky_low(&mut self) -> usize {
+        usize::from(std::mem::replace(&mut self.sky_low, EDGE as u8))
+    }
+
     /// Sections whose light changed since the last call, as `(dx, dy, dz)` bits.
     pub(crate) fn take_touched(&mut self) -> u32 {
         std::mem::take(&mut self.touched)
@@ -437,15 +554,18 @@ impl LightNeighborhood {
     /// Imports stored levels into one interior section (`d* in 0..3`).
     pub(crate) fn import_section(&mut self, dx: usize, dy: usize, dz: usize, light: &SectionLight) {
         let s = SECTION_SIZE as usize;
+        let Some([xr, yr, zr]) = self.clip([dx, dy, dz]) else {
+            return;
+        };
         for (channel, levels) in [(&mut self.block, &light.block), (&mut self.sky, &light.sky)] {
-            for ly in 0..s {
-                for lz in 0..s {
+            for ly in yr.clone() {
+                for lz in zr.clone() {
                     let row = padded(dx * s, dy * s + ly, dz * s + lz);
                     let base = (ly * s + lz) * s;
                     match levels {
-                        Nibbles::Single(v) => channel.light[row..row + s].fill(*v),
+                        Nibbles::Single(v) => channel.light[row + xr.start..row + xr.end].fill(*v),
                         Nibbles::Packed(p) => {
-                            for lx in 0..s {
+                            for lx in xr.clone() {
                                 let j = base + lx;
                                 channel.light[row + lx] = (p[j / 2] >> ((j & 1) * 4)) & MAX_LIGHT;
                             }
@@ -475,6 +595,14 @@ impl LightNeighborhood {
         props: LightProps,
     ) -> Result<(), LightError> {
         let i = self.index(pos)?;
+        let l = [
+            (pos.x - self.origin.x) as usize,
+            (pos.y - self.origin.y) as usize,
+            (pos.z - self.origin.z) as usize,
+        ];
+        if (0..3).any(|a| l[a] < self.lo[a] || l[a] >= self.hi[a]) {
+            return Err(LightError::OutOfBounds(pos));
+        }
         self.opacity[i] = props.opacity;
         self.block.src[i] = props.emission;
         Ok(())
@@ -482,14 +610,52 @@ impl LightNeighborhood {
 
     /// Recomputes every column's exposed sky run from the opacities.
     pub(crate) fn rebuild_sky_runs(&mut self) {
-        for z in 0..EDGE {
-            for x in 0..EDGE {
-                let floor = self.scan_floor(x, z, EDGE);
+        let (lo, hi) = (self.lo, self.hi);
+        for z in lo[2]..hi[2] {
+            for x in lo[0]..hi[0] {
+                let floor = self.scan_floor(x, z, hi[1]);
                 self.sky_floor[z * EDGE + x] = floor as u8;
-                for y in 0..EDGE {
+                for y in lo[1]..hi[1] {
                     self.sky.src[padded(x, y, z)] = if y >= floor { MAX_LIGHT } else { 0 };
                 }
             }
+        }
+    }
+
+    /// Like [`Self::section_light`], but cells outside the loaded box come
+    /// from `stored` (the section's light before this pass).
+    pub(crate) fn section_light_merged(
+        &self,
+        dx: usize,
+        dy: usize,
+        dz: usize,
+        stored: Option<&SectionLight>,
+    ) -> SectionLight {
+        if self.full_region() {
+            return self.section_light(dx, dy, dz);
+        }
+        let s = SECTION_SIZE as usize;
+        let mut block = [0u8; SECTION_VOLUME];
+        let mut sky = [0u8; SECTION_VOLUME];
+        if let Some(st) = stored {
+            st.block.unpack_into(&mut block);
+            st.sky.unpack_into(&mut sky);
+        }
+        if let Some([xr, yr, zr]) = self.clip([dx, dy, dz]) {
+            for ly in yr {
+                for lz in zr.clone() {
+                    let src = padded(dx * s, dy * s + ly, dz * s + lz);
+                    let dst = (ly * s + lz) * s;
+                    block[dst + xr.start..dst + xr.end]
+                        .copy_from_slice(&self.block.light[src + xr.start..src + xr.end]);
+                    sky[dst + xr.start..dst + xr.end]
+                        .copy_from_slice(&self.sky.light[src + xr.start..src + xr.end]);
+                }
+            }
+        }
+        SectionLight {
+            block: Nibbles::from_levels(&block),
+            sky: Nibbles::from_levels(&sky),
         }
     }
 
@@ -553,6 +719,9 @@ impl LightNeighborhood {
             old_floor
         };
         self.sky_floor[col] = new_floor as u8;
+        if new_floor != old_floor {
+            self.sky_low = self.sky_low.min(new_floor.min(old_floor) as u8);
+        }
         self.inc.clear();
         self.dec.clear();
         for cy in old_floor..new_floor {
@@ -598,6 +767,33 @@ impl LightNeighborhood {
     }
 }
 
+/// Recomputes one channel from its sources. Only sources that can raise a
+/// neighbor are queued: a source whose every neighbor already has at least
+/// `level − 1 − opacity` from its own source adds nothing (open sky above the
+/// ground is mostly such cells), and if it is raised later the BFS queues it
+/// then. Same result as queueing every source.
+fn relight_channel(channel: &mut Channel, opacity: &[u8], inc: &mut Vec<u32>) {
+    channel.light.copy_from_slice(&channel.src);
+    inc.clear();
+    for (i, &s) in channel.src.iter().enumerate() {
+        if s <= 1 {
+            continue;
+        }
+        let raises = NEIGHBORS.iter().any(|&off| {
+            let n = i.wrapping_add(off);
+            match (opacity.get(n), channel.src.get(n)) {
+                (Some(&op), Some(&ns)) => s.saturating_sub(1 + op) > ns,
+                _ => false,
+            }
+        });
+        if raises {
+            inc.push(i as u32);
+        }
+    }
+    propagate_increase(channel, opacity, inc);
+    inc.clear();
+}
+
 /// Clears cell `c` and queues it for the reverse BFS (and for re-seeding).
 fn seed_decrease(channel: &mut Channel, c: usize, inc: &mut Vec<u32>, dec: &mut Vec<u32>) {
     let level = channel.light[c];
@@ -619,7 +815,9 @@ fn propagate_decrease(channel: &mut Channel, inc: &mut Vec<u32>, dec: &mut Vec<u
         let level = (entry >> LEVEL_SHIFT) as u8;
         for off in NEIGHBORS {
             let n = c.wrapping_add(off);
-            let ln = channel.light[n];
+            let Some(&ln) = channel.light.get(n) else {
+                continue;
+            };
             if ln == 0 {
                 continue;
             }
@@ -648,7 +846,12 @@ fn propagate_increase(channel: &mut Channel, opacity: &[u8], inc: &mut Vec<u32>)
         }
         for off in NEIGHBORS {
             let n = c.wrapping_add(off);
-            let candidate = level.saturating_sub(1 + opacity[n]);
+            // A frozen border cell (outer padding layer) has neighbors outside
+            // the grid; they are skipped. Inside, padding cells are opaque.
+            let Some(&op) = opacity.get(n) else {
+                continue;
+            };
+            let candidate = level.saturating_sub(1 + op);
             if candidate > channel.light[n] {
                 channel.light[n] = candidate;
                 inc.push(n as u32);
