@@ -307,6 +307,66 @@ pub fn select_device(
     Err(failed)
 }
 
+/// Like [`select_device`], for a window: adapters come from `instance` (one
+/// instance with every backend, so the window has one surface) and must be
+/// able to present to `surface`; the order is [`attempt_order`].
+pub fn select_for_surface(
+    instance: &wgpu::Instance,
+    surface: &wgpu::Surface<'_>,
+    preference: &GpuPreference,
+    descriptor: &wgpu::DeviceDescriptor<'_>,
+) -> Result<SelectedDevice, Vec<FailedAttempt>> {
+    let os = OsFamily::current();
+    let mut adapters: Vec<(wgpu::Adapter, AdapterCandidate)> =
+        pollster::block_on(instance.enumerate_adapters(wgpu::Backends::all()))
+            .into_iter()
+            .filter(|a| a.is_surface_supported(surface))
+            .filter_map(|adapter| {
+                let info = adapter.get_info();
+                let backend = match info.backend {
+                    wgpu::Backend::Vulkan => BackendKind::Vulkan,
+                    wgpu::Backend::Dx12 => BackendKind::Dx12,
+                    wgpu::Backend::Metal => BackendKind::Metal,
+                    wgpu::Backend::Gl => BackendKind::Gl,
+                    _ => return None,
+                };
+                let candidate = AdapterCandidate {
+                    backend,
+                    name: info.name.clone(),
+                    device: info.device_type.into(),
+                    path: select_path(adapter.get_downlevel_capabilities().flags),
+                };
+                Some((adapter, candidate))
+            })
+            .collect();
+    let candidates: Vec<AdapterCandidate> = adapters.iter().map(|(_, c)| c.clone()).collect();
+    let order = attempt_order(&candidates, preference, os);
+    let mut slots: Vec<Option<(wgpu::Adapter, AdapterCandidate)>> =
+        adapters.drain(..).map(Some).collect();
+    let mut failed = Vec::new();
+    for i in order {
+        let Some((adapter, candidate)) = slots[i].take() else {
+            continue;
+        };
+        match pollster::block_on(adapter.request_device(descriptor)) {
+            Ok((device, queue)) => {
+                return Ok(SelectedDevice {
+                    adapter,
+                    device,
+                    queue,
+                    candidate,
+                    failed,
+                });
+            }
+            Err(e) => failed.push(FailedAttempt {
+                candidate,
+                error: e.to_string(),
+            }),
+        }
+    }
+    Err(failed)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

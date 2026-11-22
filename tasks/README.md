@@ -67,10 +67,12 @@ Core and single-player world ([roadmap](../docs/process/roadmap.md), PRD §9). E
 | [T1-10](stage-1/T1-10-loading-queue.md) | Chunk loading queue with priorities | T1-01, T1-03 | agent (cloud) + laptop | done |
 | [T1-11](stage-1/T1-11-renderer-terrain.md) | Terrain renderer: upload, culling, texture arrays, profiles | T1-05, T1-07 | agent (cloud) + laptop | done |
 | [T1-12](stage-1/T1-12-player-physics-and-editing.md) | Player physics, digging and placing blocks | T1-01, T1-09, T1-10 | agent (cloud) + laptop | in-progress (feel review after T1-13) |
-| [T1-13](stage-1/T1-13-client-app-and-menu.md) | Client application, main menu and single-player | T1-07, T1-08, T1-10, T1-11 | agent (cloud) + laptop | todo |
+| [T1-13](stage-1/T1-13-client-app-and-menu.md) | Client application, main menu and single-player | T1-07, T1-08, T1-10, T1-11 | agent (cloud) + laptop | in-progress (owner: cold start on the laptop, playtest) |
 | [T1-14](stage-1/T1-14-local-asset-import.md) | Import assets from a local licensed installation | T1-07 | agent (cloud) + laptop | todo |
-| [T1-16](stage-1/T1-16-light-fast-world-path.md) | Faster world-path lighting (same look) | T1-09 | agent + laptop | todo (later) |
+| [T1-16](stage-1/T1-16-light-fast-world-path.md) | Faster world-path lighting (same look) | T1-09 | agent + laptop | in-progress (owner: laptop run; deep-shaft case and persistent grids open) |
 | [T1-17](stage-1/T1-17-worldgen-modes.md) | World generation modes: normal and extended (Tectonic as reference) | T1-03, T1-13 | agent + owner review | todo (later) |
+| [T1-18](stage-1/T1-18-gameplay-slots.md) | Gameplay slots: replaceable movement profile and generator (ADR-0013) | T1-12, T1-13 | agent (cloud) | todo |
+| [T1-19](stage-1/T1-19-resource-and-shader-packs.md) | Resource, texture and shader packs (ADR-0014) | T1-11, T1-13 | agent (cloud) + laptop | todo (ADR-0014 proposed) |
 | [T1-15](stage-1/T1-15-stage-1-exit-harness.md) | Stage 1 exit measurement | T1-01 … T1-14 | agent + owner's laptop | todo |
 
 ### Stage 1: order and parallel work
@@ -89,3 +91,5 @@ Wave 1 tasks touch different crates (`world`, `mesh`, `render`, `engine-core`, `
 ### Stage 1 follow-ups
 
 - World map `get_block`/`set_block` are 2.8× / 2.4× the section access (VM, T1-01); the owner kept the 2× target (2026-11-22). Optimize when profiling shows map access in a hot path (physics, edits), e.g. a per-caller column cache or batched access APIs; re-measure on the laptop.
+- Replaceable movement and world generation ("gameplay slots") — [ADR-0013](../docs/adr/0013-replaceable-movement-and-worldgen.md), accepted by the owner 2026-11-22 → [T1-18](stage-1/T1-18-gameplay-slots.md).
+- T1-16 leftovers (the owner accepted both options, 2026-11-22): an ADR for persistent per-region light grids (≤ 100 µs per edit), and a cheaper pass for sky changes reaching below the snapshot (≈ 10 ms on the VM). Chained slabs are preferred because they are exact and have no visible delay; spreading over frames is the fallback.

@@ -14,7 +14,16 @@
 //! - [`LightUpdates`]: queued edits applied a limited number of snapshots per
 //!   tick; the rest waits (the client shows the old light meanwhile).
 
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
+
+use rayon::prelude::*;
+
+thread_local! {
+    /// One reusable snapshot per thread for the parallel downward recompute
+    /// (no allocation per section after the first).
+    static SCRATCH: RefCell<Option<Box<LightNeighborhood>>> = const { RefCell::new(None) };
+}
 use std::fmt;
 
 use world::coords::{BlockPos, SectionPos};
@@ -252,10 +261,6 @@ fn implicit_light(map: &WorldMap, pos: SectionPos) -> Option<(u8, u8)> {
     }
 }
 
-/// Last section looked up while freezing the border: position, implicit light
-/// (outside the world) and stored light.
-type CachedSection<'a> = (SectionPos, Option<(u8, u8)>, Option<&'a SectionLight>);
-
 /// Builds the snapshot around `center` from the world's blocks. With
 /// `import`, the stored light of the 27 sections is loaded and the surrounding
 /// layer is frozen at the world's light (both must be lit); without it, light
@@ -286,16 +291,40 @@ pub fn reload_from_world(
     props: &impl Fn(BlockStateId) -> LightProps,
     import: bool,
 ) -> Result<(), WorldLightError> {
+    reload_region(snap, map, light, center, props, import, [0; 3], [EDGE; 3])
+}
+
+/// Loads only the box `lo..hi` (local cells) of the snapshot around
+/// `center`; the rest stays opaque and dark. With `import`, stored light is
+/// loaded inside the box and the layer just outside its six faces is frozen
+/// at the world's light.
+#[allow(clippy::too_many_arguments)]
+fn reload_region(
+    snap: &mut LightNeighborhood,
+    map: &WorldMap,
+    light: &WorldLight,
+    center: SectionPos,
+    props: &impl Fn(BlockStateId) -> LightProps,
+    import: bool,
+    lo: [usize; 3],
+    hi: [usize; 3],
+) -> Result<(), WorldLightError> {
     let origin = BlockPos::new(
         (center.x - 1) * SECTION_SIZE,
         (center.y - 1) * SECTION_SIZE,
         (center.z - 1) * SECTION_SIZE,
     );
     snap.begin_load(origin);
+    snap.set_region(lo, hi);
+    let s = SECTION_SIZE as usize;
+    let overlaps = |d: [usize; 3]| (0..3).all(|a| d[a] * s < hi[a] && d[a] * s + s > lo[a]);
     let mut ids = [BlockStateId::AIR; SECTION_VOLUME];
     for dy in 0..3 {
         for dz in 0..3 {
             for dx in 0..3 {
+                if !overlaps([dx, dy, dz]) {
+                    continue;
+                }
                 let sp = SectionPos {
                     x: center.x + dx as i32 - 1,
                     y: center.y + dy as i32 - 1,
@@ -304,6 +333,13 @@ pub fn reload_from_world(
                 match section_at(map, sp)? {
                     SectionSlot::Loaded(section) if section.palette_len() == 1 => {
                         snap.load_uniform(dx, dy, dz, props(section.get(0)));
+                    }
+                    // A section the box covers only partly is read cell by
+                    // cell; a mostly covered one is unpacked whole.
+                    SectionSlot::Loaded(section)
+                        if snap.clip_volume([dx, dy, dz]) < SECTION_VOLUME / 2 =>
+                    {
+                        snap.load_cells(dx, dy, dz, |j| props(section.get(j)));
                     }
                     SectionSlot::Loaded(section) => {
                         section.unpack_into(&mut ids);
@@ -315,9 +351,9 @@ pub fn reload_from_world(
             }
         }
     }
-    let top = origin.y + EDGE as i32;
-    for z in 0..EDGE {
-        for x in 0..EDGE {
+    let top = origin.y + hi[1] as i32;
+    for z in lo[2]..hi[2] {
+        for x in lo[0]..hi[0] {
             let h = map
                 .height(origin.x + x as i32, origin.z + z as i32)
                 .ok_or(WorldLightError::NotLoaded(ColumnPos::of_block(origin)))?;
@@ -331,6 +367,9 @@ pub fn reload_from_world(
     for dy in 0..3 {
         for dz in 0..3 {
             for dx in 0..3 {
+                if !overlaps([dx, dy, dz]) {
+                    continue;
+                }
                 let sp = SectionPos {
                     x: center.x + dx as i32 - 1,
                     y: center.y + dy as i32 - 1,
@@ -352,43 +391,50 @@ pub fn reload_from_world(
             }
         }
     }
-    // Freeze the surrounding layer (only the six faces) at the world's light.
-    let e = EDGE as i32;
-    let mut cache: Option<CachedSection<'_>> = None;
-    for y in -1..=e {
-        for z in -1..=e {
-            let full_row = !(0..e).contains(&y) || !(0..e).contains(&z);
-            let xs: &[i32] = if full_row { &[] } else { &[-1, e] };
-            let mut visit = |x: i32| -> Result<(), WorldLightError> {
-                let wp = BlockPos::new(origin.x + x, origin.y + y, origin.z + z);
-                let sp = wp.section();
-                let (implicit, stored) = match cache {
-                    Some((p, i, st)) if p == sp => (i, st),
-                    _ => {
-                        let entry = (implicit_light(map, sp), light.get(sp));
-                        cache = Some((sp, entry.0, entry.1));
-                        entry
+    // Freeze the layer just outside the box's six faces at the world's light
+    // (edges and corners are not face neighbors of the box, so not needed).
+    // Per face, the layer is split by section; each section's light is
+    // decoded once.
+    let (mut fb, mut fs) = ([0u8; SECTION_VOLUME], [0u8; SECTION_VOLUME]);
+    for axis in 0..3 {
+        let (a1, a2) = ((axis + 1) % 3, (axis + 2) % 3);
+        for side in [lo[axis] as i32 - 1, hi[axis] as i32] {
+            let mut u0 = lo[a1] as i32;
+            while u0 < hi[a1] as i32 {
+                let u1 = ((u0.div_euclid(SECTION_SIZE) + 1) * SECTION_SIZE).min(hi[a1] as i32);
+                let mut v0 = lo[a2] as i32;
+                while v0 < hi[a2] as i32 {
+                    let v1 = ((v0.div_euclid(SECTION_SIZE) + 1) * SECTION_SIZE).min(hi[a2] as i32);
+                    let mut l = [0i32; 3];
+                    l[axis] = side;
+                    l[a1] = u0;
+                    l[a2] = v0;
+                    let sp =
+                        BlockPos::new(origin.x + l[0], origin.y + l[1], origin.z + l[2]).section();
+                    match (light.get(sp), implicit_light(map, sp)) {
+                        (Some(st), _) => {
+                            st.block.unpack_into(&mut fb);
+                            st.sky.unpack_into(&mut fs);
+                        }
+                        (None, Some((b, sky))) => {
+                            fb.fill(b);
+                            fs.fill(sky);
+                        }
+                        (None, None) => return Err(WorldLightError::NotLit(sp)),
                     }
-                };
-                let (b, sky) = match (stored, implicit) {
-                    (Some(l), _) => {
-                        let i = wp.index_in_section();
-                        (l.block.get(i), l.sky.get(i))
+                    for u in u0..u1 {
+                        for v in v0..v1 {
+                            l[a1] = u;
+                            l[a2] = v;
+                            let wp =
+                                BlockPos::new(origin.x + l[0], origin.y + l[1], origin.z + l[2]);
+                            let k = wp.index_in_section();
+                            snap.freeze_border(l[0], l[1], l[2], fb[k], fs[k]);
+                        }
                     }
-                    (None, Some(v)) => v,
-                    (None, None) => return Err(WorldLightError::NotLit(sp)),
-                };
-                snap.freeze_border(x, y, z, b, sky);
-                Ok(())
-            };
-            if full_row {
-                for x in -1..=e {
-                    visit(x)?;
+                    v0 = v1;
                 }
-            } else {
-                for &x in xs {
-                    visit(x)?;
-                }
+                u0 = u1;
             }
         }
     }
@@ -551,7 +597,7 @@ impl LightUpdates {
         &mut self,
         map: &WorldMap,
         light: &mut WorldLight,
-        props: &impl Fn(BlockStateId) -> LightProps,
+        props: &(impl Fn(BlockStateId) -> LightProps + Sync),
         max_sections: usize,
     ) -> Result<usize, WorldLightError> {
         let bounds = map.bounds();
@@ -563,40 +609,68 @@ impl LightUpdates {
                 .map(|(p, _)| p.section())
                 .max_by_key(|s| s.y)
                 .unwrap_or(SectionPos::default());
-            let mut snap = match self.scratch.take() {
-                Some(mut s) => {
-                    reload_from_world(&mut s, map, light, center, props, true)?;
-                    s
-                }
-                None => Box::new(snapshot_from_world(map, light, center, props, true)?),
-            };
-            self.revert_pending(&mut snap);
-            let _ = snap.take_touched();
+            // This section's edits, each once, in edit order.
+            let mut applied: Vec<(BlockPos, LightProps)> = Vec::new();
             let mut rest = Vec::with_capacity(self.pending.len());
-            let mut applied: Vec<BlockPos> = Vec::new();
-            let mut sky_changed = false;
             for (pos, before) in std::mem::take(&mut self.pending) {
                 if pos.section() != center {
                     rest.push((pos, before));
-                    continue;
+                } else if !applied.iter().any(|(p, _)| *p == pos) {
+                    applied.push((pos, before));
                 }
-                if applied.contains(&pos) {
-                    continue;
-                }
-                applied.push(pos);
-                let now = map.get_block(pos).map_or(LightProps::AIR, props);
-                // Records are in edit order, so this is the cell's oldest state.
-                // Direct sky below the cell changes only if the column's sky
-                // height changes; then some edit of the column lies at or
-                // above the current height − 1 (it removed the old top
-                // blocker or is the new one). Edits deeper underground leave
-                // direct sky alone and skip the downward recompute.
-                let at_top = map.height(pos.x, pos.z).is_none_or(|h| pos.y + 1 >= h);
-                sky_changed |= at_top && (before.opacity > 0) != (now.opacity > 0);
-                let _ = snap.relight_remove(pos, now);
             }
             self.pending = rest;
+            // Light changes from an edit reach at most 14 cells, so only a box
+            // of ±15 cells around the edits is loaded, with the layer around
+            // it frozen. An edit that may move a column's direct-sky run
+            // (opacity flips at or above the column's sky height) extends the
+            // box down to the snapshot's bottom.
+            let origin = BlockPos::new(
+                (center.x - 1) * SECTION_SIZE,
+                (center.y - 1) * SECTION_SIZE,
+                (center.z - 1) * SECTION_SIZE,
+            );
+            let (mut lo, mut hi) = ([EDGE; 3], [0; 3]);
+            for &(pos, before) in &applied {
+                let l = [pos.x - origin.x, pos.y - origin.y, pos.z - origin.z].map(|v| v as usize);
+                for a in 0..3 {
+                    lo[a] = lo[a].min(l[a].saturating_sub(15));
+                    hi[a] = hi[a].max((l[a] + 16).min(EDGE));
+                }
+                let now = map.get_block(pos).map_or(LightProps::AIR, props);
+                let at_top = map.height(pos.x, pos.z).is_none_or(|h| pos.y + 1 >= h);
+                if at_top && (before.opacity > 0) != (now.opacity > 0) {
+                    lo[1] = 0;
+                }
+            }
+            let mut snap = self.scratch.take().map_or_else(
+                || snapshot_from_world(map, light, center, props, true).map(Box::new),
+                Ok,
+            )?;
+            for attempt in 0..2 {
+                if attempt == 1 {
+                    // A sky run moved although the box did not reach the
+                    // bottom (should not happen): redo with the whole snapshot.
+                    (lo, hi) = ([0; 3], [EDGE; 3]);
+                }
+                reload_region(&mut snap, map, light, center, props, true, lo, hi)?;
+                self.revert_pending_raw(&mut snap);
+                for &(pos, before) in &applied {
+                    let _ = snap.set_props_raw(pos, before);
+                }
+                snap.rebuild_sky_runs();
+                let _ = snap.take_touched();
+                let _ = snap.take_sky_low();
+                for &(pos, _) in &applied {
+                    let now = map.get_block(pos).map_or(LightProps::AIR, props);
+                    let _ = snap.relight_remove(pos, now);
+                }
+                if lo[1] == 0 || snap.take_sky_low() == EDGE {
+                    break;
+                }
+            }
             let touched = snap.take_touched();
+            let sky_low = snap.take_sky_low();
             for dy in 0..3 {
                 for dz in 0..3 {
                     for dx in 0..3 {
@@ -609,13 +683,22 @@ impl LightUpdates {
                             z: center.z + dz as i32 - 1,
                         };
                         if bounds.section_index(sp.y).is_some() {
-                            light.insert(sp, snap.section_light(dx, dy, dz));
+                            let merged = snap.section_light_merged(dx, dy, dz, light.get(sp));
+                            light.insert(sp, merged);
                         }
                     }
                 }
             }
-            if sky_changed {
-                self.relight_below(map, light, props, center, &mut snap)?;
+            // Direct sky runs down a column without limit. The snapshot is
+            // exact while every changed sky source lies ≥ 15 cells above its
+            // bottom (light spreads at most 14 cells). A run change that ends
+            // inside the snapshot (`sky_low` ≥ 1) disturbs only a slab around
+            // the snapshot's bottom; a run that reaches the bottom may go on
+            // to any depth, so everything below is recomputed.
+            if sky_low == 0 {
+                self.relight_below(map, light, props, center)?;
+            } else if sky_low < MAX_LIGHT as usize {
+                self.relight_slab(map, light, props, center, &mut snap, lo, hi)?;
             }
             self.scratch = Some(snap);
             done += 1;
@@ -623,41 +706,130 @@ impl LightUpdates {
         Ok(done)
     }
 
+    /// Recomputes direct sky exactly in the slab ±15 cells around the bottom
+    /// `B` of the snapshot centered at `center` (horizontally the box
+    /// `lo..hi` of the pass). Cells from `B + 14` up are already exact after
+    /// the pass, so the slab's frozen top face (`B + 15`) is right; a run
+    /// change ending at or above `B + 1` reaches at most `B − 14`, so the
+    /// bottom face (`B − 16`) and the side faces (≥ 15 cells from the edited
+    /// columns) are unchanged. A sky-only recompute from the slab's sources
+    /// and frozen faces is then exact inside it; block light is unchanged
+    /// below the pass's section.
+    #[allow(clippy::too_many_arguments)]
+    fn relight_slab(
+        &self,
+        map: &WorldMap,
+        light: &mut WorldLight,
+        props: &(impl Fn(BlockStateId) -> LightProps + Sync),
+        center: SectionPos,
+        snap: &mut LightNeighborhood,
+        lo: [usize; 3],
+        hi: [usize; 3],
+    ) -> Result<(), WorldLightError> {
+        let below = SectionPos {
+            y: center.y - 1,
+            ..center
+        };
+        if map.bounds().section_index(below.y - 1).is_none() {
+            // The slab would reach below the world: fall back to the full pass.
+            return self.relight_below(map, light, props, center);
+        }
+        // In the snapshot one section lower, B is local y 16.
+        let (slo, shi) = ([lo[0], 1, lo[2]], [hi[0], 31, hi[2]]);
+        reload_region(snap, map, light, below, props, true, slo, shi)?;
+        self.revert_pending(snap);
+        snap.full_relight_sky();
+        let _ = snap.take_touched();
+        let _ = snap.take_sky_low();
+        for dy in 0..2 {
+            for dz in 0..3 {
+                for dx in 0..3 {
+                    if snap.clip_volume([dx, dy, dz]) == 0 {
+                        continue;
+                    }
+                    let sp = SectionPos {
+                        x: below.x + dx as i32 - 1,
+                        y: below.y + dy as i32 - 1,
+                        z: below.z + dz as i32 - 1,
+                    };
+                    let merged = snap.section_light_merged(dx, dy, dz, light.get(sp));
+                    light.insert(sp, merged);
+                }
+            }
+        }
+        Ok(())
+    }
+
     fn revert_pending(&self, snap: &mut LightNeighborhood) {
+        self.revert_pending_raw(snap);
+        snap.rebuild_sky_runs();
+    }
+
+    /// Reverts pending edits' properties without rebuilding sky runs.
+    fn revert_pending_raw(&self, snap: &mut LightNeighborhood) {
         // Newest first, so the oldest "before" of each cell wins.
         for &(pos, before) in self.pending.iter().rev() {
             let _ = snap.set_props_raw(pos, before);
         }
-        snap.rebuild_sky_runs();
     }
 
     fn relight_below(
         &self,
         map: &WorldMap,
         light: &mut WorldLight,
-        props: &impl Fn(BlockStateId) -> LightProps,
+        props: &(impl Fn(BlockStateId) -> LightProps + Sync),
         center: SectionPos,
-        snap: &mut LightNeighborhood,
     ) -> Result<(), WorldLightError> {
         let bounds = map.bounds();
         let mut sy = center.y - 1;
         while sy >= bounds.min_section_y {
+            // The 9 sections of a level are independent (each is the exact
+            // center of its own snapshot), so they are computed in parallel.
+            let level: Vec<SectionPos> = (center.z - 1..=center.z + 1)
+                .flat_map(|z| {
+                    (center.x - 1..=center.x + 1).map(move |x| SectionPos { x, y: sy, z })
+                })
+                .collect();
+            let shared: &WorldLight = light;
+            let fresh: Vec<Result<SectionLight, WorldLightError>> = level
+                .par_iter()
+                .map(|&sp| {
+                    SCRATCH.with(|cell| {
+                        let mut slot = cell.borrow_mut();
+                        let snap = match slot.as_mut() {
+                            Some(s) => {
+                                reload_from_world(s, map, shared, sp, props, false)?;
+                                s
+                            }
+                            None => slot.insert(Box::new(snapshot_from_world(
+                                map, shared, sp, props, false,
+                            )?)),
+                        };
+                        self.revert_pending(snap);
+                        // Edits below the center pass change only direct sky
+                        // here; block light stays as stored.
+                        Ok(match shared.get(sp) {
+                            Some(stored) => {
+                                snap.full_relight_sky();
+                                SectionLight {
+                                    block: stored.block.clone(),
+                                    sky: snap.section_sky(1, 1, 1),
+                                }
+                            }
+                            None => {
+                                snap.full_relight();
+                                snap.section_light(1, 1, 1)
+                            }
+                        })
+                    })
+                })
+                .collect();
             let mut changed = false;
-            for cz in center.z - 1..=center.z + 1 {
-                for cx in center.x - 1..=center.x + 1 {
-                    let sp = SectionPos {
-                        x: cx,
-                        y: sy,
-                        z: cz,
-                    };
-                    reload_from_world(snap, map, light, sp, props, false)?;
-                    self.revert_pending(snap);
-                    snap.full_relight();
-                    let fresh = snap.section_light(1, 1, 1);
-                    if light.get(sp) != Some(&fresh) {
-                        light.insert(sp, fresh);
-                        changed = true;
-                    }
+            for (sp, f) in level.into_iter().zip(fresh) {
+                let f = f?;
+                if light.get(sp) != Some(&f) {
+                    light.insert(sp, f);
+                    changed = true;
                 }
             }
             if !changed && sy < center.y - 1 {

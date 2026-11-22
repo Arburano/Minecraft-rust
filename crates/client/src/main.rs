@@ -4,10 +4,16 @@
 //! - `docs/architecture/client-menu-and-updater.md`
 //! - `docs/architecture/auth-and-assets.md` ("Offline mode")
 //!
-//! Status: command line with the offline identity (T1-08). Window, menu and
-//! settings persistence arrive in T1-13.
+//! Status (T1-13): window, main menu (the in-game launcher, ADR-0010),
+//! single-player worlds with saving, settings, About screen.
 
+mod app;
+mod menu;
+mod view;
+
+use std::path::PathBuf;
 use std::process::ExitCode;
+use std::time::Instant;
 
 use auth::Identity;
 use clap::Parser;
@@ -19,6 +25,30 @@ struct Args {
     /// private tests only, docs/legal.md rule 7).
     #[arg(long, value_name = "NAME")]
     offline_name: Option<String>,
+    /// Settings, worlds and caches (default: the per-user data folder).
+    #[arg(long, value_name = "DIR")]
+    data_dir: Option<PathBuf>,
+    /// The `core` mod's data folder (default: next to the executable, else the source tree).
+    #[arg(long, value_name = "DIR")]
+    mods_dir: Option<PathBuf>,
+    /// Print the time from process start to the first menu frame, then exit.
+    #[arg(long)]
+    measure_startup: bool,
+    /// Open this world (created if missing) right away.
+    #[arg(long, value_name = "WORLD")]
+    autoplay: Option<String>,
+    /// Save a BMP screenshot of frame N (`file.bmp:N`; in a world, once it is playable), then exit.
+    #[arg(long, value_name = "FILE:N")]
+    screenshot: Option<String>,
+}
+
+fn mods_dir(arg: Option<PathBuf>) -> PathBuf {
+    arg.or_else(|| {
+        let exe = std::env::current_exe().ok()?;
+        let p = exe.parent()?.join("mods/core/data");
+        p.is_dir().then_some(p)
+    })
+    .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../mods/core/data"))
 }
 
 /// The identity to play with. Until Microsoft login exists (T0-10), offline
@@ -35,17 +65,46 @@ fn identity(args: &Args) -> Result<Identity, String> {
 }
 
 fn main() -> ExitCode {
+    let start = Instant::now();
     let _profiler = engine_core::profile::start();
     let args = Args::parse();
-    match identity(&args) {
-        Ok(id) => {
-            println!(
-                "client: offline as {} ({}); window and menu arrive in T1-13",
-                id.name(),
-                id.id()
-            );
-            ExitCode::SUCCESS
+    // A name on the command line must be valid; otherwise the menu asks.
+    if args.offline_name.is_some()
+        && let Err(e) = identity(&args)
+    {
+        eprintln!("error: {e}");
+        return ExitCode::FAILURE;
+    }
+    let screenshot = args
+        .screenshot
+        .as_deref()
+        .map(|s| match s.rsplit_once(':') {
+            Some((p, n)) if n.parse::<u32>().is_ok() => (PathBuf::from(p), n.parse().unwrap_or(1)),
+            _ => (PathBuf::from(s), 1),
+        });
+    let opts = app::Options {
+        data_dir: args
+            .data_dir
+            .clone()
+            .unwrap_or_else(client::settings::default_data_dir),
+        mods_dir: mods_dir(args.mods_dir.clone()),
+        offline_name: args.offline_name.clone(),
+        measure_startup: args.measure_startup,
+        start,
+        autoplay: args.autoplay.clone(),
+        screenshot,
+    };
+    let event_loop = match winit::event_loop::EventLoop::new() {
+        Ok(l) => l,
+        Err(e) => {
+            eprintln!("error: no display: {e}");
+            return ExitCode::FAILURE;
         }
+    };
+    event_loop.set_control_flow(winit::event_loop::ControlFlow::Poll);
+    let mut app = app::App::new(opts);
+    match event_loop.run_app(&mut app) {
+        Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
             eprintln!("error: {e}");
             ExitCode::FAILURE
