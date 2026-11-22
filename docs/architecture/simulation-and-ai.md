@@ -8,6 +8,14 @@ Crate: `sim`. Experience priorities — PRD §14: smoothness, Minecraft feel, sm
 - AABB collisions with blocks (axis-wise sweeping), block collision shapes from the registry.
 - The same code on the client (prediction) and the server (authority).
 
+Implementation (T1-12, `sim::physics`, `sim::raycast`):
+
+- `PhysicsConfig` is read from `mods/core/data/player/physics.toml` (unknown keys are rejected): box 0.6 × 1.8, eye 1.62, step 0.6, gravity 0.08 and vertical drag 0.98 per tick, jump 0.42, ground/air friction 0.546/0.91, walk/air acceleration 0.1/0.02, sprint ×1.3, fluid drag/acceleration/gravity/swim-up, reach 4.5, and the swim blocks (`core:water`). This gives walk ≈ 4.3 blocks/s and a jump of ≈ 1.25 blocks.
+- `step(body, input, cfg, world)` per 20 TPS tick: acceleration along the view yaw, jump or swim-up, then the move with collisions, then gravity and friction. Collisions sweep the box axis by axis (Y, X, Z) against full cells; step-up tries "up by the step height, across, down" when the horizontal move is blocked on the ground and keeps it if it goes farther. Unloaded cells collide (no falling into unloaded columns). `Collision::Model` counts as a full cube until model shapes exist. `interpolate` gives the render position between two ticks.
+- Plain `f64` with a fixed evaluation order: the same inputs from the same state give bit-identical positions (tested over 600 scripted ticks).
+- `raycast` is a voxel DDA returning the hit cell, the entered face and the distance; the client's `pick` skips air and swim blocks.
+- Block edits on the client: `client::edit` (`Editor::set_block` → loader re-mesh of the affected mesh chunks on the main thread → deferred relight → `BatchSync` re-copy). `place` refuses cells holding a non-replaceable block and colliding blocks that would overlap the player.
+
 ## Prediction and reconciliation
 
 - The client sends intents with a tick number; applies them locally right away.
