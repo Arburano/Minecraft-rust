@@ -29,7 +29,13 @@ heightmap+biomes (cheap, 2D) ─► terrain ─► caves ─► ores ─► stru
 ## Tests
 
 - Determinism: one column generated in different orders and with different thread counts gives the same hash.
-- Speed: a column ≤ N ms per core (the number comes after the stage 1 benchmark). Measured in T1-03 (VM, 4 vCPU Xeon 2.1 GHz): all stages of a 16×384×16 column ≈ 0.28–0.37 ms per core, packing into palette sections ≈ 0.26–0.32 ms, 64 columns on 4 threads ≈ 6–7.8 ms. **Proposed target: ≤ 1 ms per column per core including packing** (≈ 1.5× margin over the VM numbers) — owner to confirm.
+- Speed: a column ≤ N ms per core (the number comes after the stage 1 benchmark). Measured in T1-03 (VM, 4 vCPU Xeon 2.1 GHz): all stages of a 16×384×16 column ≈ 0.28–0.37 ms per core, packing into palette sections ≈ 0.26–0.32 ms, 64 columns on 4 threads ≈ 6–7.8 ms. **Target: ≤ 1 ms per column per core including packing** (confirmed by the owner 2026-11-22: do what is reasonable to reach it, but not at the cost of rewriting the project).
+
+## Generation modes (owner decision 2026-11-22)
+
+- **Normal** — the T1-03 pipeline below. All current work targets this mode.
+- **Extended** — a richer generator of our own (multi-noise biomes, height splines, smooth blending, more caves and biomes), task [T1-17](../../tasks/stage-1/T1-17-worldgen-modes.md), after the main stage 1 tasks. The world remembers its mode.
+- **Reference for "extended": Terralith** (Stardust Labs) — for the look and feel only. Its license forbids copying parts into other projects and any use in AI projects, so agents never download, read or port its files; the owner provides observations and screenshots (`docs/research/worldgen-reference/`) and agents build the result with our own design. Using its actual data needs written permission from Stardust Labs and the lawyer (T0-10).
 
 ## Implementation (T1-03)
 

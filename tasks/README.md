@@ -63,12 +63,14 @@ Core and single-player world ([roadmap](../docs/process/roadmap.md), PRD §9). E
 | [T1-06](stage-1/T1-06-profiling-and-ci-benchmarks.md) | Profiler zones, Tracy and benchmarks in CI | T0-01, T0-02 | agent (cloud) + Tracy screenshot on the laptop | done |
 | [T1-07](stage-1/T1-07-assets-fallback-and-cache.md) | Fallback asset set, asset cache and texture arrays | T0-01 | agent (cloud) | done |
 | [T1-08](stage-1/T1-08-offline-mode.md) | Offline mode for client and server | owner decision (legal.md rule 7) | agent (cloud) | done |
-| [T1-09](stage-1/T1-09-light-in-world.md) | Lighting integrated with the world | T1-01, T1-03 | agent (cloud) | in-progress (owner decision on the world-path budget) |
+| [T1-09](stage-1/T1-09-light-in-world.md) | Lighting integrated with the world | T1-01, T1-03 | agent (cloud) | done |
 | [T1-10](stage-1/T1-10-loading-queue.md) | Chunk loading queue with priorities | T1-01, T1-03 | agent (cloud) | todo |
 | [T1-11](stage-1/T1-11-renderer-terrain.md) | Terrain renderer: upload, culling, texture arrays, profiles | T1-05, T1-07 | agent (cloud) + laptop measurements | todo |
 | [T1-12](stage-1/T1-12-player-physics-and-editing.md) | Player physics, digging and placing blocks | T1-01, T1-09, T1-10 | agent (cloud) | todo |
 | [T1-13](stage-1/T1-13-client-app-and-menu.md) | Client application, main menu and single-player | T1-07, T1-08, T1-10, T1-11 | agent (cloud) + laptop | todo |
 | [T1-14](stage-1/T1-14-local-asset-import.md) | Import assets from a local licensed installation | T1-07 | agent (cloud) + laptop | todo |
+| [T1-16](stage-1/T1-16-light-fast-world-path.md) | Faster world-path lighting (same look) | T1-09 | agent + laptop | todo (later) |
+| [T1-17](stage-1/T1-17-worldgen-modes.md) | World generation modes: normal and extended (Terralith as look reference) | T1-03, T1-13 | agent + owner review | todo (later) |
 | [T1-15](stage-1/T1-15-stage-1-exit-harness.md) | Stage 1 exit measurement | T1-01 … T1-14 | agent + owner's laptop | todo |
 
 ### Stage 1: order and parallel work
@@ -80,6 +82,7 @@ Core and single-player world ([roadmap](../docs/process/roadmap.md), PRD §9). E
 | 3 | T1-09, T1-10 | T1-01 + T1-03 |
 | 4 | T1-12, T1-13 | T1-09 + T1-10 (T1-12); T1-07, T1-08, T1-10, T1-11 (T1-13) |
 | 5 | T1-15 | everything above |
+| later | T1-16, T1-17 | after the main stage 1 tasks (owner decision 2026-11-22) |
 
 Wave 1 tasks touch different crates (`world`, `mesh`, `render`, `engine-core`, `assets`, `auth`), so up to six agents can work at once; merge `main` before each PR and keep both sides' rows in shared files.
 

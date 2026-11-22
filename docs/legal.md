@@ -14,6 +14,8 @@ This is not legal advice. It is a list of rules the team follows until a lawyer'
 
 **Status 2026-11-21:** the questions below were sent (T0-10). Development does not wait for the answers: offline mode (rule 7) replaces Microsoft login for testing, and developers test with assets from their own licensed installation (rule 2). Nothing is launched publicly until the answers arrive.
 
+**Third-party content (2026-11-22):** Terralith (Stardust Labs) is a visual reference for the extended world generator only. Its license forbids copying parts into another project and any use of Stardust Labs works in AI projects: no Terralith files in the repository, and agents do not read or port them. Using its data needs written permission from Stardust Labs.
+
 ## Questions for the lawyer
 
 - Do the EULA and Usage Guidelines allow the owner of the game to download and locally convert Minecraft assets for a third-party engine?

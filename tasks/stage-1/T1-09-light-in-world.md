@@ -1,6 +1,6 @@
 # T1-09. Lighting integrated with the world
 
-- **Status:** in-progress (2026-11-22: world integration done and tested; the per-edit budget through the world path is not met — owner decision needed, see the report)
+- **Status:** done (2026-11-22). Owner decision: option 1 for stage 1 — the world-path cost is accepted (updates are deferred and capped per tick; the ≤ 100 / 200 µs budget applies to the BFS); a faster algorithm that keeps the same look follows in [T1-16](T1-16-light-fast-world-path.md).
 - **Depends on:** T1-01, T1-03, T0-08
 - **Owner:** agent (cloud)
 
@@ -23,7 +23,7 @@ Connect the T0-08 `light` crate to the world: initial lighting of generated colu
 ## Acceptance criteria
 
 - [x] Proptests pass; no visible seams at group borders (test).
-- [ ] Initial lighting time per column measured (done: 5.4–5.6 ms p50 on the VM); per-edit budgets still met through the world path (≤ 100/200 µs p95) — **not met** (torch ≈ 0.7–1.2 ms p95, sky-changing ≈ 13–15 ms p95).
+- [x] Initial lighting time per column measured (done: 5.4–5.6 ms p50 on the VM); per-edit budgets still met through the world path (≤ 100/200 µs p95) — not met; accepted by the owner for stage 1, follow-up T1-16 (torch ≈ 0.7–1.2 ms p95, sky-changing ≈ 13–15 ms p95).
 
 ## Out of scope
 
