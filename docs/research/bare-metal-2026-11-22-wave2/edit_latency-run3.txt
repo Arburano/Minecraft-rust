@@ -1,0 +1,16 @@
+﻿edits per kind: 100; world radius 4, y -64..320; VM numbers are not the laptop's
+break surface block:
+  set_block + remesh   p50 552.300µs p95   1.260ms max   1.395ms
+  relight              p50  11.801ms p95  18.481ms max  21.610ms
+  batch re-copy        p50  17.900µs p95  46.900µs max  63.700µs
+  total                p50  12.371ms p95  19.278ms max  22.438ms
+place block in air:
+  set_block + remesh   p50 543.700µs p95   1.053ms max   1.675ms
+  relight              p50  12.836ms p95  16.130ms max  20.788ms
+  batch re-copy        p50  14.500µs p95  26.700µs max  33.600µs
+  total                p50  13.369ms p95  16.662ms max  21.266ms
+torch underground:
+  set_block + remesh   p50 433.700µs p95 897.300µs max 946.500µs
+  relight              p50 778.900µs p95 955.100µs max   1.170ms
+  batch re-copy        p50  11.400µs p95  25.400µs max  38.700µs
+  total                p50   1.235ms p95   1.751ms max   1.933ms

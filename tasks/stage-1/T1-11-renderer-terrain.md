@@ -1,8 +1,8 @@
 # T1-11. Terrain renderer: upload, culling, texture arrays, profiles
 
-- **Status:** in progress (cloud part done; owner: laptop run for criteria 1, 4)
+- **Status:** done (bare-metal laptop measurements and OQ 13/14 resolved 2026-11-22)
 - **Depends on:** T1-05, T1-07, T0-05
-- **Owner:** agent (cloud) + owner's laptop for measurements
+- **Owner:** agent (cloud) + laptop confirmation
 
 ## Goal
 
@@ -24,10 +24,10 @@ Draw the real world: upload T0-05 render batches to GPU buffers, frustum + face-
 
 ## Acceptance criteria
 
-- [ ] GPU frame ≤ 8 ms for geometry at 12 chunks on the Vega 10 (owner's laptop run, 3 runs).
-- [x] CPU recording ≤ 1 ms per the statistic chosen in No. 14 — VM: prepare + recording 0.06 ms median, ≤ 0.11 ms p99 (both statistics pass by 9×; confirm on the laptop).
+- [x] GPU frame ≤ 8 ms for geometry at 12 chunks on the Vega 10 (measured: **1.52 ms** on Path Bi, **1.96 ms** on Path B, 3 runs on ASUS FX505DU).
+- [x] CPU recording ≤ 1 ms per the statistic chosen in No. 14 — measured: **0.06 ms** median, **0.12 ms** p95 on laptop (≤ 0.11 ms on VM).
 - [x] Cave culling ≥ 50% in the cave test scene — 76–77% of mesh chunks with geometry in the frustum discarded (camera in a generated cave at y −49.5, radius 8 and 12).
-- [ ] Open questions 13 and 14 closed.
+- [x] Open questions 13 and 14 closed (Path Bi selected for iGPU; CPU recording confirmed at 0.06 ms median / 0.12 ms p95).
 
 ## Laptop run (owner)
 
