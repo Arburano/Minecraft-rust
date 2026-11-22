@@ -11,11 +11,19 @@ publish = false
 clap = { workspace = true }
 engine-core = { path = "../engine-core" }
 world = { path = "../world" }
+worldgen = { path = "../worldgen" }
+light = { path = "../light" }
+mesh = { path = "../mesh" }
 render = { path = "../render" }
 net = { path = "../net" }
 sim = { path = "../sim" }
 assets = { path = "../assets" }
 auth = { path = "../auth" }
+
+[dev-dependencies]
+glam = { workspace = true }
+wgpu = { workspace = true }
+pollster = { workspace = true }
 
 [features]
 # Tracy profiler zones: `cargo run -p client --features profiling`.

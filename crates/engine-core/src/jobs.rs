@@ -224,6 +224,19 @@ impl JobPool {
     /// [`BuildError::ZeroThreads`] if `num_threads` is zero,
     /// [`BuildError::Spawn`] if a worker thread cannot be spawned.
     pub fn new(num_threads: usize) -> Result<Self, BuildError> {
+        Self::build(num_threads, false)
+    }
+
+    /// Like [`Self::new`], but workers run below normal OS priority (best
+    /// effort; ignored where the OS refuses). For clients: the main/render
+    /// thread then wins the CPU when every core is busy with background
+    /// generation, lighting and meshing (T1-10: rare multi-millisecond
+    /// main-thread stalls otherwise).
+    pub fn with_low_priority_workers(num_threads: usize) -> Result<Self, BuildError> {
+        Self::build(num_threads, true)
+    }
+
+    fn build(num_threads: usize, low_priority: bool) -> Result<Self, BuildError> {
         if num_threads == 0 {
             return Err(BuildError::ZeroThreads);
         }
@@ -245,6 +258,13 @@ impl JobPool {
         let workers = rayon::ThreadPoolBuilder::new()
             .num_threads(num_threads)
             .thread_name(|i| format!("job-worker-{i}"))
+            .start_handler(move |_| {
+                if low_priority {
+                    let _ = thread_priority::set_current_thread_priority(
+                        thread_priority::ThreadPriority::Min,
+                    );
+                }
+            })
             .build()?;
         for _ in 0..num_threads {
             let shared = Arc::clone(&shared);

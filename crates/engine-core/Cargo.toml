@@ -10,6 +10,7 @@ publish = false
 [dependencies]
 crossbeam-channel = { workspace = true }
 rayon = { workspace = true }
+thread-priority = { workspace = true }
 thiserror = { workspace = true }
 tracy-client = { workspace = true, optional = true }
 
