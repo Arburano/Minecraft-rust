@@ -24,7 +24,7 @@ Let developers and players see real textures from **their own** licensed install
 
 - [ ] Opt-in tests pass on the owner's laptop; CI skips them (`ASSETS_LOCAL_INSTALL=<folder> cargo test -p assets own_installation -- --nocapture`).
 - [x] A `.gitignore` and CI guard prevents committing converted or original files (`crates/assets/tests/no_third_party_assets.rs`).
-- [ ] Conversion time measured on the laptop. The game prints it in the F3 overlay. In the cloud, a generated test installation with 10 textures builds in a few ms (not representative).
+- [x] Conversion time measured on the laptop (owner, 2026-11-22, F3 overlay): version 1.21.4, 90 faces from the own installation (+12 fallback: the air and missing-placeholder states), 1 ms. Played to x −9357, z 7196 with the original textures.
 
 ## Laptop run (owner)
 

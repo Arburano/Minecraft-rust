@@ -48,3 +48,11 @@ The owner asked to test the game with the original textures from their own copy.
   - textures larger than 16 px are scaled down to 16 (HD packs come with T1-19 and per-size arrays).
 - **Sounds and models** are not read yet (out of scope).
 - **Download** from the official servers after an ownership check still waits for T0-10 (open question 5).
+
+## Laptop confirmation (owner, 2026-11-22)
+
+- **Textures:** the game found the owner's installation automatically. The F3 overlay showed `textures: own installation 1.21.4, 90 faces (+12 fallback), 1 ms`. The 12 fallback faces are the air and missing-placeholder states, which have no texture of their own.
+- **Long run:** GTX 1660 Ti on DX12, path Bi, 60 FPS (vsync), `upload errors 0` after flying to x −9357, z 7196. This also confirms the light-atlas fix (PR #34).
+- **Screenshot:** the owner's screenshot shows original textures, so it is not committed (`docs/legal.md` rule 2).
+- **Still open:** the opt-in unit test on the real installation. The game path it covers is confirmed in play.
+
