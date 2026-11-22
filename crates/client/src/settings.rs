@@ -24,6 +24,43 @@ pub struct Settings {
     pub autosave_seconds: u32,
     /// Worker threads for world jobs (0 = all cores but one).
     pub worker_threads: usize,
+    /// Textures from the player's own installation (T1-14).
+    pub own_assets: OwnAssets,
+}
+
+/// Where the player's own licensed installation is (read locally only).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct OwnAssets {
+    /// Use its textures (fallback textures fill any gap).
+    pub enabled: bool,
+    /// The installation folder; `None` = look in the usual places.
+    pub folder: Option<PathBuf>,
+    /// Version to read; `None` = the newest release.
+    pub version: Option<String>,
+}
+
+impl Default for OwnAssets {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            folder: None,
+            version: None,
+        }
+    }
+}
+
+impl OwnAssets {
+    /// The folder to read: the configured one, else the first usual place that
+    /// has installed versions.
+    #[must_use]
+    pub fn resolve_folder(&self) -> Option<PathBuf> {
+        self.folder.clone().or_else(|| {
+            assets::local_install::default_dirs()
+                .into_iter()
+                .find(|d| d.join("versions").is_dir())
+        })
+    }
 }
 
 impl Default for Settings {
@@ -36,6 +73,7 @@ impl Default for Settings {
             fov_degrees: 70.0,
             autosave_seconds: 30,
             worker_threads: 0,
+            own_assets: OwnAssets::default(),
         }
     }
 }

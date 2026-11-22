@@ -68,11 +68,11 @@ Core and single-player world ([roadmap](../docs/process/roadmap.md), PRD §9). E
 | [T1-11](stage-1/T1-11-renderer-terrain.md) | Terrain renderer: upload, culling, texture arrays, profiles | T1-05, T1-07 | agent (cloud) + laptop | done |
 | [T1-12](stage-1/T1-12-player-physics-and-editing.md) | Player physics, digging and placing blocks | T1-01, T1-09, T1-10 | agent (cloud) + laptop | in-progress (feel review after T1-13) |
 | [T1-13](stage-1/T1-13-client-app-and-menu.md) | Client application, main menu and single-player | T1-07, T1-08, T1-10, T1-11 | agent (cloud) + laptop | in-progress (owner: cold start on the laptop, playtest) |
-| [T1-14](stage-1/T1-14-local-asset-import.md) | Import assets from a local licensed installation | T1-07 | agent (cloud) + laptop | todo |
+| [T1-14](stage-1/T1-14-local-asset-import.md) | Import assets from a local licensed installation | T1-07 | agent (cloud) + laptop | in-progress (owner: run with the own installation) |
 | [T1-16](stage-1/T1-16-light-fast-world-path.md) | Faster world-path lighting (same look) | T1-09 | agent + laptop | in-progress (owner: laptop run; deep-shaft case and persistent grids open) |
 | [T1-17](stage-1/T1-17-worldgen-modes.md) | World generation modes: normal and extended (Tectonic as reference) | T1-03, T1-13 | agent + owner review | todo (later) |
 | [T1-18](stage-1/T1-18-gameplay-slots.md) | Gameplay slots: replaceable movement profile and generator (ADR-0013) | T1-12, T1-13 | agent (cloud) | todo |
-| [T1-19](stage-1/T1-19-resource-and-shader-packs.md) | Resource, texture and shader packs (ADR-0014) | T1-11, T1-13 | agent (cloud) + laptop | todo (ADR-0014 proposed) |
+| [T1-19](stage-1/T1-19-resource-and-shader-packs.md) | Resource, texture and shader packs (ADR-0014) | T1-11, T1-13 | agent (cloud) + laptop | todo |
 | [T1-15](stage-1/T1-15-stage-1-exit-harness.md) | Stage 1 exit measurement | T1-01 … T1-14 | agent + owner's laptop | todo |
 
 ### Stage 1: order and parallel work

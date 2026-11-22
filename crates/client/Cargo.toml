@@ -31,6 +31,8 @@ egui-winit = { workspace = true }
 pollster = { workspace = true }
 
 [dev-dependencies]
+zip = { workspace = true }
+png = { workspace = true }
 
 [features]
 # Tracy profiler zones: `cargo run -p client --features profiling`.

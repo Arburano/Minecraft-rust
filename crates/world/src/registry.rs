@@ -99,6 +99,8 @@ struct RawBlockDef {
     #[serde(default)]
     textures: Option<toml::Table>,
     #[serde(default)]
+    tint: Option<toml::Table>,
+    #[serde(default)]
     hardness: Option<f64>,
     #[serde(default)]
     tool: Option<String>,
@@ -127,6 +129,7 @@ impl BlockDef {
         let _ = (
             &raw.model,
             &raw.textures,
+            &raw.tint,
             &raw.hardness,
             &raw.tool,
             &raw.components,

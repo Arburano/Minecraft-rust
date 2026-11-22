@@ -20,6 +20,8 @@ A level 1 mod: everything that can be described by data is described by data. Th
 id = "copper_pipes:copper_pipe"
 model = "copper_pipes:models/pipe"
 textures = { all = "copper_pipes:block/copper_pipe" }
+# Per face instead of `all`: top, bottom, side, north, south, east, west; `side_overlay` is drawn over the sides.
+# tint = { top = "grass" }   # multiply a gray texture by a color: grass, foliage, water
 hardness = 2.5
 tool = "pickaxe"
 opaque = false
