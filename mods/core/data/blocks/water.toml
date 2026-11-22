@@ -1,6 +1,7 @@
 id = "core:water"
 model = "core:models/liquid"
 textures = { all = "minecraft:block/water_still" }   # fallback: core:fallback/water
+tint = { all = "water" }
 opaque = false
 transparent = true
 light_opacity = 1

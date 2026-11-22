@@ -16,6 +16,7 @@ use std::fmt;
 pub mod cache;
 pub mod fallback;
 pub mod image;
+pub mod local_install;
 pub mod texture_array;
 
 pub use cache::{AssetCache, CONVERTER_VERSION};

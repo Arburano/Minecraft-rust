@@ -1,6 +1,7 @@
 id = "core:grass_block"
 model = "core:models/cube_all"
-textures = { all = "minecraft:block/grass_block" }   # fallback: core:fallback/grass_block
+textures = { top = "minecraft:block/grass_block_top", side = "minecraft:block/grass_block_side", side_overlay = "minecraft:block/grass_block_side_overlay", bottom = "minecraft:block/dirt" }   # fallback: core:fallback/grass_block
+tint = { top = "grass", side_overlay = "grass" }   # gray textures colored per biome (fixed colors until biome tints exist)
 hardness = 0.6
 tool = "shovel"
 opaque = true

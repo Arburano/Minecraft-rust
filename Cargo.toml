@@ -59,6 +59,9 @@ thread-priority = "3"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 toml = "1"
+# T1-14: reading textures from the player's own installation (read-only zip, PNG decoding).
+zip = { version = "2", default-features = false, features = ["deflate"] }
+png = "0.18"
 ed25519-dalek = "3"
 sha2 = "0.11"
 keyring = "4"

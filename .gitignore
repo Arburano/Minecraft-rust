@@ -21,3 +21,8 @@ Thumbs.db
 *.pem
 *.key
 .env
+
+# docs/legal.md rule 2: never commit files from the original game (T1-14).
+*.jar
+.minecraft/
+**/assets/minecraft/
