@@ -20,6 +20,11 @@ sim = { path = "../sim" }
 assets = { path = "../assets" }
 auth = { path = "../auth" }
 
+[dev-dependencies]
+glam = { workspace = true }
+wgpu = { workspace = true }
+pollster = { workspace = true }
+
 [features]
 # Tracy profiler zones: `cargo run -p client --features profiling`.
 profiling = ["engine-core/profiling"]
