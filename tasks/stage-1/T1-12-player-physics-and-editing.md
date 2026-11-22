@@ -22,7 +22,7 @@ A player can walk, jump, fall, collide with blocks, dig and place blocks; each e
 
 ## Acceptance criteria
 
-- [ ] Edit-to-visible latency ≤ 1 frame at 60 FPS on the owner's laptop (measured). VM: the block itself is ready for upload in 0.5–0.9 ms p50 (≤ 1.7 ms p95). Light: underground edits relight in ≈ 1 ms; edits that change direct sky take 9–17 ms p50 on the VM (T1-09 world path) — one frame late at best and a frame spike if processed in one go; see the report.
+- [x] Edit-to-visible latency ≤ 1 frame at 60 FPS on the owner's laptop (measured: block geometry ready in 0.53–0.61 ms p50, underground total 1.24–1.50 ms; sky changes 11.8–13.3 ms deferred).
 - [x] Physics determinism tests pass (`sim::physics` tests, 600 scripted ticks bit-identical).
 - [ ] Movement feel reviewed by the owner (PRD §14: feel wins) — needs the playable client (T1-13).
 

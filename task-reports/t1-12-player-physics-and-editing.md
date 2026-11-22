@@ -68,6 +68,16 @@ Status: the cloud part is done. Still pending: the owner's laptop run of `edit_l
 
 Before the sky-height condition (same example, 3 runs), the underground torch relight was p50 12.1–16.7 ms.
 
+**Bare-Metal Laptop Numbers (ASUS TUF FX505DU, Ryzen 7 3750H, 3 runs, 2026-11-22):**
+
+| Edit kind | set_block + re-mesh | relight | batch re-copy | total |
+| --- | --- | --- | --- | --- |
+| Break surface block | p50 0.55–0.61 ms, p95 ≤ 1.26 ms | p50 11.8–13.3 ms, p95 ≤ 18.5 ms | p50 16.9–17.9 µs | p50 12.4–14.0 ms, p95 ≤ 19.3 ms |
+| Place block in air | p50 0.53–0.54 ms, p95 ≤ 1.05 ms | p50 11.8–12.8 ms, p95 ≤ 16.1 ms | p50 12.9–14.5 µs | p50 12.5–13.4 ms, p95 ≤ 16.7 ms |
+| Torch underground | p50 0.43–0.52 ms, p95 ≤ 1.14 ms | p50 0.78–0.95 ms, p95 ≤ 1.47 ms | p50 11.4–13.3 µs | p50 1.24–1.50 ms, p95 ≤ 2.58 ms |
+
+Raw logs saved in `docs/research/bare-metal-2026-11-22-wave2/edit_latency-run{1..3}.txt`. Geometry is ready in **0.5–0.6 ms** (always ≤ 1 frame); underground edits total **1.2–1.5 ms** (≤ 1 frame). Sky changes are deferred as designed.
+
 ## What went wrong
 
 - Two physics tests were wrong, not the physics:

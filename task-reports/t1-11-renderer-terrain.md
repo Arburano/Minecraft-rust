@@ -1,6 +1,6 @@
 # T1-11 — Terrain renderer: upload, culling, texture arrays, profiles
 
-Status: cloud part done; the GPU frame time on the Vega 10 and the decisions on open questions 13 and 14 wait for the owner's laptop run (commands in the task file).
+Status: done (bare-metal laptop measurements completed on ASUS TUF FX505DU, 2026-11-22).
 
 ## What was done
 
@@ -37,10 +37,28 @@ World seed 7, camera at (8, 95, 8), 1280 × 720.
 
 B and Bi pictures are pixel-identical; C differs in 146 of 921,600 pixels (max delta 49/255) at triangle edges.
 
+### Bare-Metal Laptop Numbers (ASUS TUF FX505DU, 2026-11-22)
+
+World seed 7, 1280 × 720, radius 12, 147 batches, 161 draws, 277,441 quads drawn. 3 runs of 300 frames each per path (raw logs in `docs/research/bare-metal-2026-11-22-wave2/`):
+
+- **AMD Radeon RX Vega 10 Graphics (DX12)**:
+  - **Path B (Pulling, 6 vtx)**: GPU pass median **1.96 ms** (p95 3.33 ms, p99 9.28 ms); CPU prep+rec median **0.067 ms** (p95 0.140 ms).
+  - **Path Bi (PullingIndexed, 4 vtx)**: GPU pass median **1.52 ms** (p95 2.94 ms, p99 7.63 ms); CPU prep+rec median **0.059 ms** (p95 0.122 ms) ➔ **FASTEST ON iGPU!**
+  - **Path C (Instanced, 1 inst/quad)**: GPU pass median **1.71 ms** (p95 3.06 ms, p99 8.02 ms); CPU prep+rec median **0.061 ms** (p95 0.119 ms).
+  - **Target ≤ 8 ms**: **MET** (1.52 ms on Bi, > 5× margin).
+- **NVIDIA GeForce GTX 1660 Ti (DX12)**:
+  - Path B: GPU median **0.547 ms**; Path Bi: **0.445 ms**; Path C: **0.427 ms**.
+- **Vulkan Backend**:
+  - Vega 10: GPU median **2.113 ms**, CPU prep+rec median 0.033 ms.
+  - GTX 1660 Ti: GPU median **0.481 ms**, CPU prep+rec median 0.041 ms.
+- **Open Question 13 Decision**: **Path Bi (PullingIndexed)** is chosen as the iGPU default (fastest frame time, 1.52 ms).
+- **Open Question 14 Decision**: CPU recording statistic confirmed at **0.06 ms median / 0.12 ms p95** (well within ≤ 1 ms budget).
+
 Checks: `cargo fmt`, `cargo clippy --workspace --all-targets` with `-D warnings`, `cargo test --workspace`, `cargo bench --workspace --no-run` — all pass.
 
 ## What went wrong
 
+- **DX12 FXC Shader Error (Fixed)**: On Windows with DirectX 12, HLSL FXC failed with `error X3500: array reference cannot be used as an l-value; not natively addressable` in `terrain-common.wgsl` due to dynamic vector indexing `a[i] = ...` and `p[pa] = ...`. Replaced with `select`-based scalar component selectors, resolving compilation across DX12 and Vulkan.
 - The workspace glam (0.34.3) has no `perspective_rh`/`look_at_rh`; added `terrain::camera` instead.
 - The first cave-culling test used a wall smaller than the search radius, so the traversal went around it; the wall now covers the radius.
 - The first "underground" measurement put the camera inside solid stone at y −20 (58% discarded, but not a cave); the example now searches for an air cell in a real cave.

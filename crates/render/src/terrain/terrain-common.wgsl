@@ -43,28 +43,44 @@ const NORMALS = array<vec3<f32>, 6>(
     vec3<f32>(0.0, 0.0, 1.0), vec3<f32>(0.0, 0.0, -1.0),
 );
 
+fn get_component(v: vec3<u32>, idx: u32) -> u32 {
+    return select(select(v.z, v.y, idx == 1u), v.x, idx == 0u);
+}
+
+fn set_component_by_axes(pa: u32, p_val: u32, wa: u32, w_val: u32, h_val: u32, axis: u32) -> u32 {
+    return select(select(h_val, w_val, wa == axis), p_val, pa == axis);
+}
+
 fn terrain_vertex(quad: vec2<u32>, corner: u32, slot: u32) -> VertexOutput {
     let dir = quad.y >> 29u;
     var a = vec3<u32>(quad.x & 63u, (quad.x >> 6u) & 63u, (quad.x >> 12u) & 63u);
     let wide = (quad.x >> 18u) & 63u;
     let high = (quad.x >> 24u) & 63u;
     let mc = MAX_CORNER[dir];
-    for (var i = 0u; i < 3u; i++) {
-        if (a[i] == 0u && (mc & (1u << i)) != 0u) {
-            a[i] = 64u;
-        }
+    if (a.x == 0u && (mc & 1u) != 0u) {
+        a.x = 64u;
+    }
+    if (a.y == 0u && (mc & 2u) != 0u) {
+        a.y = 64u;
+    }
+    if (a.z == 0u && (mc & 4u) != 0u) {
+        a.z = 64u;
     }
     let pa = PLANE_AXIS[dir];
     let wa = W_AXIS[dir];
     let ha = H_AXIS[dir];
-    var u0 = a[wa];
+    let a_wa = get_component(a, wa);
+    var u0 = a_wa;
     if (W_MAX[dir]) {
-        u0 = a[wa] - wide;
+        u0 = a_wa - wide;
     }
-    var p = vec3<u32>(0u);
-    p[pa] = a[pa];
-    p[wa] = u0 + (corner & 1u) * wide;
-    p[ha] = a[ha] + (corner >> 1u) * high;
+    let plane_val = get_component(a, pa);
+    let w_val = u0 + (corner & 1u) * wide;
+    let h_val = get_component(a, ha) + (corner >> 1u) * high;
+    let px = set_component_by_axes(pa, plane_val, wa, w_val, h_val, 0u);
+    let py = set_component_by_axes(pa, plane_val, wa, w_val, h_val, 1u);
+    let pz = set_component_by_axes(pa, plane_val, wa, w_val, h_val, 2u);
+    let p = vec3<u32>(px, py, pz);
     let world = vec3<f32>(batches[slot].xyz) + vec3<f32>(p);
     var out: VertexOutput;
     out.clip = camera.view_proj * vec4<f32>(world, 1.0);
