@@ -1,0 +1,6 @@
+﻿world_light/initial_light_one_column
+                        time:   [8.0699 ms 8.3823 ms 8.7361 ms]
+Found 3 outliers among 10 measurements (30.00%)
+  1 (10.00%) low mild
+  2 (20.00%) high mild
+

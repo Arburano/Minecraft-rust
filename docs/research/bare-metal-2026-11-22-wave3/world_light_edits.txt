@@ -1,0 +1,12 @@
+world_light diagnostics on ASUS TUF FX505DU (Ryzen 7 3750H, 2026-11-22):
+
+initial light: 49 columns, p50 7.9 ms, max 13.0 ms per column; sections opaque/sky/computed = (9, 617, 550)
+world edit torch place: 192 edits, p50 332 us, p95 524 us, max 1441 us
+world edit torch restore: 192 edits, p50 337 us, p95 515 us, max 673 us
+world edit stone_on_surface place: 192 edits, p50 317 us, p95 488 us, max 627 us
+world edit stone_on_surface restore: 192 edits, p50 319 us, p95 470 us, max 626 us
+world edit roof_over_shaft place: 48 edits, p50 10866 us, p95 13722 us, max 14529 us
+world edit roof_over_shaft remove: 48 edits, p50 10958 us, p95 13484 us, max 14489 us
+
+Criterion:
+world_light/initial_light_one_column: time: [8.07 ms, 8.38 ms, 8.74 ms]
