@@ -3,6 +3,7 @@
 use std::path::PathBuf;
 
 use auth::Identity;
+use client::packs::{self, ShaderPack};
 use client::settings::Settings;
 use client::worlds::{self, WorldInfo};
 use egui::{Align, Color32, Layout, RichText, Ui};
@@ -28,6 +29,10 @@ pub enum Screen {
     Settings,
     /// About and the legal notice.
     About,
+    /// Resource and texture packs (enable, order).
+    ResourcePacks,
+    /// Shader pack (choose, options).
+    ShaderPack,
 }
 
 /// What the player asked for.
@@ -38,6 +43,8 @@ pub enum MenuAction {
     Play(PathBuf),
     /// Settings were changed and confirmed.
     SaveSettings(Settings),
+    /// Pack choices changed: save and apply them now (also in a running world).
+    ApplyPacks(Settings),
     /// Leave the game.
     Quit,
 }
@@ -57,13 +64,23 @@ pub struct Menu {
     pub message: Option<String>,
     /// GPU line for the settings and about screens.
     pub gpu_line: String,
+    packs_root: PathBuf,
+    /// Screen to return to from the pack screens (settings, or the pause menu).
+    pub packs_return: Option<Screen>,
+    shader_cache: Option<(String, Result<ShaderPack, String>)>,
 }
 
 impl Menu {
     /// A menu over the worlds in `worlds_root`.
     #[must_use]
     pub fn new(worlds_root: PathBuf, settings: &Settings) -> Self {
+        let packs_root = worlds_root
+            .parent()
+            .map_or_else(PathBuf::new, PathBuf::from);
         Self {
+            packs_root,
+            packs_return: None,
+            shader_cache: None,
             screen: Screen::Main,
             worlds: worlds::list(&worlds_root),
             worlds_root,
@@ -107,6 +124,8 @@ impl Menu {
                         Screen::Worlds => self.worlds_screen(ui),
                         Screen::Settings => self.settings_screen(ui),
                         Screen::About => self.about(ui),
+                        Screen::ResourcePacks => self.resource_packs(ui),
+                        Screen::ShaderPack => self.shader_pack(ui),
                     };
                 });
             });
@@ -344,6 +363,15 @@ impl Menu {
                     });
                 ui.end_row();
             });
+        ui.horizontal(|ui| {
+            ui.add_space(ui.available_width() / 2.0 - 150.0);
+            if ui.button("Resource packs…").clicked() {
+                self.open_packs(Screen::ResourcePacks, Screen::Settings);
+            }
+            if ui.button("Shader pack…").clicked() {
+                self.open_packs(Screen::ShaderPack, Screen::Settings);
+            }
+        });
         ui.small("Texture changes apply when a world is opened.");
         ui.small("GPU changes apply after a restart.");
         ui.small(&self.gpu_line);
@@ -356,6 +384,173 @@ impl Menu {
             }
             if ui.button("Cancel").clicked() {
                 self.screen = Screen::Main;
+            }
+        });
+        action
+    }
+
+    /// Opens a pack screen; `back` is where Done/Cancel return (`None` for
+    /// the pause menu in a running world).
+    pub fn open_packs_from_game(&mut self, screen: Screen, settings: &Settings) {
+        self.draft = settings.clone();
+        self.screen = screen;
+        self.packs_return = None;
+        self.shader_cache = None;
+    }
+
+    fn open_packs(&mut self, screen: Screen, back: Screen) {
+        self.screen = screen;
+        self.packs_return = Some(back);
+        self.shader_cache = None;
+    }
+
+    /// Whether a pack screen is open.
+    #[must_use]
+    pub fn in_pack_screen(&self) -> bool {
+        matches!(self.screen, Screen::ResourcePacks | Screen::ShaderPack)
+    }
+
+    fn leave_packs(&mut self) {
+        self.screen = self.packs_return.take().unwrap_or(Screen::Main);
+    }
+
+    fn resource_packs(&mut self, ui: &mut Ui) -> MenuAction {
+        let mut action = MenuAction::None;
+        let dir = self.packs_root.join("resourcepacks");
+        let _ = std::fs::create_dir_all(&dir);
+        let all = packs::list_resource_packs(&dir);
+        ui.label(RichText::new("Resource and texture packs").size(20.0));
+        ui.small(format!(
+            "Put pack folders or .zip files into {}",
+            dir.display()
+        ));
+        ui.add_space(8.0);
+        let d = &mut self.draft;
+        d.resource_packs
+            .retain(|id| all.iter().any(|p| &p.id == id));
+        ui.label(RichText::new("Enabled — the top pack wins").strong());
+        let mut swap = None;
+        let mut remove = None;
+        egui::Grid::new("enabled_packs")
+            .num_columns(2)
+            .show(ui, |ui| {
+                for (i, id) in d.resource_packs.iter().enumerate() {
+                    let p = all.iter().find(|p| &p.id == id);
+                    ui.label(p.map_or(id.as_str(), |p| p.name.as_str()))
+                        .on_hover_text(p.map_or("", |p| p.description.as_str()));
+                    ui.horizontal(|ui| {
+                        if ui.add_enabled(i > 0, egui::Button::new("↑")).clicked() {
+                            swap = Some((i, i - 1));
+                        }
+                        if ui
+                            .add_enabled(i + 1 < d.resource_packs.len(), egui::Button::new("↓"))
+                            .clicked()
+                        {
+                            swap = Some((i, i + 1));
+                        }
+                        if ui.button("Disable").clicked() {
+                            remove = Some(i);
+                        }
+                    });
+                    ui.end_row();
+                }
+            });
+        if let Some((a, b)) = swap {
+            d.resource_packs.swap(a, b);
+        }
+        if let Some(i) = remove {
+            d.resource_packs.remove(i);
+        }
+        ui.add_space(8.0);
+        ui.label(RichText::new("Available").strong());
+        let mut enable = None;
+        for p in all.iter().filter(|p| !d.resource_packs.contains(&p.id)) {
+            ui.horizontal(|ui| {
+                ui.add_space(ui.available_width() / 2.0 - 160.0);
+                ui.label(&p.name).on_hover_text(&p.description);
+                if ui.button("Enable").clicked() {
+                    enable = Some(p.id.clone());
+                }
+            });
+        }
+        if let Some(id) = enable {
+            d.resource_packs.insert(0, id);
+        }
+        if all.is_empty() {
+            ui.label("No packs found.");
+        }
+        ui.add_space(12.0);
+        ui.horizontal(|ui| {
+            ui.add_space(ui.available_width() / 2.0 - 80.0);
+            if ui.button("Done").clicked() {
+                action = MenuAction::ApplyPacks(self.draft.clone());
+                self.leave_packs();
+            }
+            if ui.button("Cancel").clicked() {
+                self.leave_packs();
+            }
+        });
+        action
+    }
+
+    fn shader_pack(&mut self, ui: &mut Ui) -> MenuAction {
+        let mut action = MenuAction::None;
+        let dir = self.packs_root.join("shaderpacks");
+        let _ = std::fs::create_dir_all(&dir);
+        let all = packs::list_shader_packs(&dir);
+        ui.label(RichText::new("Shader pack").size(20.0));
+        ui.small(format!(
+            "Put shader pack folders or .zip files into {}",
+            dir.display()
+        ));
+        ui.small("Shader packs run code on your GPU: use packs from people you trust. Start with --safe-mode to turn packs off.");
+        ui.add_space(8.0);
+        let d = &mut self.draft;
+        ui.radio_value(&mut d.shader_pack, None, "None (built-in look)");
+        for p in &all {
+            ui.radio_value(&mut d.shader_pack, Some(p.id.clone()), &p.name);
+        }
+        if let Some(id) = d.shader_pack.clone() {
+            if self.shader_cache.as_ref().is_none_or(|(c, _)| c != &id) {
+                let loaded = all
+                    .iter()
+                    .find(|p| p.id == id)
+                    .ok_or_else(|| format!("{id} is missing"))
+                    .and_then(packs::load_shader_pack);
+                self.shader_cache = Some((id.clone(), loaded));
+            }
+            match self.shader_cache.as_ref().map(|(_, l)| l) {
+                Some(Ok(pack)) => {
+                    if !pack.description.is_empty() {
+                        ui.label(&pack.description);
+                    }
+                    let values = d.shader_options.entry(id).or_default();
+                    egui::Grid::new("shader_options")
+                        .num_columns(2)
+                        .show(ui, |ui| {
+                            for o in &pack.options {
+                                let v = values.entry(o.id.clone()).or_insert(o.default);
+                                ui.label(if o.label.is_empty() { &o.id } else { &o.label });
+                                ui.add(egui::Slider::new(v, o.min..=o.max));
+                                ui.end_row();
+                            }
+                        });
+                }
+                Some(Err(e)) => {
+                    ui.colored_label(Color32::from_rgb(255, 160, 120), e);
+                }
+                None => {}
+            }
+        }
+        ui.add_space(12.0);
+        ui.horizontal(|ui| {
+            ui.add_space(ui.available_width() / 2.0 - 80.0);
+            if ui.button("Done").clicked() {
+                action = MenuAction::ApplyPacks(self.draft.clone());
+                self.leave_packs();
+            }
+            if ui.button("Cancel").clicked() {
+                self.leave_packs();
             }
         });
         action
@@ -387,6 +582,8 @@ pub enum PauseAction {
     Resume,
     /// Save, close the world and go to the title screen.
     SaveAndQuit,
+    /// Open a pack screen over the paused game.
+    Packs(Screen),
 }
 
 /// The pause screen over the game.
@@ -405,6 +602,18 @@ pub fn pause(ui: &mut Ui) -> PauseAction {
                 .clicked()
             {
                 action = PauseAction::Resume;
+            }
+            if ui
+                .add_sized([240.0, 34.0], egui::Button::new("Resource packs…"))
+                .clicked()
+            {
+                action = PauseAction::Packs(Screen::ResourcePacks);
+            }
+            if ui
+                .add_sized([240.0, 34.0], egui::Button::new("Shader pack…"))
+                .clicked()
+            {
+                action = PauseAction::Packs(Screen::ShaderPack);
             }
             if ui
                 .add_sized([240.0, 34.0], egui::Button::new("Save and quit to title"))

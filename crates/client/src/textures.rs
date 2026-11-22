@@ -9,11 +9,13 @@
 use std::collections::HashMap;
 use std::path::Path;
 
-use assets::local_install::{InstalledTextures, overlay, resize, tint};
+use assets::local_install::{overlay, resize, tint};
+
+use crate::packs::TextureSource;
 use assets::{FALLBACK_KEYS, Rgba8Image, TextureSet, fallback_key, fallback_texture};
 use world::{BlockStateId, Registry};
 
-/// Edge of every block texture (one texture array; larger textures are scaled).
+/// Smallest edge of block textures (fallback textures are 16×16).
 pub const TEXTURE_SIZE: u32 = 16;
 
 /// Fixed tint colors until biome colors exist.
@@ -97,82 +99,118 @@ pub fn read_block_faces(blocks_dir: &Path) -> HashMap<String, BlockFaces> {
 
 /// What the renderer gets.
 pub struct BlockTextures {
-    /// Texture arrays (all layers `TEXTURE_SIZE`).
+    /// Texture arrays (one array; all layers `size`).
     pub set: TextureSet,
     /// `state * 6 + face` → layer.
     pub layer_table: Vec<u32>,
-    /// Faces drawn with the player's own textures.
-    pub from_installation: usize,
+    /// Faces taken from each source, in the order given to [`build`].
+    pub per_source: Vec<usize>,
     /// Faces drawn with our fallback textures.
     pub fallback: usize,
+    /// Edge of every layer (the largest texture found, power of two, 16–256).
+    pub size: u32,
 }
 
-/// Builds every state's six face textures. With `installed`, each face is read
-/// from it (tinted, overlay applied); a face it lacks uses the block's
-/// fallback texture.
+/// Builds every state's six face textures. `sources` are searched in order
+/// (resource packs top first, then the player's own installation); a face
+/// none of them has uses the block's fallback texture. Tints and the side
+/// overlay apply to whatever source the texture came from. All layers are
+/// scaled (nearest) to the largest texture found, so HD packs keep detail.
 #[must_use]
 pub fn build(
     registry: &Registry,
     faces: &HashMap<String, BlockFaces>,
-    mut installed: Option<&mut InstalledTextures>,
+    sources: &mut [&mut dyn TextureSource],
 ) -> BlockTextures {
-    let mut set = TextureSet::new();
-    let mut layer_table = Vec::with_capacity(registry.len() * 6);
-    let (mut from_installation, mut fallback) = (0, 0);
-    let mut cache: HashMap<String, Option<Rgba8Image>> = HashMap::new();
-    let mut read =
-        |installed: &mut Option<&mut InstalledTextures>, r: &str| -> Option<Rgba8Image> {
-            cache
-                .entry(r.to_owned())
-                .or_insert_with(|| installed.as_mut().and_then(|i| i.texture(r)))
-                .clone()
-        };
+    let mut cache: HashMap<String, Option<(usize, Rgba8Image)>> = HashMap::new();
+    let mut find = |sources: &mut [&mut dyn TextureSource], r: &str| {
+        cache
+            .entry(r.to_owned())
+            .or_insert_with(|| {
+                sources
+                    .iter_mut()
+                    .enumerate()
+                    .find_map(|(i, s)| s.texture(r).map(|img| (i, img)))
+            })
+            .clone()
+    };
+    // Resolve every face first (to know the largest size).
+    struct Resolved {
+        key: String,
+        base: Option<(usize, Rgba8Image)>,
+        tint: Option<[u8; 3]>,
+        overlay: Option<(Rgba8Image, Option<[u8; 3]>)>,
+        fallback: &'static str,
+    }
+    let mut resolved = Vec::with_capacity(registry.len() * 6);
     for i in 0..registry.len() as u16 {
         let name = registry.name(BlockStateId(i)).unwrap_or("missing");
         let block = name.split('[').next().unwrap_or(name);
         let key = fallback_key(block);
-        let key = if FALLBACK_KEYS.contains(&key) {
-            key
-        } else {
-            "missing"
-        };
+        let fallback = FALLBACK_KEYS
+            .iter()
+            .copied()
+            .find(|k| *k == key)
+            .unwrap_or("missing");
         let default = BlockFaces::default();
-        let block_faces = faces.get(block).unwrap_or(&default);
-        for face in block_faces {
-            let own = face.reference.as_deref().and_then(|r| {
-                let mut img = resize(&read(&mut installed, r)?, TEXTURE_SIZE);
-                if let Some(c) = face.tint.as_deref().and_then(tint_color) {
-                    img = tint(&img, c);
-                }
-                if let Some((o, t)) = &face.overlay
-                    && let Some(top) = read(&mut installed, o)
-                {
-                    let mut top = resize(&top, TEXTURE_SIZE);
-                    if let Some(c) = t.as_deref().and_then(tint_color) {
-                        top = tint(&top, c);
-                    }
-                    img = overlay(&img, &top);
-                }
-                Some((format!("own:{r}|{:?}|{:?}", face.tint, face.overlay), img))
+        for face in faces.get(block).unwrap_or(&default) {
+            let base = face.reference.as_deref().and_then(|r| find(sources, r));
+            let overlay = face.overlay.as_ref().and_then(|(o, t)| {
+                find(sources, o).map(|(_, img)| (img, t.as_deref().and_then(tint_color)))
             });
-            let loc = match own {
-                Some((id, img)) => {
-                    from_installation += 1;
-                    set.require(&id, || img)
-                }
-                None => {
-                    fallback += 1;
-                    set.require(&format!("fallback:{key}"), || fallback_texture(key))
-                }
-            };
-            layer_table.push(loc.map_or(0, |l| u32::from(l.layer)));
+            resolved.push(Resolved {
+                key: format!("{:?}|{:?}|{:?}", face.reference, face.tint, face.overlay),
+                base,
+                tint: face.tint.as_deref().and_then(tint_color),
+                overlay,
+                fallback,
+            });
         }
+    }
+    let largest = resolved
+        .iter()
+        .filter_map(|r| r.base.as_ref().map(|(_, img)| img.width()))
+        .max()
+        .unwrap_or(TEXTURE_SIZE);
+    let size = largest.clamp(TEXTURE_SIZE, 256).next_power_of_two();
+    let mut set = TextureSet::new();
+    let mut layer_table = Vec::with_capacity(resolved.len());
+    let mut per_source = vec![0; sources.len()];
+    let mut fallback = 0;
+    for r in resolved {
+        let loc = match r.base {
+            Some((src, img)) => {
+                per_source[src] += 1;
+                set.require(&format!("{src}:{}", r.key), || {
+                    let mut img = resize(&img, size);
+                    if let Some(c) = r.tint {
+                        img = tint(&img, c);
+                    }
+                    if let Some((top, t)) = &r.overlay {
+                        let mut top = resize(top, size);
+                        if let Some(c) = t {
+                            top = tint(&top, *c);
+                        }
+                        img = overlay(&img, &top);
+                    }
+                    img
+                })
+            }
+            None => {
+                fallback += 1;
+                set.require(&format!("fallback:{}", r.fallback), || {
+                    resize(&fallback_texture(r.fallback), size)
+                })
+            }
+        };
+        layer_table.push(loc.map_or(0, |l| u32::from(l.layer)));
     }
     BlockTextures {
         set,
         layer_table,
-        from_installation,
+        per_source,
         fallback,
+        size,
     }
 }
 
@@ -213,8 +251,9 @@ mod tests {
         let mut b = RegistryBuilder::new();
         b.add_mod("core", blocks_from_dir(&data()).expect("blocks"));
         let reg = b.build().expect("registry");
-        let t = build(&reg, &read_block_faces(&data()), None);
-        assert_eq!(t.from_installation, 0);
+        let t = build(&reg, &read_block_faces(&data()), &mut []);
+        assert_eq!(t.per_source.len(), 0);
+        assert_eq!(t.size, 16);
         assert_eq!(t.layer_table.len(), reg.len() * 6);
         assert_eq!(t.set.arrays().len(), 1, "one 16x16 array");
     }

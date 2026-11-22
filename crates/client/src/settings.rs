@@ -26,6 +26,12 @@ pub struct Settings {
     pub worker_threads: usize,
     /// Textures from the player's own installation (T1-14).
     pub own_assets: OwnAssets,
+    /// Enabled resource packs (ids = folder or zip names), top first (ADR-0014).
+    pub resource_packs: Vec<String>,
+    /// The shader pack in use (`None` = the built-in look).
+    pub shader_pack: Option<String>,
+    /// Shader pack option values: pack id → option id → value.
+    pub shader_options: std::collections::BTreeMap<String, std::collections::BTreeMap<String, f32>>,
 }
 
 /// Where the player's own licensed installation is (read locally only).
@@ -74,6 +80,9 @@ impl Default for Settings {
             autosave_seconds: 30,
             worker_threads: 0,
             own_assets: OwnAssets::default(),
+            resource_packs: Vec::new(),
+            shader_pack: None,
+            shader_options: std::collections::BTreeMap::new(),
         }
     }
 }
