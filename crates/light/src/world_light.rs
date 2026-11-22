@@ -14,7 +14,7 @@
 //! - [`LightUpdates`]: queued edits applied a limited number of snapshots per
 //!   tick; the rest waits (the client shows the old light meanwhile).
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 
 use world::coords::{BlockPos, SectionPos};
@@ -98,6 +98,9 @@ fn decode_nibbles(bytes: &[u8]) -> Result<(Nibbles, usize), WorldLightError> {
 #[derive(Default)]
 pub struct WorldLight {
     sections: HashMap<SectionPos, SectionLight>,
+    /// Sections stored since the last `take_changed`, when tracking is on
+    /// (the renderer uploads them).
+    changed: Option<HashSet<SectionPos>>,
 }
 
 impl WorldLight {
@@ -115,7 +118,23 @@ impl WorldLight {
 
     /// Stores a section's light.
     pub fn insert(&mut self, pos: SectionPos, light: SectionLight) {
+        if let Some(c) = &mut self.changed {
+            c.insert(pos);
+        }
         self.sections.insert(pos, light);
+    }
+
+    /// Starts recording which sections get new light (off by default, so
+    /// headless users do not accumulate a log nobody drains).
+    pub fn track_changes(&mut self) {
+        self.changed.get_or_insert_with(HashSet::new);
+    }
+
+    /// Moves the sections stored since the last call into `out` (any order).
+    pub fn take_changed(&mut self, out: &mut Vec<SectionPos>) {
+        if let Some(c) = &mut self.changed {
+            out.extend(c.drain());
+        }
     }
 
     /// Number of lit sections.
@@ -567,7 +586,13 @@ impl LightUpdates {
                 applied.push(pos);
                 let now = map.get_block(pos).map_or(LightProps::AIR, props);
                 // Records are in edit order, so this is the cell's oldest state.
-                sky_changed |= (before.opacity > 0) != (now.opacity > 0);
+                // Direct sky below the cell changes only if the column's sky
+                // height changes; then some edit of the column lies at or
+                // above the current height − 1 (it removed the old top
+                // blocker or is the new one). Edits deeper underground leave
+                // direct sky alone and skip the downward recompute.
+                let at_top = map.height(pos.x, pos.z).is_none_or(|h| pos.y + 1 >= h);
+                sky_changed |= at_top && (before.opacity > 0) != (now.opacity > 0);
                 let _ = snap.relight_remove(pos, now);
             }
             self.pending = rest;

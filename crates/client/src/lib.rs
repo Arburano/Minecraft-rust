@@ -3,4 +3,5 @@
 //!
 //! Spec: `docs/architecture/client-menu-and-updater.md`.
 
+pub mod edit;
 pub mod loading;

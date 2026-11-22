@@ -19,7 +19,8 @@
 - A fixed data corpus: `worldgen::test_corpus` with a fixed seed (T0-12; `research/bench` was the starting point), later — an export of a real world.
 - Stage 0 results and the test machine are recorded in `docs/research/`. A 2 vCPU VM gives ±30% noise — final numbers are taken on bare metal with a fixed frequency (spread ≤ 5%).
 - A regression > 10% on a hot benchmark is a PR blocker (automatically, once a stable runner exists).
-- CI (T1-06): `.github/workflows/bench.yml` runs a fast subset (`world` section + map, `mesh`, `light`, `assets`; 20 samples, 2 s) on every PR and on `main`, uploads `bench-results.json` (`scripts/bench_collect.py`: mean ns per benchmark) and writes a comparison with the latest successful `main` run to the job summary (`scripts/bench_compare.py`). It is **advisory** on shared runners; `bench_compare.py --strict` fails on regressions once a stable runner exists.
+- CI cost: `ci.yml` skips documentation-only changes (`docs/`, `tasks/`, `task-reports/`, `*.md`), cancels a run when a newer commit arrives on the same PR, and restores the Rust build cache that only `main` writes.
+- CI (T1-06): `.github/workflows/bench.yml` runs a fast subset (`world` section + map, `mesh`, `light`, `assets`; 20 samples, 2 s) after every merge to `main` and on demand for a branch (Actions → Benchmarks → Run workflow; not on every PR, to save Actions minutes of the private repository), uploads `bench-results.json` (`scripts/bench_collect.py`: mean ns per benchmark) and on a branch writes a comparison with the latest successful `main` run to the job summary (`scripts/bench_compare.py`). It is **advisory** on shared runners; `bench_compare.py --strict` fails on regressions once a stable runner exists.
 
 ## What every PR needs
 

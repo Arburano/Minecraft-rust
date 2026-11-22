@@ -18,6 +18,8 @@ pub mod hash;
 pub mod ids;
 pub mod message;
 pub mod node;
+pub mod physics;
+pub mod raycast;
 pub mod region;
 pub mod territory;
 

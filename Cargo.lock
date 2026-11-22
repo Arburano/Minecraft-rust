@@ -3150,7 +3150,9 @@ dependencies = [
  "glam 0.34.3",
  "proptest",
  "rayon",
+ "serde",
  "thiserror 2.0.21",
+ "toml",
  "world",
 ]
 

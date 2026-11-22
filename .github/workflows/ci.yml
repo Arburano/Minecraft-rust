@@ -3,7 +3,25 @@ name: CI
 on:
   push:
     branches: [main]
+    # Documentation-only changes need no build.
+    paths-ignore:
+      - "docs/**"
+      - "tasks/**"
+      - "task-reports/**"
+      - "**.md"
   pull_request:
+    paths-ignore:
+      - "docs/**"
+      - "tasks/**"
+      - "task-reports/**"
+      - "**.md"
+  workflow_dispatch:
+
+# A new push to the same PR or branch cancels the run still in progress, so
+# only the latest commit uses Actions minutes.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 env:
   CARGO_TERM_COLOR: always
@@ -30,6 +48,11 @@ jobs:
           components: rustfmt, clippy
           targets: wasm32-wasip2
       - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: ci
+          # Only main writes the cache; PRs restore it (main's cache is
+          # visible to every branch, a PR's cache only to that PR).
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Format
         run: cargo fmt --all --check
       - name: Clippy
