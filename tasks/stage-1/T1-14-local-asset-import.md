@@ -1,6 +1,6 @@
 # T1-14. Import assets from a local licensed installation
 
-- **Status:** todo
+- **Status:** in progress (cloud part done; owner: run with the own installation on the laptop)
 - **Depends on:** T1-07, open question 5 (owner decision)
 - **Owner:** agent (cloud for code, owner's laptop for real-asset tests)
 
@@ -22,9 +22,15 @@ Let developers and players see real textures from **their own** licensed install
 
 ## Acceptance criteria
 
-- [ ] Opt-in tests pass on the owner's laptop; CI skips them.
-- [ ] A `.gitignore`/CI guard prevents committing converted or original Mojang files (test or check script).
-- [ ] Conversion time measured.
+- [ ] Opt-in tests pass on the owner's laptop; CI skips them (`ASSETS_LOCAL_INSTALL=<folder> cargo test -p assets own_installation -- --nocapture`).
+- [x] A `.gitignore` and CI guard prevents committing converted or original files (`crates/assets/tests/no_third_party_assets.rs`).
+- [ ] Conversion time measured on the laptop. The game prints it in the F3 overlay. In the cloud, a generated test installation with 10 textures builds in a few ms (not representative).
+
+## Laptop run (owner)
+
+1. Have your own licensed copy installed and launched once, so `versions/<version>/` exists.
+2. Run `cargo run --release -p client -- --offline-name dev_01`, open a world and press F3. The last line shows `textures: own installation <version>, N faces …`.
+3. If the folder is not found, set it under Settings → Installation folder, or start with `ASSETS_LOCAL_INSTALL=<folder>`.
 
 ## Out of scope
 

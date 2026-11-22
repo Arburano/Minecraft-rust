@@ -1,6 +1,6 @@
 # T1-19. Resource, texture and shader packs
 
-- **Status:** todo (waits for the owner's approval of ADR-0014's shader-pack boundary)
+- **Status:** todo (ADR-0014 accepted 2026-11-22)
 - **Depends on:** T1-11, T1-13; shares the texture path with T1-14
 - **Owner:** agent (cloud) + owner's laptop for a visual check
 

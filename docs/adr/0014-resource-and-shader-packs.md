@@ -1,6 +1,6 @@
 # 0014. Resource, texture and shader packs
 
-Status: Proposed (2026-11-22, from the owner's request; the direction is the owner's, and the shader-pack boundary below waits for the owner's approval)
+Status: Accepted (owner, 2026-11-22: shader packs change the look, not geometry — option 1)
 
 ## Context
 
@@ -13,7 +13,7 @@ Constraints:
 - **Legal (`docs/legal.md`):** players may use packs they own, including packs based on Mojang textures. Packs never enter the repository, CI or our builds; tests use generated packs.
 - **Existing pieces:** fallback assets and the texture-array cache (T1-07), the local-installation import (T1-14), and the terrain shader with its fixed bindings (T1-11).
 
-## Decision (proposed)
+## Decision
 
 1. **Resource packs (textures included).**
    - **Format:** a folder or `.zip` in `<data>/resourcepacks/`, with a `pack.toml` (id, name, version, engine format version, description) and files under `assets/<namespace>/...`: textures (PNG), block models, sounds, translations, fonts. A texture pack is a resource pack that only has textures.

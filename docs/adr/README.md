@@ -26,4 +26,4 @@ Template — [0000-template.md](0000-template.md).
 | [0011](0011-client-light-server-lod.md) | Light on the client, LOD from the server | Accepted |
 | [0012](0012-no-std-guest-allocator.md) | Isolated canonical-ABI allocator for the no_std guest | Accepted |
 | [0013](0013-replaceable-movement-and-worldgen.md) | Replaceable movement and world generation (gameplay slots) | Accepted |
-| [0014](0014-resource-and-shader-packs.md) | Resource, texture and shader packs | Proposed |
+| [0014](0014-resource-and-shader-packs.md) | Resource, texture and shader packs | Accepted |

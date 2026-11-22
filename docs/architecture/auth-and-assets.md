@@ -45,5 +45,16 @@ Owner decision 2026-11-21 (legal.md rule 7): development does not wait for Micro
 ## Tests
 
 - The full login cycle is a manual test (needs a real account); in CI, a mock server with the same responses.
+- **Implementation (T1-14):**
+  - **`assets::local_install`:**
+    - finds the installation folder: `ASSETS_LOCAL_INSTALL`, then `%APPDATA%\.minecraft`, `~/Library/Application Support/minecraft` or `~/.minecraft`, or the folder chosen in Settings;
+    - lists `versions/<id>/<id>.jar`, newest release first (by `<id>.json`);
+    - reads `assets/<ns>/textures/<path>.png` straight from the archive and decodes PNG (any color type; animated strips give their first frame).
+    
+    Nothing is copied into the repository, CI or builds.
+  - **`client::textures`:** builds each block's six faces from the block files' `textures` (`all`, `top`, `bottom`, `side`, `north`/`south`/`east`/`west`, `side_overlay`) and `tint` (`grass`, `foliage`, `water`, fixed colors until biome colors exist). Textures are resized to 16×16 (one texture array); every face missing from the installation uses our fallback texture.
+  - **When it runs:** textures are built when a world opens; the F3 overlay shows the source, the version and the time.
+  - **Settings:** a "Textures" switch (on by default), the installation folder (empty means look in the usual places) and the version.
+  - **Guards:** `crates/assets/tests/no_third_party_assets.rs` fails if a `.jar`, a `.minecraft/` folder or an `assets/minecraft/` path appears in the source tree; `.gitignore` excludes them. An opt-in test reads the developer's own installation when `ASSETS_LOCAL_INSTALL` is set; CI skips it.
 - Conversion: golden tests on fallback assets.
 - The game starts even if there are no Mojang assets at all.
