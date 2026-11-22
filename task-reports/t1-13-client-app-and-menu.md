@@ -48,6 +48,8 @@ Status: the cloud part is done. Still pending: the owner's cold-start run on the
   The test fails if saving is disabled (checked).
 - Unit tests for settings and worlds.
 
+**Render path:** open question 13 was decided on the laptop (merged from `main`), so the client and the `screenshot` example now default to indexed B through `TerrainPath::default_for`. Without `BASE_VERTEX` they use B, and without vertex storage C (tested).
+
 **Docs:** `client-menu-and-updater.md` (implementation section), `performance-budgets.md` (cold start, VM), `open-questions.md` No. 15 (the game's name), `THIRD_PARTY.md` (egui's bundled fonts), the T1-13 task file, `tasks/README.md`.
 
 **Also in this PR** (owner decisions from the same message):

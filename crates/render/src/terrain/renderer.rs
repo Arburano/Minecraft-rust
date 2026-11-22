@@ -36,6 +36,23 @@ impl From<RenderPath> for TerrainPath {
     }
 }
 
+impl TerrainPath {
+    /// The default for an adapter (open question 13, decided 2026-11-22 on
+    /// the Vega 10: indexed B is the fastest): indexed B where vertex storage
+    /// and `base_vertex` exist, plain B without `base_vertex`, C without
+    /// vertex storage.
+    #[must_use]
+    pub fn default_for(flags: wgpu::DownlevelFlags) -> Self {
+        match crate::select_path(flags) {
+            RenderPath::VertexPulling if flags.contains(wgpu::DownlevelFlags::BASE_VERTEX) => {
+                Self::PullingIndexed
+            }
+            RenderPath::VertexPulling => Self::Pulling,
+            RenderPath::Instanced => Self::Instanced,
+        }
+    }
+}
+
 /// Quads covered by the shared index buffer; longer draws are split.
 const INDEX_QUADS: u32 = 1 << 16;
 
@@ -820,6 +837,20 @@ impl TerrainRenderer {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn default_path_follows_open_question_13() {
+        use wgpu::DownlevelFlags as F;
+        assert_eq!(
+            TerrainPath::default_for(F::VERTEX_STORAGE | F::BASE_VERTEX),
+            TerrainPath::PullingIndexed
+        );
+        assert_eq!(
+            TerrainPath::default_for(F::VERTEX_STORAGE),
+            TerrainPath::Pulling
+        );
+        assert_eq!(TerrainPath::default_for(F::empty()), TerrainPath::Instanced);
+    }
 
     #[test]
     fn shaders_validate() {

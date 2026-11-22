@@ -210,7 +210,9 @@ impl App {
         surface.configure(&selected.device, &config);
         self.menu.gpu_line = format!(
             "GPU: {} ({:?}), path {:?}",
-            selected.candidate.name, selected.candidate.backend, selected.candidate.path
+            selected.candidate.name,
+            selected.candidate.backend,
+            TerrainPath::default_for(selected.adapter.get_downlevel_capabilities().flags)
         );
         let egui = egui_wgpu::Renderer::new(
             &selected.device,
@@ -219,7 +221,7 @@ impl App {
         );
         Ok(Gpu {
             depth: depth_view(&selected.device, config.width, config.height),
-            path: TerrainPath::from(selected.candidate.path),
+            path: TerrainPath::default_for(selected.adapter.get_downlevel_capabilities().flags),
             surface,
             device: selected.device,
             queue: selected.queue,

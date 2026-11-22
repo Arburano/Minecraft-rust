@@ -103,12 +103,11 @@ fn main() {
         }))
         .expect("adapter"),
     };
-    let auto = render::select_path(adapter.get_downlevel_capabilities().flags);
     let path = match forced_path.as_deref() {
         Some("B") => TerrainPath::Pulling,
         Some("Bi") => TerrainPath::PullingIndexed,
         Some("C") => TerrainPath::Instanced,
-        _ => TerrainPath::from(auto),
+        _ => TerrainPath::default_for(adapter.get_downlevel_capabilities().flags),
     };
     let frames: usize = std::env::var("FRAMES")
         .ok()
