@@ -1,0 +1,64 @@
+name: Benchmarks
+
+# A fast benchmark subset on every PR and on main (T1-06). Results are uploaded
+# as an artifact; PRs are compared with the latest successful main run.
+# Advisory: shared runners are noisy, so regressions are reported, not failed
+# (docs/process/testing-and-benchmarks.md). Switch to --strict on a stable runner.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  # Debug info is the biggest part of target/ and is not needed in CI.
+  CARGO_PROFILE_DEV_DEBUG: 0
+  CARGO_PROFILE_TEST_DEBUG: 0
+  CRITERION_ARGS: --warm-up-time 1 --measurement-time 2 --sample-size 20
+
+jobs:
+  bench:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Free disk space
+        # The workspace (wasmtime, wgpu, tracy) plus release benches outgrew the
+        # runner's free disk; drop preinstalled SDKs this project never uses.
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost
+          df -h /
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.97"
+      - uses: Swatinem/rust-cache@v2
+      - name: Run benchmark subset
+        run: |
+          cargo bench -p world --bench section --bench map -- $CRITERION_ARGS
+          cargo bench -p mesh --bench mesh_chunk -- $CRITERION_ARGS
+          cargo bench -p light --bench light -- $CRITERION_ARGS
+          cargo bench -p assets --bench assets -- $CRITERION_ARGS
+      - name: Collect results
+        run: python3 scripts/bench_collect.py target/criterion bench-results.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bench-results
+          path: bench-results.json
+      - name: Compare with main
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          run_id=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow bench.yml --branch main \
+            --status success --limit 1 --json databaseId --jq '.[0].databaseId')
+          if [ -z "$run_id" ]; then
+            echo "No successful main run yet; nothing to compare." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          gh run download "$run_id" --repo "$GITHUB_REPOSITORY" -n bench-results -D base
+          python3 scripts/bench_compare.py base/bench-results.json bench-results.json >> "$GITHUB_STEP_SUMMARY"

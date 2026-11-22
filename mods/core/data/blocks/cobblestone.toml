@@ -1,0 +1,6 @@
+id = "core:cobblestone"
+model = "core:models/cube_all"
+textures = { all = "minecraft:block/cobblestone" }   # fallback: core:fallback/cobblestone
+hardness = 2.0
+tool = "pickaxe"
+opaque = true

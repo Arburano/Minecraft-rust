@@ -1,0 +1,6 @@
+id = "core:glass"
+model = "core:models/cube_all"
+textures = { all = "minecraft:block/glass" }   # fallback: core:fallback/glass
+hardness = 0.3
+opaque = false
+transparent = true

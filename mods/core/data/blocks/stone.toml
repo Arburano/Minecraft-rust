@@ -1,4 +1,4 @@
-# Example block definition (format: docs/modding/datapacks.md).
+# Block definition format: docs/modding/datapacks.md.
 id = "core:stone"
 model = "core:models/cube_all"
 textures = { all = "minecraft:block/stone" }   # resolved from player-downloaded assets, fallback: core:fallback/stone

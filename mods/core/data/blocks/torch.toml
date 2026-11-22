@@ -1,0 +1,6 @@
+id = "core:torch"
+model = "core:models/torch"
+textures = { all = "minecraft:block/torch" }   # fallback: core:fallback/torch
+opaque = false
+light_emission = 14
+collision = "none"

@@ -8,6 +8,7 @@ license.workspace = true
 publish = false
 
 [dependencies]
+engine-core = { path = "../engine-core" }
 binary-greedy-meshing = { workspace = true }
 world = { path = "../world" }
 

@@ -1,6 +1,6 @@
 # T1-08. Offline mode for client and server
 
-- **Status:** todo
+- **Status:** done (2026-11-21)
 - **Depends on:** T0-10 owner decision (legal.md rule 7)
 - **Owner:** agent (cloud)
 
@@ -22,8 +22,8 @@ Development and tests do not wait for Microsoft API approval: implement offline 
 
 ## Acceptance criteria
 
-- [ ] Tests pass; offline mode cannot be enabled on a server without the explicit flag.
-- [ ] Docs updated if anything differs from the spec.
+- [x] Tests pass; offline mode cannot be enabled on a server without the explicit flag.
+- [x] Docs updated if anything differs from the spec.
 
 ## Out of scope
 

@@ -8,11 +8,17 @@ license.workspace = true
 publish = false
 
 [dependencies]
+auth = { path = "../auth" }
+clap = { workspace = true }
 engine-core = { path = "../engine-core" }
 world = { path = "../world" }
 net = { path = "../net" }
 sim = { path = "../sim" }
 modhost = { path = "../modhost" }
+
+[features]
+# Tracy profiler zones: `cargo run -p server --features profiling`.
+profiling = ["engine-core/profiling"]
 
 [lints]
 workspace = true

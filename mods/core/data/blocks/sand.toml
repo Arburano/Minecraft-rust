@@ -1,0 +1,6 @@
+id = "core:sand"
+model = "core:models/cube_all"
+textures = { all = "minecraft:block/sand" }   # fallback: core:fallback/sand
+hardness = 0.5
+tool = "shovel"
+opaque = true

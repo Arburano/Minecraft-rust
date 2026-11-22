@@ -1,6 +1,6 @@
 # T1-05. Renderer backend and adapter selection with fallback
 
-- **Status:** todo
+- **Status:** in-progress (2026-11-21: selection logic, wgpu layer, `gpu-select` and hardware tests done; laptop runs pending)
 - **Depends on:** T0-14
 - **Owner:** agent (cloud) + owner's laptop for hardware checks
 
@@ -23,7 +23,7 @@ Make the renderer start on any supported machine without user tweaks. T0-14 show
 
 ## Acceptance criteria
 
-- [ ] Unit tests for selection pass in CI.
+- [x] Unit tests for selection pass in CI.
 - [ ] On the owner's laptop the client starts with default settings on Vega 10 and on GTX 1660 Ti, with and without the NVIDIA program setting (results file in docs/research/gpu/).
 - [ ] GL exit crash fixed or isolated with a documented workaround.
 

@@ -1,6 +1,6 @@
 # T1-02. On-disk world format: save and load
 
-- **Status:** todo
+- **Status:** done (2026-11-21)
 - **Depends on:** T1-01
 - **Owner:** agent (cloud)
 
@@ -22,9 +22,9 @@ Save and load columns (blocks + light + heightmap) to disk with a versioned form
 
 ## Acceptance criteria
 
-- [ ] Round-trip proptest and golden-file tests pass; format version checked on load.
-- [ ] Crash safety test: an interrupted write leaves the previous version readable.
-- [ ] Numbers in performance-budgets; open question 7 updated with the measured column size.
+- [x] Round-trip proptest and golden-file tests pass; format version checked on load.
+- [x] Crash safety test: an interrupted write leaves the previous version readable.
+- [x] Numbers in performance-budgets; open question 7 updated with the measured column size.
 
 ## Out of scope
 

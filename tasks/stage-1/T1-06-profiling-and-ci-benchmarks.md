@@ -1,6 +1,6 @@
 # T1-06. Profiler zones, Tracy and benchmarks in CI
 
-- **Status:** todo
+- **Status:** in-progress (2026-11-21: code, CI job and overhead measurement done; the Tracy screenshot needs a desktop run on the owner's laptop)
 - **Depends on:** T0-01, T0-02
 - **Owner:** agent (cloud)
 
@@ -21,8 +21,8 @@ Make performance visible every day: profiler zones in `engine-core` (tick phases
 
 ## Acceptance criteria
 
-- [ ] Zones visible in Tracy for a client run (screenshot in the report).
-- [ ] Feature-off overhead measured (≤ 1% on the light and mesh benches).
+- [ ] (laptop) Zones visible in Tracy for a client run (screenshot in the report).
+- [x] Feature-off overhead measured (≤ 1% on the light and mesh benches).
 - [ ] CI benchmark job green and documented.
 
 ## Out of scope

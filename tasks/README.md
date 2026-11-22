@@ -55,14 +55,14 @@ Core and single-player world ([roadmap](../docs/process/roadmap.md), PRD §9). E
 
 | Task | Name | Depends on | Owner | Status |
 | --- | --- | --- | --- | --- |
-| [T1-01](stage-1/T1-01-world-columns-registry.md) | World columns, block registry and ID table | T0-03 | agent (cloud) | todo |
-| [T1-02](stage-1/T1-02-world-save-format.md) | On-disk world format: save and load | T1-01 | agent (cloud) | todo |
+| [T1-01](stage-1/T1-01-world-columns-registry.md) | World columns, block registry and ID table | T0-03 | agent (cloud) | done |
+| [T1-02](stage-1/T1-02-world-save-format.md) | On-disk world format: save and load | T1-01 | agent (cloud) | done |
 | [T1-03](stage-1/T1-03-worldgen-pipeline.md) | Terrain generator pipeline | T1-01, T0-12 | agent (cloud) | todo |
-| [T1-04](stage-1/T1-04-section-mesh-hot-paths.md) | Optimize section get/set and gather + masks | T0-16 | agent (cloud) + laptop confirmation | todo |
-| [T1-05](stage-1/T1-05-render-backend-selection.md) | Renderer backend and adapter selection with fallback | T0-14 | agent (cloud) + laptop checks | todo |
-| [T1-06](stage-1/T1-06-profiling-and-ci-benchmarks.md) | Profiler zones, Tracy and benchmarks in CI | T0-01, T0-02 | agent (cloud) | todo |
-| [T1-07](stage-1/T1-07-assets-fallback-and-cache.md) | Fallback asset set, asset cache and texture arrays | T0-01 | agent (cloud) | todo |
-| [T1-08](stage-1/T1-08-offline-mode.md) | Offline mode for client and server | owner decision (legal.md rule 7) | agent (cloud) | todo |
+| [T1-04](stage-1/T1-04-section-mesh-hot-paths.md) | Optimize section get/set and gather + masks | T0-16 | agent (cloud) + laptop confirmation | in-progress (laptop run) |
+| [T1-05](stage-1/T1-05-render-backend-selection.md) | Renderer backend and adapter selection with fallback | T0-14 | agent (cloud) + laptop checks | in-progress (laptop checks) |
+| [T1-06](stage-1/T1-06-profiling-and-ci-benchmarks.md) | Profiler zones, Tracy and benchmarks in CI | T0-01, T0-02 | agent (cloud) + Tracy screenshot on the laptop | in-progress |
+| [T1-07](stage-1/T1-07-assets-fallback-and-cache.md) | Fallback asset set, asset cache and texture arrays | T0-01 | agent (cloud) | done |
+| [T1-08](stage-1/T1-08-offline-mode.md) | Offline mode for client and server | owner decision (legal.md rule 7) | agent (cloud) | done |
 | [T1-09](stage-1/T1-09-light-in-world.md) | Lighting integrated with the world | T1-01, T1-03 | agent (cloud) | todo |
 | [T1-10](stage-1/T1-10-loading-queue.md) | Chunk loading queue with priorities | T1-01, T1-03 | agent (cloud) | todo |
 | [T1-11](stage-1/T1-11-renderer-terrain.md) | Terrain renderer: upload, culling, texture arrays, profiles | T1-05, T1-07 | agent (cloud) + laptop measurements | todo |

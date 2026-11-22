@@ -65,6 +65,7 @@ Platform findings from T0-14 that the stage 1 renderer must handle:
 
 - **Path choice:** on the Vega 10 iGPU path C was 25–32% faster than B on all backends (synthetic unit quads, non-indexed B). The default stays B until re-measured — [open question 13](../open-questions.md).
 - **Vulkan on AMD switchable-graphics laptops:** `VK_LAYER_AMD_switchable_graphics` made Vulkan enumerate zero adapters; it worked only with `VK_LOADER_LAYERS_DISABLE=VK_LAYER_AMD_switchable_graphics`. Players cannot be asked to set environment variables, so backend selection must fall back (DX12 on Windows, then GL) when Vulkan returns no adapters, and must never assume Vulkan exists.
+- **Selection (T1-05, `render::selection`):** `attempt_order` is a pure function over the enumerated adapters: backends by the user's choice, then `Vulkan → DX12 → GL` on Windows (`Vulkan → GL` on Linux, `Metal` on macOS), then any other backend that listed adapters; inside, adapters whose name matches the user's setting, then by GPU class (`HighPerformance`: discrete first — the default; `LowPower`: integrated first), then by name. Software adapters come last of all. `select_device` enumerates each backend separately (an empty Vulkan does not hide DX12), tries device creation along that order and reports failed attempts. The user preference (`GpuPreference`: backend, adapter name, power) is serde-serializable for the client settings (T1-13). `gpu-select` prints the decision on a real machine.
 - **Adapter order is not stable:** the NVIDIA "preferred GPU" program setting swapped DX12/Vulkan indices and made GL expose only the iGPU. Select adapters by type/capability/name, never by index.
 - **GL on the AMD iGPU:** `gpu-probe` crashed at process exit (segfault, after valid output) while GL was on the Vega 10 ([note](../research/gpu/probe-crash-note-2026-11-19.txt)). The renderer's GL shutdown path needs a test on this driver.
 
@@ -78,7 +79,8 @@ Platform findings from T0-14 that the stage 1 renderer must handle:
 ## Textures
 
 - Texture arrays (`texture_2d_array`) instead of an atlas; a separate array for each texture size (16, 32, 64…). The default wgpu limit is 256 layers; more — several arrays or a higher limit if the adapter allows.
-- Mipmaps are generated during asset conversion (not at runtime). This is the "smaller texture farther from the player" (PRD §14, No. 5).
+- Mipmaps are generated during asset conversion (not at runtime). This is the "smaller texture farther from the player" (PRD §14, No. 5). The 2×2 box filter weights color by alpha, so transparent texels (leaves, glass) do not darken edges (`assets::Rgba8Image::mip_chain`).
+- `assets::TextureSet` keeps one array per size, splits at 256 layers, and loads lazily: `require(name, load)` converts a texture on first use and reports new layers (`take_added`) for upload.
 - BC7 compression — only for HD packs.
 
 ## Render graph and profiles

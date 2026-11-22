@@ -186,21 +186,46 @@ fn index_mask(bits: u8) -> u64 {
     (1u64 << bits) - 1
 }
 
+/// `64 / bits`, indexed by bit width 0..=8 (0 is unused).
+const PER_WORD: [u32; 9] = [1, 64, 32, 21, 16, 12, 10, 9, 8];
+
+/// Multiplier for dividing an index `< 4096` by `PER_WORD[bits]` without a
+/// hardware divide: `i / per == (i * MAGIC[bits]) >> MAGIC_SHIFT`
+/// (`MAGIC = ceil(2^20 / per)`; the product stays below 2^32; exhaustively tested). Integer division by a
+/// run-time value is slow on some CPUs (Zen+: the T0-16 `get`/`set` misses).
+const MAGIC: [u32; 9] = {
+    let mut m = [0u32; 9];
+    let mut b = 1;
+    while b < 9 {
+        m[b] = (1u32 << MAGIC_SHIFT).div_ceil(PER_WORD[b]);
+        b += 1;
+    }
+    m
+};
+const MAGIC_SHIFT: u32 = 20;
+
+/// Word index and bit shift of packed index `i` at this width.
+#[inline]
+fn locate(bits: u8, i: usize) -> (usize, usize) {
+    let b = bits as usize;
+    let word = ((i as u32 * MAGIC[b]) >> MAGIC_SHIFT) as usize;
+    let slot = i - word * PER_WORD[b] as usize;
+    (word, slot * b)
+}
+
 /// Reads packed index `i` from `data`.
 #[inline]
 fn get_raw(data: &[u64], bits: u8, i: usize) -> u64 {
-    let per = entries_per_word(bits);
-    let word = data[i / per];
-    (word >> ((i % per) * bits as usize)) & index_mask(bits)
+    let (word, shift) = locate(bits, i);
+    (data[word] >> shift) & index_mask(bits)
 }
 
 /// Writes packed index `i` into `data`, leaving neighbouring indices intact.
 #[inline]
 fn set_raw(data: &mut [u64], bits: u8, i: usize, value: u64) {
-    let per = entries_per_word(bits);
-    let shift = (i % per) * bits as usize;
+    let (word, shift) = locate(bits, i);
     let mask = index_mask(bits) << shift;
-    let word = &mut data[i / per];
+    let word = &mut data[word];
     *word = (*word & !mask) | (value << shift);
 }
 
@@ -408,6 +433,134 @@ impl Section {
         }
     }
 
+    /// Appends the on-disk encoding (world-storage.md, format v1):
+    /// tag `0` + u16 state (single), tag `1` + u8 bits + u16 palette length +
+    /// palette u16s + packed u64 words (paletted), or tag `2` + 4096 u16s
+    /// (direct). Little endian.
+    pub fn encode(&self, out: &mut Vec<u8>) {
+        match &self.blocks {
+            SectionBlocks::Single(v) => {
+                out.push(0);
+                out.extend_from_slice(&v.0.to_le_bytes());
+            }
+            SectionBlocks::Paletted {
+                palette,
+                bits,
+                data,
+                ..
+            } => {
+                out.push(1);
+                out.push(*bits);
+                out.extend_from_slice(&(palette.len() as u16).to_le_bytes());
+                for p in palette.iter() {
+                    out.extend_from_slice(&p.0.to_le_bytes());
+                }
+                for w in data.iter() {
+                    out.extend_from_slice(&w.to_le_bytes());
+                }
+            }
+            SectionBlocks::Direct(arr) => {
+                out.push(2);
+                for v in arr.iter() {
+                    out.extend_from_slice(&v.0.to_le_bytes());
+                }
+            }
+        }
+    }
+
+    /// Decodes one section from the front of `bytes`, returning it and the
+    /// number of bytes used. Every packed index is validated against the
+    /// palette, so corrupt data yields an error, never a panic later.
+    pub fn decode(bytes: &[u8]) -> Result<(Self, usize), SectionDecodeError> {
+        let need = |n: usize| {
+            if bytes.len() < n {
+                Err(SectionDecodeError::Truncated)
+            } else {
+                Ok(())
+            }
+        };
+        let u16_at = |at: usize| u16::from_le_bytes([bytes[at], bytes[at + 1]]);
+        need(1)?;
+        match bytes[0] {
+            0 => {
+                need(3)?;
+                Ok((Self::uniform(BlockStateId(u16_at(1))), 3))
+            }
+            1 => {
+                need(4)?;
+                let bits = bytes[1];
+                let len = usize::from(u16_at(2));
+                if !(1..=8).contains(&bits) || len < 2 || len > (1usize << bits) {
+                    return Err(SectionDecodeError::Invalid);
+                }
+                let words = words_for(bits);
+                let end = 4 + 2 * len + 8 * words;
+                need(end)?;
+                let palette: Box<[BlockStateId]> =
+                    (0..len).map(|i| BlockStateId(u16_at(4 + 2 * i))).collect();
+                let base = 4 + 2 * len;
+                let data: Box<[u64]> = (0..words)
+                    .map(|w| {
+                        let mut b = [0u8; 8];
+                        b.copy_from_slice(&bytes[base + 8 * w..base + 8 * w + 8]);
+                        u64::from_le_bytes(b)
+                    })
+                    .collect();
+                let mut non_air = 0u16;
+                for i in 0..VOLUME {
+                    let idx = get_raw(&data, bits, i) as usize;
+                    let Some(&v) = palette.get(idx) else {
+                        return Err(SectionDecodeError::Invalid);
+                    };
+                    non_air += u16::from(v != BlockStateId::AIR);
+                }
+                let reverse = build_reverse(&palette);
+                Ok((
+                    Self {
+                        blocks: SectionBlocks::Paletted {
+                            palette,
+                            bits,
+                            data,
+                            reverse,
+                        },
+                        non_air,
+                    },
+                    end,
+                ))
+            }
+            2 => {
+                let end = 1 + 2 * VOLUME;
+                need(end)?;
+                let mut arr = Box::new([BlockStateId::AIR; VOLUME]);
+                for (i, v) in arr.iter_mut().enumerate() {
+                    *v = BlockStateId(u16_at(1 + 2 * i));
+                }
+                let non_air = arr.iter().filter(|&&v| v != BlockStateId::AIR).count() as u16;
+                Ok((
+                    Self {
+                        blocks: SectionBlocks::Direct(arr),
+                        non_air,
+                    },
+                    end,
+                ))
+            }
+            _ => Err(SectionDecodeError::Invalid),
+        }
+    }
+
+    /// Re-encodes states through `table` (`new = table[old]`, IDs outside the
+    /// table become `fallback`), e.g. a saved world's IDs to the current
+    /// registry (`Registry::remap`).
+    pub fn remap(&mut self, table: &[BlockStateId], fallback: BlockStateId) {
+        let map = |v: BlockStateId| table.get(usize::from(v.0)).copied().unwrap_or(fallback);
+        let mut arr = [BlockStateId::AIR; VOLUME];
+        self.unpack_into(&mut arr);
+        for v in &mut arr {
+            *v = map(*v);
+        }
+        *self = Self::from_blocks(&arr);
+    }
+
     /// Unpacks the whole section into `out`, word by word. The basis of fast
     /// gather for meshing (see world-storage.md).
     pub fn unpack_into(&self, out: &mut [BlockStateId; VOLUME]) {
@@ -502,9 +655,88 @@ impl Section {
     }
 }
 
+/// Errors decoding a stored section.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SectionDecodeError {
+    /// The input ends early.
+    Truncated,
+    /// Unknown tag, bad bit width/palette size, or an index outside the palette.
+    Invalid,
+}
+
+impl std::fmt::Display for SectionDecodeError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Truncated => write!(f, "section data is truncated"),
+            Self::Invalid => write!(f, "section data is invalid"),
+        }
+    }
+}
+
+impl std::error::Error for SectionDecodeError {}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn encode_decode_round_trip_and_remap() {
+        let mut arr = [BlockStateId::AIR; VOLUME];
+        for distinct in [1usize, 2, 3, 17, 200, 300] {
+            for (i, v) in arr.iter_mut().enumerate() {
+                *v = BlockStateId(((i * 7) % distinct) as u16);
+            }
+            let section = Section::from_blocks(&arr);
+            let mut bytes = vec![9];
+            section.encode(&mut bytes);
+            let (back, used) = Section::decode(&bytes[1..]).expect("decodes");
+            assert_eq!(used, bytes.len() - 1);
+            for i in 0..VOLUME {
+                assert_eq!(back.get(i), section.get(i));
+            }
+            assert_eq!(back.non_air(), section.non_air());
+            for cut in [0, 1, used / 2, used - 1] {
+                assert!(Section::decode(&bytes[1..1 + cut]).is_err(), "cut {cut}");
+            }
+        }
+        // A packed index past the palette is rejected.
+        let s = Section::from_blocks(&{
+            let mut a = [BlockStateId(1); VOLUME];
+            a[0] = BlockStateId(2);
+            a[1] = BlockStateId(3);
+            a
+        });
+        let mut bytes = Vec::new();
+        s.encode(&mut bytes);
+        bytes[2..4].copy_from_slice(&2u16.to_le_bytes()); // palette len 3 -> 2
+        bytes.drain(8..10);
+        assert!(Section::decode(&bytes).is_err());
+        // Remap: 1 -> 5, unknown 3 -> fallback 9, air stays air.
+        let mut r = s.clone();
+        r.remap(
+            &[BlockStateId::AIR, BlockStateId(5), BlockStateId(6)],
+            BlockStateId(9),
+        );
+        assert_eq!(
+            (r.get(0), r.get(1), r.get(2)),
+            (BlockStateId(6), BlockStateId(9), BlockStateId(5))
+        );
+    }
+
+    #[test]
+    fn magic_division_is_exact_for_every_width_and_index() {
+        for bits in 1u8..=8 {
+            let per = entries_per_word(bits);
+            assert_eq!(PER_WORD[bits as usize] as usize, per);
+            for i in 0..VOLUME {
+                assert_eq!(
+                    locate(bits, i),
+                    (i / per, (i % per) * bits as usize),
+                    "bits {bits} i {i}"
+                );
+            }
+        }
+    }
 
     fn ids(values: &[u16]) -> [BlockStateId; VOLUME] {
         let mut arr = [BlockStateId::AIR; VOLUME];

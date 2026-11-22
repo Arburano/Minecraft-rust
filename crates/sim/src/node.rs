@@ -157,9 +157,19 @@ impl RegionNode {
     /// Intents for entities that are in flight or unknown are dropped (the
     /// entity is between regions; the drop is deterministic).
     pub fn tick(&mut self, intents: &[(NetId, Vec3)]) {
-        self.pre_tick(intents);
-        self.simulate();
-        self.exchange();
+        engine_core::zone!("sim::tick");
+        {
+            engine_core::zone!("sim::pre_tick");
+            self.pre_tick(intents);
+        }
+        {
+            engine_core::zone!("sim::simulate");
+            self.simulate();
+        }
+        {
+            engine_core::zone!("sim::exchange");
+            self.exchange();
+        }
         // PostTick: structural operations are the public try_merge/try_split
         // calls made between ticks; nothing automatic in the prototype.
         self.tick = self.tick.next();

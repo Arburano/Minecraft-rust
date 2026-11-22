@@ -8,6 +8,14 @@ license.workspace = true
 publish = false
 
 [dependencies]
+sha2 = { workspace = true }
+
+[dev-dependencies]
+criterion = { workspace = true }
+
+[[bench]]
+name = "assets"
+harness = false
 
 
 [lints]

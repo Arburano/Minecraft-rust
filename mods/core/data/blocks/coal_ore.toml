@@ -1,0 +1,6 @@
+id = "core:coal_ore"
+model = "core:models/cube_all"
+textures = { all = "minecraft:block/coal_ore" }   # fallback: core:fallback/coal_ore
+hardness = 3.0
+tool = "pickaxe"
+opaque = true

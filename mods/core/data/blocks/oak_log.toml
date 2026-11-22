@@ -1,0 +1,6 @@
+id = "core:oak_log"
+model = "core:models/cube_all"
+textures = { all = "minecraft:block/oak_log" }   # fallback: core:fallback/oak_log
+hardness = 2.0
+tool = "axe"
+opaque = true

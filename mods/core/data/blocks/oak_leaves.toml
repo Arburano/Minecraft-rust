@@ -1,0 +1,7 @@
+id = "core:oak_leaves"
+model = "core:models/cube_all"
+textures = { all = "minecraft:block/oak_leaves" }   # fallback: core:fallback/oak_leaves
+hardness = 0.2
+opaque = false
+transparent = true
+light_opacity = 1
