@@ -3,9 +3,17 @@
 //! Spec:
 //! - `docs/architecture/worldgen.md`
 //!
-//! Status: the deterministic test corpus is implemented (task T0-12,
-//! [`test_corpus`]). The mod-driven generation pipeline is a later stage.
+//! Status: the deterministic test corpus (task T0-12, [`test_corpus`]) and the
+//! overworld pipeline (task T1-03, [`Pipeline`]) configured by mod data
+//! (`mods/core/data/worldgen/overworld.toml`). Mod-registered stages through the
+//! WIT API come in stage 3.
 
+pub mod config;
+pub mod pipeline;
+pub mod stages;
 pub mod test_corpus;
+
+pub use config::{ConfigError, WorldgenConfig};
+pub use pipeline::{GenContext, Pipeline, ProtoColumn, Stage, Surface};
 
 pub use test_corpus::{CorpusArea, TestColumn, test_column, test_corpus};

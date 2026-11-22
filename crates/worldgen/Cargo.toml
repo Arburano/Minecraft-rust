@@ -8,11 +8,19 @@ license.workspace = true
 publish = false
 
 [dependencies]
+engine-core = { path = "../engine-core" }
+serde = { workspace = true }
+toml = { workspace = true }
 noise = { workspace = true }
 world = { path = "../world" }
 
 [dev-dependencies]
+criterion = { workspace = true }
 proptest = { workspace = true }
+
+[[bench]]
+name = "pipeline"
+harness = false
 
 [lints]
 workspace = true

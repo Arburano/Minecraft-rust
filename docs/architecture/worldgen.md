@@ -29,7 +29,15 @@ heightmap+biomes (cheap, 2D) ─► terrain ─► caves ─► ores ─► stru
 ## Tests
 
 - Determinism: one column generated in different orders and with different thread counts gives the same hash.
-- Speed: a column ≤ N ms per core (the number comes after the stage 1 benchmark).
+- Speed: a column ≤ N ms per core (the number comes after the stage 1 benchmark). Measured in T1-03 (VM, 4 vCPU Xeon 2.1 GHz): all stages of a 16×384×16 column ≈ 0.28–0.37 ms per core, packing into palette sections ≈ 0.26–0.32 ms, 64 columns on 4 threads ≈ 6–7.8 ms. **Proposed target: ≤ 1 ms per column per core including packing** (≈ 1.5× margin over the VM numbers) — owner to confirm.
+
+## Implementation (T1-03)
+
+- `worldgen::Pipeline` holds ordered `Stage`s (`fn run(&GenContext, &mut ProtoColumn)`); `replace(id, …)` and `insert_after(id, …)` let mods change it (through the mod API from stage 3). Built-in overworld: `core:surface` (2D heightmap + biome pass, also `GenContext::surface` for LOD and neighbors) → `core:terrain` → `core:caves` (3D noise on a 4-block grid, trilinear interpolation) → `core:ores` (random-walk veins) → `core:trees`.
+- All blocks and parameters come from mod data: `mods/core/data/worldgen/overworld.toml` names blocks by id and is resolved through the registry; the engine code contains no block names.
+- **Cross-column features without a dependency graph:** every column places the trees whose origins lie in itself and its 8 neighbors (origins and shapes are pure functions of the seed and the origin), writing only its own cells. Columns are therefore pure functions of `(seed, position)`; a test checks that every crown is complete across borders. The chunk-status dependency graph described above is needed only once a stage must read a neighbor's *generated blocks* (not its pure surface data); none does yet.
+- `Pipeline::generate_parallel` runs columns as `Visible` jobs on the T0-02 pool.
+- Previews: `cargo run --release -p worldgen --example map_preview -- out.bmp [seed] [radius]` (top-down map), `--example stats` (biome shares, sea share, tree count).
 
 ## Test corpus (T0-12)
 

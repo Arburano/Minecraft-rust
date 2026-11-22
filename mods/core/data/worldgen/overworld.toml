@@ -1,0 +1,77 @@
+# Overworld generation parameters for the built-in pipeline stages
+# (docs/architecture/worldgen.md). Block names refer to mods/core/data/blocks.
+sea_level = 62
+
+[terrain]
+base_height = 68        # mean surface y
+amplitude = 22          # +- blocks from hills noise
+roughness = 6           # extra small-scale detail
+scale = 0.0085          # horizontal frequency of the hills noise
+stone = "core:stone"
+fluid = "core:water"
+bedrock_depth = 0       # reserved; no bedrock block yet
+
+[caves]
+air = "core:air"
+threshold = 0.42        # carve where |3D noise| > threshold
+scale = 0.045
+min_y = -60
+max_below_surface = 6   # do not carve within this many blocks under the surface
+
+[[biomes]]
+id = "plains"
+max_temperature = 0.47   # temperature = Perlin * 0.5 + 0.5, mostly within 0.25..0.75
+top = "core:grass_block"
+filler = "core:dirt"
+filler_depth = 3
+trees_per_column = 0.2
+
+[[biomes]]
+id = "forest"
+max_temperature = 0.6
+top = "core:grass_block"
+filler = "core:dirt"
+filler_depth = 4
+trees_per_column = 3.0
+
+[[biomes]]
+id = "desert"
+max_temperature = 1.0
+top = "core:sand"
+filler = "core:sand"
+filler_depth = 5
+trees_per_column = 0.0
+
+[beach]
+block = "core:sand"
+max_above_sea = 2
+
+[[ores]]
+block = "core:coal_ore"
+replaces = "core:stone"
+veins_per_column = 12
+vein_size = 9
+min_y = 0
+max_y = 128
+
+[[ores]]
+block = "core:iron_ore"
+replaces = "core:stone"
+veins_per_column = 6
+vein_size = 6
+min_y = -64
+max_y = 64
+
+[[ores]]
+block = "core:gravel"
+replaces = "core:stone"
+veins_per_column = 3
+vein_size = 16
+min_y = -64
+max_y = 96
+
+[trees]
+log = "core:oak_log"
+leaves = "core:oak_leaves"
+min_trunk = 4
+max_trunk = 6

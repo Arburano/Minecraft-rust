@@ -276,25 +276,61 @@ fn unpack_paletted(
 
 /// Builds the smallest representation for a full block array.
 fn build_from_array(arr: &[BlockStateId; VOLUME]) -> SectionBlocks {
-    let mut palette: Vec<BlockStateId> = Vec::new();
-    let mut index: HashMap<BlockStateId, u8> = HashMap::new();
-    for &v in arr {
-        if index.contains_key(&v) {
-            continue;
+    // One pass assigns palette indices: runs of equal blocks hit the last-value
+    // cache, small palettes use a linear scan, large ones a hash map (T1-03:
+    // a SipHash lookup per block made packing 5x slower than generation).
+    let mut indices = [0u8; VOLUME];
+    let mut palette: Vec<BlockStateId> = Vec::with_capacity(16);
+    let mut map: Option<HashMap<BlockStateId, u8>> = None;
+    palette.push(arr[0]);
+    let (mut last, mut last_index) = (arr[0], 0u8);
+    for (slot, &v) in indices.iter_mut().zip(arr.iter()) {
+        if v != last {
+            let found = match &map {
+                Some(m) => m.get(&v).copied(),
+                None => palette.iter().position(|&p| p == v).map(|i| i as u8),
+            };
+            last_index = match found {
+                Some(i) => i,
+                None => {
+                    if palette.len() == 256 {
+                        return SectionBlocks::Direct(Box::new(*arr));
+                    }
+                    let i = palette.len() as u8;
+                    palette.push(v);
+                    match &mut map {
+                        Some(m) => {
+                            m.insert(v, i);
+                        }
+                        None if palette.len() > 16 => {
+                            map = Some(
+                                palette
+                                    .iter()
+                                    .enumerate()
+                                    .map(|(j, &p)| (p, j as u8))
+                                    .collect(),
+                            );
+                        }
+                        None => {}
+                    }
+                    i
+                }
+            };
+            last = v;
         }
-        if palette.len() == 256 {
-            return SectionBlocks::Direct(Box::new(*arr));
-        }
-        index.insert(v, palette.len() as u8);
-        palette.push(v);
+        *slot = last_index;
     }
     if palette.len() == 1 {
         return SectionBlocks::Single(palette[0]);
     }
     let bits = bits_for(palette.len());
+    let per = entries_per_word(bits);
     let mut data = vec![0u64; words_for(bits)].into_boxed_slice();
-    for (i, &v) in arr.iter().enumerate() {
-        set_raw(&mut data, bits, i, index[&v] as u64);
+    for (word, chunk) in data.iter_mut().zip(indices.chunks(per)) {
+        *word = chunk
+            .iter()
+            .enumerate()
+            .fold(0u64, |w, (j, &k)| w | (u64::from(k) << (j * bits as usize)));
     }
     let reverse = build_reverse(&palette);
     SectionBlocks::Paletted {
