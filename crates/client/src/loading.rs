@@ -161,6 +161,9 @@ pub struct Loader {
     /// Mesh chunks stored or dropped since the last `take_changed_meshes`,
     /// when tracking is on.
     changed_meshes: Option<HashSet<MeshChunkPos>>,
+    /// Columns removed from the map since the last `take_unloaded`, when
+    /// tracking is on (the save path writes edited ones).
+    unloaded: Option<Vec<Column>>,
     finished: VecDeque<JobOutput>,
     stats: LoadStats,
 }
@@ -184,6 +187,7 @@ impl Loader {
             meshes: HashMap::new(),
             visibility: HashMap::new(),
             changed_meshes: None,
+            unloaded: None,
             finished: VecDeque::new(),
             stats: LoadStats::default(),
         }
@@ -219,6 +223,18 @@ impl Loader {
     pub fn take_changed_meshes(&mut self, out: &mut Vec<MeshChunkPos>) {
         if let Some(c) = &mut self.changed_meshes {
             out.extend(c.drain());
+        }
+    }
+
+    /// Starts keeping columns that leave the map (see [`Self::take_unloaded`]).
+    pub fn track_unloads(&mut self) {
+        self.unloaded.get_or_insert_with(Vec::new);
+    }
+
+    /// Moves the columns unloaded since the last call into `out`.
+    pub fn take_unloaded(&mut self, out: &mut Vec<Column>) {
+        if let Some(u) = &mut self.unloaded {
+            out.append(u);
         }
     }
 
@@ -300,6 +316,20 @@ impl Loader {
         light: &mut WorldLight,
         pool: &JobPool,
     ) {
+        self.tick_with_source(viewer, map, light, pool, None);
+    }
+
+    /// [`Self::tick`] with a source of saved columns: a column the source
+    /// returns is used instead of generating it (single-player saves). The
+    /// source runs on the main thread within the tick budget.
+    pub fn tick_with_source(
+        &mut self,
+        viewer: &Viewer,
+        map: &mut WorldMap,
+        light: &mut WorldLight,
+        pool: &JobPool,
+        mut source: Option<&mut dyn FnMut(ColumnPos) -> Option<Column>>,
+    ) {
         let start = Instant::now();
         let center = viewer.column();
         // Columns within the radius become ready: their mesh chunks need light
@@ -339,7 +369,11 @@ impl Loader {
             .filter(|&c| !inside(c, keep))
             .collect();
         for c in loaded {
-            map.remove_column(c);
+            if let Some(col) = map.remove_column(c)
+                && let Some(out) = &mut self.unloaded
+            {
+                out.push(col);
+            }
             light.remove_column(c);
         }
         let changed = &mut self.changed_meshes;
@@ -381,7 +415,7 @@ impl Loader {
             }
         }
         self.stats.max_apply = self.stats.max_apply.max(apply_start.elapsed());
-        self.schedule(viewer, map, pool, start);
+        self.schedule(viewer, map, pool, start, &mut source);
         self.stats.max_tick = self.stats.max_tick.max(start.elapsed());
     }
 
@@ -441,7 +475,14 @@ impl Loader {
         }
     }
 
-    fn schedule(&mut self, viewer: &Viewer, map: &WorldMap, pool: &JobPool, tick_start: Instant) {
+    fn schedule(
+        &mut self,
+        viewer: &Viewer,
+        map: &WorldMap,
+        pool: &JobPool,
+        tick_start: Instant,
+        source: &mut Option<&mut dyn FnMut(ColumnPos) -> Option<Column>>,
+    ) {
         // 3. Submit new work by priority.
         let center = viewer.column();
         let r = self.config.radius;
@@ -542,6 +583,16 @@ impl Loader {
             } else {
                 Priority::Prefetch
             };
+            if let (Target::Generate(c), Some(src)) = (target, source.as_mut())
+                && let Some(column) = src(c)
+            {
+                // Saved column: no job; applied like a generated one.
+                self.in_flight.insert(target, CancelToken::new());
+                self.finished.push_back(JobOutput::Generated(column));
+                self.stats.submitted += 1;
+                self.stats.max_submit = self.stats.max_submit.max(t.elapsed());
+                continue;
+            }
             self.submit(target, map, pool, class);
             self.stats.max_submit = self.stats.max_submit.max(t.elapsed());
         }
