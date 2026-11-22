@@ -418,7 +418,14 @@ pub fn pause(ui: &mut Ui) -> PauseAction {
 }
 
 /// Crosshair, hotbar and the optional debug text.
-pub fn hud(ui: &mut Ui, hotbar: &[&str], selected: usize, debug: Option<&str>, loading: bool) {
+pub fn hud(
+    ui: &mut Ui,
+    hotbar: &[&str],
+    selected: usize,
+    debug: Option<&str>,
+    status: Option<&str>,
+    loading: bool,
+) {
     egui::CentralPanel::no_frame().show(ui, |ui| {
         let rect = ui.max_rect();
         let c = rect.center();
@@ -444,6 +451,15 @@ pub fn hud(ui: &mut Ui, hotbar: &[&str], selected: usize, debug: Option<&str>, l
             egui::FontId::proportional(15.0),
             Color32::WHITE,
         );
+        if let Some(s) = status {
+            p.text(
+                rect.center_bottom() - egui::vec2(0.0, 40.0),
+                egui::Align2::CENTER_BOTTOM,
+                s,
+                egui::FontId::proportional(15.0),
+                Color32::from_rgb(255, 240, 160),
+            );
+        }
         if loading {
             p.text(
                 c + egui::vec2(0.0, 40.0),
