@@ -56,3 +56,11 @@ The owner asked to test the game with the original textures from their own copy.
 - **Screenshot:** the owner's screenshot shows original textures, so it is not committed (`docs/legal.md` rule 2).
 - **Still open:** the opt-in unit test on the real installation. The game path it covers is confirmed in play.
 
+## Opt-in tests on the laptop (owner, 2026-11-22)
+
+- `assets` `own_installation_when_configured`: version 1.21.6, 8 textures in 223.9 ms.
+- `client` `own_textures`: `faces_come_from_the_installation_with_tints` ok; the real installation (1.21.6) gave 90 faces (+12 fallback) in 178.7 ms.
+- `no_third_party_assets`: ok.
+- **Prism Launcher:** the laptop run read the installation from a Prism Launcher folder (`D:\Games\Prism Launcher`, `minecraft-1.21.6-client.jar`). The tests `reads_prism_launcher_installation` and `real_installation_when_configured` that the owner reported **are not in the repository yet**: they were added on the laptop and are not pushed. They need to come in through a PR (and be reconciled with T1-19, which changed `textures::build` to take a source list).
+- **Timing:** with the archive opening and reading included, the full face set takes ≈ 179–222 ms; the 1 ms in the F3 overlay is the face build alone. This fits the world-loading budget.
+
