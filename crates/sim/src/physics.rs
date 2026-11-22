@@ -54,6 +54,18 @@ pub struct PhysicsConfig {
     pub swim_up: f64,
     /// Block interaction distance from the eye.
     pub reach: f64,
+    /// Whether the player may fly (double-tap jump).
+    pub can_fly: bool,
+    /// Horizontal acceleration while flying (at fly speed ×1).
+    pub fly_accel: f64,
+    /// Vertical acceleration while flying up or down (at fly speed ×1).
+    pub fly_vertical_accel: f64,
+    /// Vertical velocity multiplier per tick while flying (no gravity).
+    pub fly_vertical_drag: f64,
+    /// Acceleration multiplier while sprinting in flight.
+    pub fly_sprint_multiplier: f64,
+    /// Lowest and highest fly speed multiplier the mouse wheel can set.
+    pub fly_speed_range: [f64; 2],
     /// Blocks the player swims in (block ids, e.g. `core:water`).
     pub swim_blocks: Vec<String>,
 }
@@ -80,6 +92,12 @@ impl Default for PhysicsConfig {
             fluid_gravity: 0.02,
             swim_up: 0.04,
             reach: 4.5,
+            can_fly: true,
+            fly_accel: 0.05,
+            fly_vertical_accel: 0.15,
+            fly_vertical_drag: 0.6,
+            fly_sprint_multiplier: 2.0,
+            fly_speed_range: [0.25, 8.0],
             swim_blocks: Vec::new(),
         }
     }
@@ -164,6 +182,12 @@ pub struct PlayerInput {
     pub jump: bool,
     /// Sprint held.
     pub sprint: bool,
+    /// Descend held (flying: move down).
+    pub descend: bool,
+    /// Toggle flight this tick (double-tapped jump).
+    pub toggle_fly: bool,
+    /// Fly speed multiplier (mouse wheel); values ≤ 0 mean ×1.
+    pub fly_speed: f64,
     /// View yaw in radians; 0 looks towards −Z, positive turns towards −X.
     pub yaw: f64,
 }
@@ -179,6 +203,8 @@ pub struct PlayerBody {
     pub on_ground: bool,
     /// Inside a swim block after the last tick.
     pub in_fluid: bool,
+    /// Flying (no gravity; ends on landing).
+    pub flying: bool,
 }
 
 /// An axis-aligned box.
@@ -310,7 +336,28 @@ pub fn step(
     } else {
         1.0
     };
-    let accel = if body.in_fluid {
+    if input.toggle_fly {
+        body.flying = cfg.can_fly && !body.flying;
+        if body.flying {
+            // Start from a hover: leftover gravity must not land the player at once.
+            body.vel.y = 0.0;
+        }
+    }
+    let fly_speed = if input.fly_speed > 0.0 {
+        input
+            .fly_speed
+            .clamp(cfg.fly_speed_range[0], cfg.fly_speed_range[1])
+    } else {
+        1.0
+    };
+    let accel = if body.flying {
+        let boost = if input.sprint && input.forward > 0.0 {
+            cfg.fly_sprint_multiplier
+        } else {
+            1.0
+        };
+        cfg.fly_accel * fly_speed * boost
+    } else if body.in_fluid {
         cfg.fluid_accel
     } else if body.on_ground {
         cfg.walk_accel * sprint
@@ -318,7 +365,15 @@ pub fn step(
         cfg.air_accel * sprint
     };
     body.vel += wish * accel;
-    if input.jump {
+    if body.flying {
+        let v = cfg.fly_vertical_accel * fly_speed;
+        if input.jump {
+            body.vel.y += v;
+        }
+        if input.descend {
+            body.vel.y -= v;
+        }
+    } else if input.jump {
         if body.in_fluid {
             body.vel.y += cfg.swim_up;
         } else if body.on_ground {
@@ -358,9 +413,17 @@ pub fn step(
     if moved.y != want.y {
         body.vel.y = 0.0;
     }
+    if body.flying && body.on_ground {
+        // Landing ends the flight.
+        body.flying = false;
+    }
 
     // Gravity and friction for the next tick.
-    if body.in_fluid {
+    if body.flying {
+        body.vel.x *= cfg.air_friction;
+        body.vel.z *= cfg.air_friction;
+        body.vel.y *= cfg.fly_vertical_drag;
+    } else if body.in_fluid {
         body.vel *= cfg.fluid_drag;
         body.vel.y -= cfg.fluid_gravity;
     } else {
@@ -571,6 +634,9 @@ mod tests {
             strafe: ((t / 17) % 3) as f64 - 1.0,
             jump: t % 23 == 0,
             sprint: t % 100 > 60,
+            descend: t % 70 > 60,
+            toggle_fly: t % 150 == 1,
+            fly_speed: 1.0 + (t / 100) as f64 * 0.5,
             yaw: t as f64 * 0.037,
         };
         let simulate = || {
@@ -587,6 +653,113 @@ mod tests {
             trace
         };
         assert_eq!(simulate(), simulate());
+    }
+
+    #[test]
+    fn flying_hovers_rises_sinks_and_lands() {
+        let w = flat();
+        let cfg = PhysicsConfig::default();
+        let mut b = PlayerBody {
+            pos: DVec3::new(0.5, 64.0, 0.5),
+            on_ground: true,
+            ..Default::default()
+        };
+        // Double-tap: jump, then toggle in the air.
+        step(
+            &mut b,
+            &PlayerInput {
+                jump: true,
+                ..Default::default()
+            },
+            &cfg,
+            &w,
+        );
+        step(
+            &mut b,
+            &PlayerInput {
+                toggle_fly: true,
+                ..Default::default()
+            },
+            &cfg,
+            &w,
+        );
+        assert!(b.flying);
+        for _ in 0..40 {
+            step(&mut b, &PlayerInput::default(), &cfg, &w);
+        }
+        let hover = b.pos.y;
+        for _ in 0..20 {
+            step(&mut b, &PlayerInput::default(), &cfg, &w);
+        }
+        assert!((b.pos.y - hover).abs() < 1e-9, "no gravity while flying");
+        assert!(hover > 64.0, "hovers where flight started: {hover}");
+        run(
+            &mut b,
+            PlayerInput {
+                jump: true,
+                ..Default::default()
+            },
+            20,
+            &w,
+        );
+        assert!(b.pos.y > hover + 5.0, "rises: {}", b.pos.y);
+        run(
+            &mut b,
+            PlayerInput {
+                descend: true,
+                ..Default::default()
+            },
+            200,
+            &w,
+        );
+        assert_eq!(b.pos.y, 64.0);
+        assert!(!b.flying, "landing ends the flight");
+    }
+
+    #[test]
+    fn fly_speed_multiplier_scales_horizontal_speed() {
+        let w = flat();
+        let speed = |mult: f64| {
+            let mut b = PlayerBody {
+                pos: DVec3::new(0.5, 80.0, 0.5),
+                flying: true,
+                ..Default::default()
+            };
+            let input = PlayerInput {
+                forward: 1.0,
+                fly_speed: mult,
+                ..Default::default()
+            };
+            run(&mut b, input, 100, &w);
+            let start = b.pos;
+            run(&mut b, input, 20, &w);
+            (b.pos - start).length()
+        };
+        let base = speed(1.0);
+        assert!(
+            (10.0..12.0).contains(&base),
+            "fly speed ≈ 11 blocks/s: {base}"
+        );
+        assert!((speed(2.0) / base - 2.0).abs() < 0.01);
+        assert!(
+            (speed(100.0) / base - 8.0).abs() < 0.01,
+            "clamped to the range"
+        );
+        let cfg = PhysicsConfig {
+            can_fly: false,
+            ..PhysicsConfig::default()
+        };
+        let mut b = PlayerBody::default();
+        step(
+            &mut b,
+            &PlayerInput {
+                toggle_fly: true,
+                ..Default::default()
+            },
+            &cfg,
+            &w,
+        );
+        assert!(!b.flying, "a profile can forbid flight");
     }
 
     #[test]
