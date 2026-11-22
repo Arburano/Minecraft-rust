@@ -17,7 +17,7 @@ The single source of numbers. Change here and in PRD §1 at the same time. Statu
 | Minimum full-data distance | 8 chunks (Low), 12 (default), 16 (High) | Target |
 | Distance with LOD | 64 chunks on GTX 1050 | Target (stage 5) |
 | Client RAM, 12 chunks | ≤ 1 GiB internal budget; ≤ 2 GB external target | Hypothesis: 0.5–0.9 GiB |
-| Cold start to menu | ≤ 5 s | Target |
+| Cold start to menu | ≤ 5 s | Measured on the VM only (T1-13, 4 vCPU Xeon 2.1 GHz under Xvfb with software Vulkan, `client --measure-startup`): first run 2.35 s (cold shader and driver caches), then 0.10–0.12 s. Laptop run pending (`scripts/cold_start.ps1`) |
 | Joining a server until control | ≤ 5 s with asset cache | Target |
 | GPU geometry time | ≤ 8 ms per frame on iGPU | Measured (Radeon RX Vega 10, path B as the engine would select: 2.417 ms p50 / 2.619 ms p95 on DX12, worst backend GL 2.612 / 2.821; path C 1.637–1.948 ms p50; bare-metal ASUS FX505DU, 3 runs per combination, [T0-14 summary](../research/gpu/summary-2026-11-19.md)) |
 | CPU command recording | ≤ 1 ms per frame | Measured (Ryzen 7 3750H, worst adapter/backend Vega 10 + DX12: 0.535 ms p50 / 0.821 ms p95 median of 3 runs, worst single-run p95 0.923 ms; judged at p95 — the budget does not name a statistic; single-frame maxima exceed 1 ms: 1.323 ms Vega 10 DX12 B, 1.061 ms Vega 10 DX12 C; [T0-14 summary](../research/gpu/summary-2026-11-19.md)) |

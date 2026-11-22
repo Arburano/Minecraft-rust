@@ -33,3 +33,10 @@ T1-09 lights edits correctly but through a costly world path: rebuilding a 48³ 
 cargo bench -p light --bench world_light -- --warm-up-time 1 --measurement-time 2   # 3 runs; the "world edit" lines
 cargo run --release -p client --example edit_latency -- 100                         # 3 runs
 ```
+
+## Owner decision (2026-11-22)
+
+Both follow-ups are accepted:
+
+1. An ADR (status "Proposed" first) for persistent per-region light grids, the way to ≤ 100 µs per edit.
+2. A cheaper pass for sky changes that reach below the snapshot (≈ 10 ms on the VM). Either chained slabs (exact, an estimated ≈ 1–2 ms) or spreading the work over frames (light below appears a few frames later) is acceptable. The agent prefers chained slabs because they are exact and add no visible delay.

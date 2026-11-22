@@ -1,6 +1,6 @@
 # 0013. Replaceable movement and world generation (gameplay slots)
 
-Status: Proposed (2026-11-22, from the owner's request; waits for the owner's approval)
+Status: Accepted (owner, 2026-11-22)
 
 ## Context
 
@@ -18,7 +18,7 @@ Where things stand today:
   - ADR-0006: mods are WASM components with batched calls.
   - ADR-0010: the launcher/updater installs what a pack lists.
 
-## Decision (proposed)
+## Decision
 
 1. **Gameplay slots.** A slot is a part of the game that exactly one provider fills per world. It is chosen when the world is created (or in the server config) and stored in the world metadata (`world.redb`). The first two slots are `movement` and `worldgen` (per dimension). A provider is a mod that declares `provides = ["movement"]` or `provides = ["worldgen:overworld"]` in `mod.toml`. Two providers for one slot is a load error, with a clear message.
 2. **The engine keeps only mechanisms:**
