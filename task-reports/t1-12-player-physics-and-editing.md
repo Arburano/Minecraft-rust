@@ -105,3 +105,23 @@ Raw logs saved in `docs/research/bare-metal-2026-11-22-wave2/edit_latency-run{1.
   - water is only a swim volume (no currents);
   - the `Save` dirty marks are left for the storage writer.
 - Not measured on the laptop yet (rule 7): all numbers above are from the VM.
+
+## Addition: flight (owner request, 2026-11-22)
+
+- **`sim::physics`:**
+  - `PlayerInput` gained `descend`, `toggle_fly` (a one-tick event) and `fly_speed`; `PlayerBody` gained `flying`;
+  - flight has no gravity: jump moves up, descend moves down, sprint ×2, vertical drag 0.6, and landing ends it;
+  - starting flight zeroes the vertical speed;
+  - the numbers live in `physics.toml` (`can_fly`, `fly_accel` 0.05, `fly_vertical_accel` 0.15, `fly_vertical_drag` 0.6, `fly_sprint_multiplier` 2, `fly_speed_range` [0.25, 8]).
+- **Client:**
+  - a double-tapped Space within 300 ms toggles flight; Shift descends, and sprint is now Ctrl only;
+  - while flying, the mouse wheel changes the fly speed (×1.25 per notch), shown above the hotbar;
+  - flight state and speed are saved in `world.toml`.
+- **Tests:**
+  - flight hovers, rises, sinks and lands;
+  - fly speed ≈ 11 blocks/s at ×1 and scales exactly with the multiplier, clamped to the range;
+  - `can_fly = false` forbids it;
+  - the determinism script now also flies;
+  - `client` `flight_and_fly_speed_are_saved`.
+- **What went wrong:** the first version landed the player on the first flying tick, because leftover gravity velocity hit the ground right away. The new session test found it; fixed by zeroing the vertical speed when flight starts.
+

@@ -81,9 +81,9 @@ Menu responsibilities (formerly the launcher's responsibilities):
   - deferred relight, capped at 2 sections per frame;
   - saving: edited columns when they are unloaded, every `autosave_seconds`, and on quit. Unedited columns are regenerated, which is deterministic. Saved columns are relit on load, because the light computed from blocks is exact.
 - **In game:**
-  - WASD, Space (jump / swim up), Ctrl or Shift (sprint), mouse look with the cursor grabbed;
+  - WASD, Space (jump / swim up / fly up; double-tap toggles flight), Ctrl (sprint), Shift (fly down), mouse look with the cursor grabbed;
   - left click digs, right click places the selected block;
-  - 1–9 and the mouse wheel pick from the hotbar; F3 shows the debug overlay;
+  - 1–9 and the mouse wheel pick from the hotbar; while flying the wheel sets the fly speed instead, shown above the hotbar; F3 shows the debug overlay;
   - Esc pauses ("Back to game", "Save and quit to title"), and losing focus pauses too.
   
   Rendering is the T1-11 terrain renderer with cave culling and the profile's distance and fog.
