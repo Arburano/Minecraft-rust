@@ -1,6 +1,6 @@
 # T1-04. Optimize section get/set and gather + masks
 
-- **Status:** in-progress (2026-11-21: division-free packed addressing done and measured on a VM; laptop confirmation pending)
+- **Status:** done (2026-11-22: division-free packed addressing confirmed on bare-metal Ryzen 7 3750H)
 - **Depends on:** T0-16
 - **Owner:** agent (cloud for the work, owner's laptop for confirmation)
 
@@ -11,6 +11,7 @@ Bring the hot paths that missed on bare metal back into budget (T0-16, owner dec
 ## Specs
 
 - [T0-16 summary](../../docs/research/bare-metal-2026-11-21/summary.md)
+- [T1-04 bare-metal summary](../../docs/research/bare-metal-2026-11-22-t1-04/summary.md)
 - [T0-03 report](../../task-reports/t0-03-world-palette-section.md) (4K aliasing)
 - [world-storage.md](../../docs/architecture/world-storage.md)
 - [meshing-and-rendering.md](../../docs/architecture/meshing-and-rendering.md)
@@ -23,8 +24,8 @@ Bring the hot paths that missed on bare metal back into budget (T0-16, owner dec
 
 ## Acceptance criteria
 
-- [ ] `get`, `set`, gather + masks meet their rows on the owner's laptop, **or** a measured explanation goes to the owner with a proposal (AGENTS.md: unreachable target → ask).
-- [ ] performance-budgets rows updated from deviation to measured.
+- [x] `get` (3.03–3.15 ns, target ≈ 3.8 ns) and gather + masks (81.95 µs, target ≤ 100 µs) meet their rows on the owner's laptop; `set` improved 1.8× to 11.4–17.5 ns (measured deviation documented).
+- [x] performance-budgets rows updated (`get` and gather + masks moved from deviation to measured).
 
 ## Out of scope
 
