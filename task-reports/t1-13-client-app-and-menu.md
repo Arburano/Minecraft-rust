@@ -101,3 +101,14 @@ Cloud VM (4 vCPU Intel Xeon 2.1 GHz), Xvfb with software Vulkan (llvmpipe):
 - **Render distance:** changing the quality profile applies to the radius of the next world opened (the loader is created with it) and to fog and culling at once.
 - The rayon pool (light, deep sky changes) and the engine job pool run side by side (noted in T1-16).
 - All numbers are from the VM (rule 7). The laptop run is pending: cold start ×3, FPS with F3, and movement feel.
+
+## Fix: dark patches far from spawn (owner report, 2026-11-22)
+
+- **Symptom:** after flying far, dark blotches appeared on the surface and in caves (the owner's screenshots).
+- **Cause:** the session never told the renderer which columns were unloaded, so their light bricks stayed in the GPU light atlas (8,192 bricks). A headless probe flying at ×8 reproduced it: the atlas was full after ≈ 2.5 km, and every later section's light upload failed (≈ 58,000 failures in 2.5 minutes). Those sections then showed stale light from an older section in the same toroidal indirection slot (1,024 blocks apart).
+- **Fix:**
+  - `Session::render_updates` first reports the sections of unloaded columns (skipped if the column came back);
+  - `WorldView::sync` frees their bricks and resets their indirection entries before uploading new light.
+- **After the fix,** the same probe holds the atlas steady while flying 12 km: ≈ 1,300 bricks at 12 chunks and ≈ 2,200 at 16, with 0 failures. The atlas size stays as it is (≈ 4× margin at 16 chunks).
+- **Test:** `client` `unloaded_columns_are_reported_for_the_renderer` flies 300 blocks away and checks that unloaded sections are reported and that no section of a loaded column is. It fails when the reporting is disabled (checked).
+- **Lesson:** the T1-11 renderer test loaded a world once and never moved, and the T1-13 tests never checked GPU-side resources over a long flight; the owner's playtest found it.

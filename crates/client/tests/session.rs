@@ -144,3 +144,58 @@ fn flight_and_fly_speed_are_saved() {
     s.close().expect("close");
     let _ = std::fs::remove_dir_all(root);
 }
+
+/// Flying away unloads columns; their sections must be reported to the
+/// renderer (else the GPU light atlas fills up and stale light shows as dark
+/// patches far from spawn — owner report 2026-11-22).
+#[test]
+fn unloaded_columns_are_reported_for_the_renderer() {
+    let root = std::env::temp_dir().join(format!("client-unload-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    let dir = worlds::create(&root, "Away", 3).expect("create");
+    let mut s = Session::open(&dir, config()).expect("open");
+    run(&mut s, PlayerInput::default(), |s, _| s.is_playing());
+    for _ in 0..10 {
+        s.fixed_tick(&PlayerInput::default());
+    }
+    s.fixed_tick(&PlayerInput {
+        jump: true,
+        ..PlayerInput::default()
+    });
+    s.fixed_tick(&PlayerInput {
+        toggle_fly: true,
+        ..PlayerInput::default()
+    });
+    s.adjust_fly_speed(100);
+    let start = s.player().pos;
+    let mut removed = std::collections::HashSet::new();
+    let fly = PlayerInput {
+        forward: 1.0,
+        jump: true,
+        sprint: true,
+        ..PlayerInput::default()
+    };
+    let t0 = Instant::now();
+    while (s.player().pos - start).length() < 300.0 && t0.elapsed() < Duration::from_secs(90) {
+        s.update().expect("update");
+        s.fixed_tick(&fly);
+        s.render_updates(
+            |sp| {
+                removed.insert(sp);
+            },
+            |_, _| {},
+            |_, _| {},
+        );
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    assert!((s.player().pos - start).length() >= 300.0, "flew away");
+    assert!(!removed.is_empty(), "unloaded sections were reported");
+    for sp in &removed {
+        assert!(
+            s.map().column(ColumnPos { x: sp.x, z: sp.z }).is_none(),
+            "a reported section's column is not loaded: {sp:?}"
+        );
+    }
+    s.close().expect("close");
+    let _ = std::fs::remove_dir_all(root);
+}
