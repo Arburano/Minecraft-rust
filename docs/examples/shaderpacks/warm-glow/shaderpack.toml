@@ -1,0 +1,26 @@
+# Example shader pack (our own code, docs/modding/packs.md). Copy this folder
+# into <data>/shaderpacks/ and choose it under Settings → Shader pack.
+name = "Warm glow"
+description = "Warmer light, richer colors, soft fog and a vignette. An example of the shader hooks."
+hook_version = 1
+
+[[option]]
+id = "warmth"
+label = "Warmth"
+min = 0.0
+max = 1.0
+default = 0.5
+
+[[option]]
+id = "saturation"
+label = "Saturation"
+min = 0.5
+max = 2.0
+default = 1.3
+
+[[option]]
+id = "vignette"
+label = "Vignette"
+min = 0.0
+max = 1.5
+default = 0.8

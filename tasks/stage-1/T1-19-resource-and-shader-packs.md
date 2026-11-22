@@ -1,6 +1,6 @@
 # T1-19. Resource, texture and shader packs
 
-- **Status:** todo (ADR-0014 accepted 2026-11-22)
+- **Status:** in progress (cloud part done; owner: try packs on the laptop, GPU cost of a shader pack)
 - **Depends on:** T1-11, T1-13; shares the texture path with T1-14
 - **Owner:** agent (cloud) + owner's laptop for a visual check
 
@@ -30,10 +30,16 @@ Players install their own resource packs (textures, models, sounds), texture pac
 
 ## Acceptance criteria
 
-- [ ] With no packs the game looks exactly as before (screenshot diff = 0).
-- [ ] A test texture pack changes the textures it contains and nothing else; removing it restores the old look without a restart.
-- [ ] A test shader pack (for example color grading plus a different light curve) works on paths B, Bi and C; its GPU cost is measured on the laptop and shown.
-- [ ] A broken shader pack shows a message and the game keeps running with the built-in look.
+- [x] With no packs the game looks exactly as before: the screenshot diff against a pre-T1-19 build is 0 pixels (cloud, Xvfb).
+- [x] A test texture pack changes the textures it contains and nothing else (cloud screenshot: a generated 32 px pack replaces sand, stone and dirt; everything else falls through). Removing it restores the old look without a restart: `render/tests/hot_swap.rs` swaps textures live, and swapping back gives a bit-identical frame.
+- [ ] A test shader pack works on paths B, Bi and C; its GPU cost is measured on the laptop and shown. Cloud: the example `warm-glow` pack renders (screenshot), every hook validates on all three paths (unit test), and live switching to a pack and back to the built-in look is bit-identical (`hot_swap`). The laptop cost is pending.
+- [x] A broken shader pack shows a message and the game keeps running with the built-in look (cloud run: a console message with the line and reason, an on-screen notice, the frame identical to the built-in look).
+
+## Laptop run (owner)
+
+1. Copy `docs/examples/shaderpacks/warm-glow` into `%APPDATA%\voxel-engine\shaderpacks\`.
+2. In the game, Esc → Shader pack… → Warm glow → Done. Compare FPS with F3, with and without the pack, and move the sliders.
+3. Put any resource or texture pack you own (a folder or `.zip`) into `%APPDATA%\voxel-engine\resourcepacks\`, then Esc → Resource packs… → Enable → Done.
 
 ## Out of scope
 
