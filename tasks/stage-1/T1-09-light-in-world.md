@@ -1,6 +1,6 @@
 # T1-09. Lighting integrated with the world
 
-- **Status:** todo
+- **Status:** in-progress (2026-11-22: world integration done and tested; the per-edit budget through the world path is not met — owner decision needed, see the report)
 - **Depends on:** T1-01, T1-03, T0-08
 - **Owner:** agent (cloud)
 
@@ -22,8 +22,8 @@ Connect the T0-08 `light` crate to the world: initial lighting of generated colu
 
 ## Acceptance criteria
 
-- [ ] Proptests pass; no visible seams at group borders (test).
-- [ ] Initial lighting time per column measured; per-edit budgets still met through the world path (≤ 100/200 µs p95).
+- [x] Proptests pass; no visible seams at group borders (test).
+- [ ] Initial lighting time per column measured (done: 5.4–5.6 ms p50 on the VM); per-edit budgets still met through the world path (≤ 100/200 µs p95) — **not met** (torch ≈ 0.7–1.2 ms p95, sky-changing ≈ 13–15 ms p95).
 
 ## Out of scope
 
