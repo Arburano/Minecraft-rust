@@ -16,9 +16,9 @@ use std::time::{Duration, Instant};
 
 use engine_core::jobs::{CancelToken, JobPool, Priority};
 use light::{SectionLight, WorldLight, light_column, props_from_registry};
-use mesh::{MeshChunkBuilder, MeshChunkQuads, SectionNeighborhood};
+use mesh::{ChunkVisibility, MeshChunkBuilder, MeshChunkQuads, SectionNeighborhood};
 use world::coords::{MeshChunkPos, SectionPos};
-use world::{Column, ColumnPos, ColumnState, Registry, Section, WorldMap};
+use world::{BlockStateId, Column, ColumnPos, ColumnState, Registry, Section, WorldMap};
 use worldgen::{GenContext, Pipeline};
 
 /// Work closer than this priority score (blocks) runs in the `Visible` pool
@@ -138,7 +138,7 @@ enum JobOutput {
     Failed(Target),
     Generated(Column),
     Lit(ColumnPos, Vec<(SectionPos, SectionLight)>),
-    Meshed(MeshChunkPos, MeshChunkQuads),
+    Meshed(MeshChunkPos, MeshChunkQuads, ChunkVisibility),
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
@@ -157,6 +157,7 @@ pub struct Loader {
     in_flight: HashMap<Target, CancelToken>,
     lit: HashSet<ColumnPos>,
     meshes: HashMap<MeshChunkPos, MeshChunkQuads>,
+    visibility: HashMap<MeshChunkPos, ChunkVisibility>,
     finished: VecDeque<JobOutput>,
     stats: LoadStats,
 }
@@ -178,6 +179,7 @@ impl Loader {
             in_flight: HashMap::new(),
             lit: HashSet::new(),
             meshes: HashMap::new(),
+            visibility: HashMap::new(),
             finished: VecDeque::new(),
             stats: LoadStats::default(),
         }
@@ -193,6 +195,13 @@ impl Loader {
     #[must_use]
     pub fn meshes(&self) -> &HashMap<MeshChunkPos, MeshChunkQuads> {
         &self.meshes
+    }
+
+    /// Face-to-face visibility of meshed chunks for cave culling. Chunks
+    /// without an entry (all air) are fully open.
+    #[must_use]
+    pub fn visibility(&self) -> &HashMap<MeshChunkPos, ChunkVisibility> {
+        &self.visibility
     }
 
     /// Whether a column has blocks, light and all its mesh chunks.
@@ -275,6 +284,15 @@ impl Loader {
                 keep + 1,
             )
         });
+        self.visibility.retain(|m, _| {
+            inside(
+                ColumnPos {
+                    x: m.x * 2,
+                    z: m.z * 2,
+                },
+                keep + 1,
+            )
+        });
 
         self.stats.max_unload = self.stats.max_unload.max(start.elapsed());
         // 2. Apply finished results within the budget.
@@ -330,7 +348,7 @@ impl Loader {
                         }
                     }
                 }
-                JobOutput::Meshed(m, quads) => {
+                JobOutput::Meshed(m, quads, vis) => {
                     self.in_flight.remove(&Target::Mesh(m));
                     if inside(
                         ColumnPos {
@@ -340,6 +358,11 @@ impl Loader {
                         keep + 1,
                     ) {
                         self.meshes.insert(m, quads);
+                        if vis == ChunkVisibility::ALL {
+                            self.visibility.remove(&m);
+                        } else {
+                            self.visibility.insert(m, vis);
+                        }
                     }
                 }
             }
@@ -501,7 +524,10 @@ impl Loader {
                 pool.submit(class, token.clone(), move |_| {
                     let mut builder = MeshChunkBuilder::new();
                     let quads = builder.build(&neighborhood, |b| registry.props(b).transparent);
-                    JobOutput::Meshed(m, quads)
+                    let vis = ChunkVisibility::from_voxels(builder.voxels(), |v| {
+                        registry.props(BlockStateId(v)).opaque
+                    });
+                    JobOutput::Meshed(m, quads, vis)
                 });
             }
         }

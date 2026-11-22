@@ -14,8 +14,10 @@
 
 pub mod batch;
 pub mod reference;
+pub mod visibility;
 
 pub use batch::{PackedBatch, RenderBatch};
+pub use visibility::ChunkVisibility;
 
 use binary_greedy_meshing::Mesher;
 use world::coords::{BlockPos, MeshChunkPos, SectionPos};
