@@ -96,6 +96,8 @@ pub struct Session {
     unsaved: HashSet<ColumnPos>,
     dirty: Vec<SectionPos>,
     unloaded: Vec<Column>,
+    /// Columns unloaded since the last `render_updates` (their GPU light goes).
+    gone: Vec<ColumnPos>,
     light_changed: Vec<SectionPos>,
     last_save: Instant,
     config: SessionConfig,
@@ -182,6 +184,7 @@ impl Session {
             unsaved: HashSet::new(),
             dirty: Vec::new(),
             unloaded: Vec::new(),
+            gone: Vec::new(),
             light_changed: Vec::new(),
             last_save: Instant::now(),
             config,
@@ -307,6 +310,7 @@ impl Session {
         self.loader.take_unloaded(&mut self.unloaded);
         let mut records = Vec::new();
         for col in &self.unloaded {
+            self.gone.push(col.pos());
             if self.unsaved.remove(&col.pos()) {
                 records.push(ColumnRecord {
                     pos: col.pos(),
@@ -430,13 +434,31 @@ impl Session {
         )
     }
 
-    /// Hands the renderer what changed since the last call: re-packed render
-    /// batches (an empty batch means "remove") and sections with new light.
+    /// Hands the renderer what changed since the last call, in this order:
+    /// sections of unloaded columns (their light must be dropped, else the
+    /// GPU light atlas fills up and stale light shows through), re-packed
+    /// render batches (an empty batch means "remove") and sections with new
+    /// light.
     pub fn render_updates(
         &mut self,
+        mut removed_section: impl FnMut(SectionPos),
         mut batch: impl FnMut(IVec3, &PackedBatch),
         mut section_light: impl FnMut(SectionPos, &SectionLight),
     ) {
+        let b = self.map.bounds();
+        for c in self.gone.drain(..) {
+            // A column loaded again in the meantime keeps its light.
+            if self.map.column(c).is_some() {
+                continue;
+            }
+            for i in 0..b.section_count as i32 {
+                removed_section(SectionPos {
+                    x: c.x,
+                    y: b.min_section_y + i,
+                    z: c.z,
+                });
+            }
+        }
         self.sync.collect(&mut self.loader);
         self.sync.upload(&mut batch);
         self.light_changed.clear();

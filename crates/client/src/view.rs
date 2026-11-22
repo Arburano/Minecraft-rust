@@ -68,7 +68,9 @@ impl WorldView {
     pub fn sync(&mut self, queue: &wgpu::Queue, session: &mut Session) {
         let (terrain, errors) = (&mut self.terrain, &mut self.upload_errors);
         let mut pending_light = Vec::new();
+        let mut removed = Vec::new();
         session.render_updates(
+            |sp| removed.push(IVec3::new(sp.x, sp.y, sp.z)),
             |pos, packed| {
                 if terrain.upload_batch(queue, pos, packed).is_err() {
                     *errors += 1;
@@ -76,6 +78,10 @@ impl WorldView {
             },
             |sp, l| pending_light.push((IVec3::new(sp.x, sp.y, sp.z), l.clone())),
         );
+        // Free unloaded sections' bricks before new light takes slots.
+        for sp in removed {
+            self.terrain.remove_section_light(queue, sp);
+        }
         for (sp, l) in pending_light {
             if self.terrain.set_section_light(queue, sp, &l).is_err() {
                 self.upload_errors += 1;
