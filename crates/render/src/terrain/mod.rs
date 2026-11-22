@@ -4,6 +4,8 @@
 pub mod arena;
 pub mod camera;
 pub mod culling;
+pub mod hooks;
 pub mod light_atlas;
+pub mod post;
 pub mod profiles;
 pub mod renderer;

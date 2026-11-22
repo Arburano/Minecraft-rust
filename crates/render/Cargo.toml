@@ -18,9 +18,10 @@ anyhow = { workspace = true }
 clap = { workspace = true }
 bytemuck = { workspace = true }
 pollster = { workspace = true }
+naga = { workspace = true }
 
 [dev-dependencies]
-naga = { workspace = true }
+world = { path = "../world" }
 
 [lints]
 workspace = true

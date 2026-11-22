@@ -151,6 +151,13 @@ struct GpuBatch {
 pub struct TerrainRenderer {
     path: TerrainPath,
     pipeline: wgpu::RenderPipeline,
+    pipeline_layout: wgpu::PipelineLayout,
+    color_format: wgpu::TextureFormat,
+    layout0: wgpu::BindGroupLayout,
+    sampler: wgpu::Sampler,
+    atlas_view: wgpu::TextureView,
+    index_view: wgpu::TextureView,
+    pack_buf: wgpu::Buffer,
     bind0: wgpu::BindGroup,
     bind1: Option<wgpu::BindGroup>,
     index_buf: Option<wgpu::Buffer>,
@@ -171,19 +178,212 @@ pub struct TerrainRenderer {
 }
 
 fn shader_source(path: TerrainPath) -> String {
-    let common = include_str!("terrain-common.wgsl");
-    let entry = match path {
-        TerrainPath::Pulling => include_str!("terrain-pulling.wgsl"),
-        TerrainPath::PullingIndexed => include_str!("terrain-pulling-indexed.wgsl"),
-        TerrainPath::Instanced => include_str!("terrain-instance.wgsl"),
-    };
-    format!("{common}\n{entry}")
+    super::hooks::compose(path, None)
 }
 
 /// Full WGSL of a path (for validation in tests and tools).
 #[must_use]
 pub fn terrain_shader(path: TerrainPath) -> String {
     shader_source(path)
+}
+
+fn create_block_textures(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    textures: &TerrainTextures<'_>,
+    layer_table: &[u32],
+) -> (wgpu::TextureView, wgpu::TextureView) {
+    let mips = textures.levels.len() as u32;
+    let block_tex = device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("block textures"),
+        size: wgpu::Extent3d {
+            width: textures.size,
+            height: textures.size,
+            depth_or_array_layers: textures.layers.max(1),
+        },
+        mip_level_count: mips.max(1),
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: wgpu::TextureFormat::Rgba8UnormSrgb,
+        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+        view_formats: &[],
+    });
+    for (mip, data) in textures.levels.iter().enumerate() {
+        let side = (textures.size >> mip).max(1);
+        if textures.layers == 0 {
+            break;
+        }
+        queue.write_texture(
+            wgpu::TexelCopyTextureInfo {
+                texture: &block_tex,
+                mip_level: mip as u32,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            data,
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(side * 4),
+                rows_per_image: Some(side),
+            },
+            wgpu::Extent3d {
+                width: side,
+                height: side,
+                depth_or_array_layers: textures.layers,
+            },
+        );
+    }
+    // State × direction → layer.
+    let states = (layer_table.len() / 6) as u32;
+    let layers_tex = device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("block layers"),
+        size: wgpu::Extent3d {
+            width: 6,
+            height: states,
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: wgpu::TextureFormat::R32Uint,
+        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+        view_formats: &[],
+    });
+    queue.write_texture(
+        layers_tex.as_image_copy(),
+        bytemuck::cast_slice(layer_table),
+        wgpu::TexelCopyBufferLayout {
+            offset: 0,
+            bytes_per_row: Some(6 * 4),
+            rows_per_image: Some(states),
+        },
+        wgpu::Extent3d {
+            width: 6,
+            height: states,
+            depth_or_array_layers: 1,
+        },
+    );
+    let view = |t: &wgpu::Texture, dim| {
+        t.create_view(&wgpu::TextureViewDescriptor {
+            dimension: Some(dim),
+            ..Default::default()
+        })
+    };
+    (
+        view(&block_tex, wgpu::TextureViewDimension::D2Array),
+        view(&layers_tex, wgpu::TextureViewDimension::D2),
+    )
+}
+
+/// Bind group 0: buffers (camera, batch origins, pack params), the sampler,
+/// and views (block textures, layer table, light atlas, light indirection).
+fn make_bind0(
+    device: &wgpu::Device,
+    layout: &wgpu::BindGroupLayout,
+    buffers: [&wgpu::Buffer; 3],
+    sampler: &wgpu::Sampler,
+    views: [&wgpu::TextureView; 4],
+) -> wgpu::BindGroup {
+    device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some("terrain globals"),
+        layout,
+        entries: &[
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: buffers[0].as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 1,
+                resource: buffers[1].as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 2,
+                resource: wgpu::BindingResource::TextureView(views[0]),
+            },
+            wgpu::BindGroupEntry {
+                binding: 3,
+                resource: wgpu::BindingResource::Sampler(sampler),
+            },
+            wgpu::BindGroupEntry {
+                binding: 4,
+                resource: wgpu::BindingResource::TextureView(views[1]),
+            },
+            wgpu::BindGroupEntry {
+                binding: 5,
+                resource: wgpu::BindingResource::TextureView(views[2]),
+            },
+            wgpu::BindGroupEntry {
+                binding: 6,
+                resource: wgpu::BindingResource::TextureView(views[3]),
+            },
+            wgpu::BindGroupEntry {
+                binding: 7,
+                resource: buffers[2].as_entire_binding(),
+            },
+        ],
+    })
+}
+
+fn create_pipeline(
+    device: &wgpu::Device,
+    pipeline_layout: &wgpu::PipelineLayout,
+    path: TerrainPath,
+    color_format: wgpu::TextureFormat,
+    source: &str,
+) -> wgpu::RenderPipeline {
+    let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+        label: Some("terrain"),
+        source: wgpu::ShaderSource::Wgsl(source.into()),
+    });
+    let instance_layout = [Some(wgpu::VertexBufferLayout {
+        array_stride: QUAD_BYTES,
+        step_mode: wgpu::VertexStepMode::Instance,
+        attributes: &wgpu::vertex_attr_array![0 => Uint32x2],
+    })];
+    device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        label: Some("terrain"),
+        layout: Some(pipeline_layout),
+        vertex: wgpu::VertexState {
+            module: &shader,
+            entry_point: Some("vs_main"),
+            compilation_options: Default::default(),
+            buffers: match path {
+                TerrainPath::Pulling | TerrainPath::PullingIndexed => &[],
+                TerrainPath::Instanced => &instance_layout,
+            },
+        },
+        primitive: wgpu::PrimitiveState {
+            topology: match path {
+                TerrainPath::Pulling | TerrainPath::PullingIndexed => {
+                    wgpu::PrimitiveTopology::TriangleList
+                }
+                TerrainPath::Instanced => wgpu::PrimitiveTopology::TriangleStrip,
+            },
+            // Face-direction culling happens on the CPU per batch.
+            cull_mode: None,
+            ..Default::default()
+        },
+        depth_stencil: Some(wgpu::DepthStencilState {
+            format: DEPTH_FORMAT,
+            depth_write_enabled: Some(true),
+            depth_compare: Some(wgpu::CompareFunction::Less),
+            stencil: Default::default(),
+            bias: Default::default(),
+        }),
+        multisample: Default::default(),
+        fragment: Some(wgpu::FragmentState {
+            module: &shader,
+            entry_point: Some("fs_main"),
+            compilation_options: Default::default(),
+            targets: &[Some(wgpu::ColorTargetState {
+                format: color_format,
+                blend: None,
+                write_mask: wgpu::ColorWrites::ALL,
+            })],
+        }),
+        multiview_mask: None,
+        cache: None,
+    })
 }
 
 impl TerrainRenderer {
@@ -228,47 +428,7 @@ impl TerrainRenderer {
             mapped_at_creation: false,
         });
 
-        // Block textures.
-        let mips = textures.levels.len() as u32;
-        let block_tex = device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("block textures"),
-            size: wgpu::Extent3d {
-                width: textures.size,
-                height: textures.size,
-                depth_or_array_layers: textures.layers.max(1),
-            },
-            mip_level_count: mips.max(1),
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Rgba8UnormSrgb,
-            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-            view_formats: &[],
-        });
-        for (mip, data) in textures.levels.iter().enumerate() {
-            let side = (textures.size >> mip).max(1);
-            if textures.layers == 0 {
-                break;
-            }
-            queue.write_texture(
-                wgpu::TexelCopyTextureInfo {
-                    texture: &block_tex,
-                    mip_level: mip as u32,
-                    origin: wgpu::Origin3d::ZERO,
-                    aspect: wgpu::TextureAspect::All,
-                },
-                data,
-                wgpu::TexelCopyBufferLayout {
-                    offset: 0,
-                    bytes_per_row: Some(side * 4),
-                    rows_per_image: Some(side),
-                },
-                wgpu::Extent3d {
-                    width: side,
-                    height: side,
-                    depth_or_array_layers: textures.layers,
-                },
-            );
-        }
+        let (block_view, layers_view) = create_block_textures(device, queue, textures, layer_table);
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("block sampler"),
             address_mode_u: wgpu::AddressMode::Repeat,
@@ -278,37 +438,12 @@ impl TerrainRenderer {
             mipmap_filter: wgpu::MipmapFilterMode::Linear,
             ..Default::default()
         });
-
-        // State × direction → layer.
-        let states = (layer_table.len() / 6) as u32;
-        let layers_tex = device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("block layers"),
-            size: wgpu::Extent3d {
-                width: 6,
-                height: states,
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::R32Uint,
-            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-            view_formats: &[],
+        let pack_buf = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("shader pack params"),
+            size: 48,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
         });
-        queue.write_texture(
-            layers_tex.as_image_copy(),
-            bytemuck::cast_slice(layer_table),
-            wgpu::TexelCopyBufferLayout {
-                offset: 0,
-                bytes_per_row: Some(6 * 4),
-                rows_per_image: Some(states),
-            },
-            wgpu::Extent3d {
-                width: 6,
-                height: states,
-                depth_or_array_layers: 1,
-            },
-        );
 
         // Light.
         let light_atlas_tex = device.create_texture(&wgpu::TextureDescriptor {
@@ -404,6 +539,7 @@ impl TerrainRenderer {
                     wgpu::TextureSampleType::Uint,
                     wgpu::TextureViewDimension::D3,
                 ),
+                uniform_entry(7),
             ],
         });
         let view = |t: &wgpu::Texture, dim| {
@@ -412,44 +548,15 @@ impl TerrainRenderer {
                 ..Default::default()
             })
         };
-        let block_view = view(&block_tex, wgpu::TextureViewDimension::D2Array);
-        let layers_view = view(&layers_tex, wgpu::TextureViewDimension::D2);
         let atlas_view = view(&light_atlas_tex, wgpu::TextureViewDimension::D3);
         let index_view = view(&light_index_tex, wgpu::TextureViewDimension::D3);
-        let bind0 = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("terrain globals"),
-            layout: &layout0,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: camera_buf.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: batch_buf.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: wgpu::BindingResource::TextureView(&block_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 3,
-                    resource: wgpu::BindingResource::Sampler(&sampler),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 4,
-                    resource: wgpu::BindingResource::TextureView(&layers_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 5,
-                    resource: wgpu::BindingResource::TextureView(&atlas_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 6,
-                    resource: wgpu::BindingResource::TextureView(&index_view),
-                },
-            ],
-        });
+        let bind0 = make_bind0(
+            device,
+            &layout0,
+            [&camera_buf, &batch_buf, &pack_buf],
+            &sampler,
+            [&block_view, &layers_view, &atlas_view, &index_view],
+        );
         let (layouts, bind1) = match path {
             TerrainPath::Pulling | TerrainPath::PullingIndexed => {
                 let layout1 = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -473,69 +580,25 @@ impl TerrainRenderer {
                         resource: quad_buf.as_entire_binding(),
                     }],
                 });
-                (vec![layout0, layout1], Some(bind1))
+                (vec![layout1], Some(bind1))
             }
-            TerrainPath::Instanced => (vec![layout0], None),
+            TerrainPath::Instanced => (vec![], None),
         };
-        let layout_refs: Vec<Option<&wgpu::BindGroupLayout>> = layouts.iter().map(Some).collect();
+        let layout_refs: Vec<Option<&wgpu::BindGroupLayout>> = std::iter::once(Some(&layout0))
+            .chain(layouts.iter().map(Some))
+            .collect();
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("terrain"),
             bind_group_layouts: &layout_refs,
             immediate_size: 0,
         });
-        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("terrain"),
-            source: wgpu::ShaderSource::Wgsl(shader_source(path).into()),
-        });
-        let instance_layout = [Some(wgpu::VertexBufferLayout {
-            array_stride: QUAD_BYTES,
-            step_mode: wgpu::VertexStepMode::Instance,
-            attributes: &wgpu::vertex_attr_array![0 => Uint32x2],
-        })];
-        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("terrain"),
-            layout: Some(&pipeline_layout),
-            vertex: wgpu::VertexState {
-                module: &shader,
-                entry_point: Some("vs_main"),
-                compilation_options: Default::default(),
-                buffers: match path {
-                    TerrainPath::Pulling | TerrainPath::PullingIndexed => &[],
-                    TerrainPath::Instanced => &instance_layout,
-                },
-            },
-            primitive: wgpu::PrimitiveState {
-                topology: match path {
-                    TerrainPath::Pulling | TerrainPath::PullingIndexed => {
-                        wgpu::PrimitiveTopology::TriangleList
-                    }
-                    TerrainPath::Instanced => wgpu::PrimitiveTopology::TriangleStrip,
-                },
-                // Face-direction culling happens on the CPU per batch.
-                cull_mode: None,
-                ..Default::default()
-            },
-            depth_stencil: Some(wgpu::DepthStencilState {
-                format: DEPTH_FORMAT,
-                depth_write_enabled: Some(true),
-                depth_compare: Some(wgpu::CompareFunction::Less),
-                stencil: Default::default(),
-                bias: Default::default(),
-            }),
-            multisample: Default::default(),
-            fragment: Some(wgpu::FragmentState {
-                module: &shader,
-                entry_point: Some("fs_main"),
-                compilation_options: Default::default(),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: color_format,
-                    blend: None,
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-            }),
-            multiview_mask: None,
-            cache: None,
-        });
+        let pipeline = create_pipeline(
+            device,
+            &pipeline_layout,
+            path,
+            color_format,
+            &shader_source(path),
+        );
 
         let index_buf = (path == TerrainPath::PullingIndexed).then(|| {
             let indices: Vec<u32> = (0..INDEX_QUADS)
@@ -553,6 +616,13 @@ impl TerrainRenderer {
         Self {
             path,
             pipeline,
+            pipeline_layout,
+            color_format,
+            layout0,
+            sampler,
+            atlas_view,
+            index_view,
+            pack_buf,
             index_buf,
             bind0,
             bind1,
@@ -576,6 +646,62 @@ impl TerrainRenderer {
     #[must_use]
     pub fn path(&self) -> TerrainPath {
         self.path
+    }
+
+    /// Replaces the block textures and the layer table (resource packs),
+    /// keeping everything uploaded.
+    ///
+    /// # Panics
+    /// Panics if `layer_table` is empty or not a multiple of 6 long.
+    pub fn set_textures(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        textures: &TerrainTextures<'_>,
+        layer_table: &[u32],
+    ) {
+        assert!(!layer_table.is_empty() && layer_table.len() % 6 == 0);
+        let (block_view, layers_view) = create_block_textures(device, queue, textures, layer_table);
+        self.bind0 = make_bind0(
+            device,
+            &self.layout0,
+            [&self.camera_buf, &self.batch_buf, &self.pack_buf],
+            &self.sampler,
+            [
+                &block_view,
+                &layers_view,
+                &self.atlas_view,
+                &self.index_view,
+            ],
+        );
+    }
+
+    /// Switches to a shader pack's hooks (`None` = built-in look). The
+    /// composed shader is validated first; on error nothing changes and the
+    /// message is returned.
+    pub fn set_shader_pack(
+        &mut self,
+        device: &wgpu::Device,
+        pack: Option<&str>,
+    ) -> Result<(), String> {
+        let source = super::hooks::compose(self.path, pack);
+        super::hooks::validate(&source)?;
+        self.pipeline = create_pipeline(
+            device,
+            &self.pipeline_layout,
+            self.path,
+            self.color_format,
+            &source,
+        );
+        Ok(())
+    }
+
+    /// Option values and time for shader packs (`pack_option`, `pack_time`).
+    pub fn set_pack_params(&self, queue: &wgpu::Queue, options: &[f32; 8], time: f32) {
+        let mut data = [0f32; 12];
+        data[..8].copy_from_slice(options);
+        data[8] = time;
+        queue.write_buffer(&self.pack_buf, 0, bytemuck::cast_slice(&data));
     }
 
     /// Uploads (or replaces) the render batch at batch position `pos`

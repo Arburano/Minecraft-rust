@@ -105,6 +105,33 @@ fn light_at(cell: vec3<i32>) -> vec2<f32> {
     return vec2<f32>(f32(v & 15u), f32(v >> 4u));
 }
 
+// Pack uniform (shader packs, ADR-0014): 8 option values and the time.
+struct PackParams {
+    options: array<vec4<f32>, 2>,
+    time: vec4<f32>,
+}
+@group(0) @binding(7) var<uniform> pack_params: PackParams;
+
+/// Value of pack option `i` (0..7).
+fn pack_option(i: u32) -> f32 {
+    return pack_params.options[i / 4u][i % 4u];
+}
+
+/// Seconds since the world opened.
+fn pack_time() -> f32 {
+    return pack_params.time.x;
+}
+
+/// What the surface hook gets for one fragment.
+struct Surface {
+    albedo: vec4<f32>,
+    normal: vec3<f32>,
+    world: vec3<f32>,
+    block_light: f32,
+    sky_light: f32,
+    daylight: f32,
+}
+
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let n = in.normal;
@@ -123,13 +150,14 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // The cell in front of the face holds the light that reaches it.
     let cell = vec3<i32>(floor(in.world + n * 0.5));
     let light = light_at(cell);
-    let level = max(light.x, light.y * camera.position.w);
-    let brightness = 0.05 + 0.95 * pow(0.8, 15.0 - level);
-    // Fixed per-direction shade, the classic look.
-    let shade = select(select(0.8, 0.6, n.x != 0.0), select(0.5, 1.0, n.y > 0.0), n.y != 0.0);
-    var rgb = color.rgb * brightness * shade;
-    let d = distance(in.world, camera.position.xyz);
-    let fog = clamp((d - camera.fog.x) / max(camera.fog.y - camera.fog.x, 1.0), 0.0, 1.0);
-    rgb = mix(rgb, camera.sky.rgb, fog);
+    var s: Surface;
+    s.albedo = color;
+    s.normal = n;
+    s.world = in.world;
+    s.block_light = light.x;
+    s.sky_light = light.y;
+    s.daylight = camera.position.w;
+    var rgb = pack_surface(s);
+    rgb = pack_fog(rgb, in.world, camera.position.xyz, camera.sky.rgb, camera.fog.x, camera.fog.y);
     return vec4<f32>(rgb, 1.0);
 }
