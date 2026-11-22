@@ -1,0 +1,6 @@
+﻿
+startup: first menu frame after 1015 ms
+startup: first menu frame after 883 ms
+startup: first menu frame after 956 ms
+
+

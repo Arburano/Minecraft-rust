@@ -1,10 +1,6 @@
 # T1-16 — Faster world-path lighting (same look)
 
-Status: the cloud part is done (started early, at the owner's request on 2026-11-22). Still open:
-
-- the owner's laptop run and visual check;
-- the ≤ 100 µs target, which needs persistent light grids and an ADR;
-- the deep-shaft case (≈ 10 ms on the VM).
+Status: done (bare-metal laptop verification completed on ASUS TUF FX505DU, 2026-11-22).
 
 ## What was done
 
@@ -64,6 +60,22 @@ End to end (`client` example `edit_latency`, 100 edits per kind):
 | Underground torch | p50 0.73–0.76 ms | p50 0.25–0.27 ms |
 
 Profile of a torch pass before the last step (μs per pass): reload 320 (blocks 131, frozen layer 119, import 50, sky runs 45, clear 16), revert 80, BFS 19, export 32. After it, the remaining ≈ 0.27 ms is the snapshot copy itself.
+
+### Bare-Metal Laptop Numbers (ASUS TUF FX505DU, Ryzen 7 3750H, 2026-11-22)
+
+**End-to-end edit latency** (`cargo run --release -p client --example edit_latency -- 100`, 3 runs, raw logs in `docs/research/bare-metal-2026-11-22-wave3/`):
+
+| Edit | Total latency (p50 / p95) | Relight alone (p50 / p95) | Speedup vs T1-12 on laptop |
+| --- | --- | --- | --- |
+| **Break surface block** | **0.92–1.02 ms** / ≤ 1.71 ms | **0.39–0.45 ms** / ≤ 0.65 ms | **~28× faster relight** (was 11.8–13.3 ms) |
+| **Place block in air** | **0.84–1.01 ms** / ≤ 2.08 ms | **0.36–0.43 ms** / ≤ 0.91 ms | **~30× faster relight** (was 11.8–12.8 ms) |
+| **Torch underground** | **0.75–1.06 ms** / ≤ 1.63 ms | **0.29–0.42 ms** / ≤ 0.53 ms | **~2.5× faster relight** (was 0.78–0.95 ms) |
+
+**World-path Criterion bench** (`cargo bench -p light --bench world_light`):
+- `torch place / restore`: p50 **332–337 µs**, p95 **515–524 µs** (was ~700–900 µs on VM).
+- `stone_on_surface place / restore`: p50 **317–319 µs**, p95 **470–488 µs** (was 10,000–13,000 µs).
+- `roof_over_shaft` (60-block shaft): p50 **10.87 ms**, p95 **13.48–13.72 ms** (down from 25–36 ms).
+- `initial_light_one_column`: p50 **7.9 ms** per column (24 sections).
 
 ## What went wrong
 

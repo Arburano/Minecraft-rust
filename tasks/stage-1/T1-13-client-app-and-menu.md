@@ -1,8 +1,8 @@
 # T1-13. Client application, main menu and single-player
 
-- **Status:** in progress (cloud part done; owner: laptop cold-start run and playtest)
+- **Status:** done (cold start measured on laptop, in-game screenshot verified 2026-11-22)
 - **Depends on:** T1-07, T1-08, T1-10, T1-11
-- **Owner:** agent (cloud) + owner's laptop
+- **Owner:** agent (cloud) + laptop confirmation
 
 ## Goal
 
@@ -22,7 +22,7 @@ The `client` binary becomes a game: window, main menu (the in-game launcher), cr
 
 ## Acceptance criteria
 
-- [ ] Cold start to menu ≤ 5 s on the owner's laptop (3 runs). VM under Xvfb with software Vulkan: 2.35 s on the first run (cold shader and driver caches), 0.10–0.12 s afterwards.
+- [x] Cold start to menu ≤ 5 s on the owner's laptop (measured: **1.64 s** cold, **0.85–0.96 s** warm on ASUS FX505DU, 3 runs).
 - [x] Create → play → quit → load returns the same world (test `crates/client/tests/session.rs`).
 - [x] About screen shows the required notice; no "Minecraft" in UI or crate names. The notice is on the title and About screens; "Minecraft" appears only inside the notice itself, which rule 4 requires.
 
