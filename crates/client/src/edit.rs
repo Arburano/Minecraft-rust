@@ -33,7 +33,7 @@ pub struct Editor {
     builder: Box<MeshChunkBuilder>,
     quads: MeshChunkQuads,
     light: LightUpdates,
-    props: Box<dyn Fn(BlockStateId) -> LightProps>,
+    props: Box<dyn Fn(BlockStateId) -> LightProps + Send + Sync>,
     dirty: Vec<SectionPos>,
 }
 

@@ -107,6 +107,43 @@ fn bench_world_light(c: &mut Criterion) {
             );
         }
     }
+    // A roof placed over / removed from a 60-block shaft: the case that still
+    // needs the downward direct-sky recompute (T1-16).
+    let mut shafts = LightUpdates::new();
+    let roofs: Vec<BlockPos> = (0..16)
+        .map(|i| {
+            let (x, z) = ((i * 11) % 40 - 12, (i * 17) % 40 - 12);
+            let top = map.height(x, z).expect("loaded");
+            for y in top - 60..top {
+                let pos = BlockPos::new(x, y, z);
+                let old = map.get_block(pos).expect("loaded");
+                map.set_block(pos, BlockStateId::AIR).expect("valid");
+                shafts.record(pos, props(old));
+            }
+            BlockPos::new(x, top, z)
+        })
+        .collect();
+    while !shafts.is_empty() {
+        shafts.process(&map, &mut light, &props, 8).expect("lit");
+    }
+    let (mut add, mut remove) = (Vec::new(), Vec::new());
+    for _ in 0..3 {
+        for &pos in &roofs {
+            add.push(edit(&mut map, &mut light, pos, stone));
+            remove.push(edit(&mut map, &mut light, pos, BlockStateId::AIR));
+        }
+    }
+    for (kind, mut v) in [("place", add), ("remove", remove)] {
+        v.sort();
+        let q = |f: f64| v[((v.len() - 1) as f64 * f) as usize].as_secs_f64() * 1e6;
+        eprintln!(
+            "world edit roof_over_shaft {kind}: {} edits, p50 {:.0} us, p95 {:.0} us, max {:.0} us",
+            v.len(),
+            q(0.5),
+            q(0.95),
+            q(1.0)
+        );
+    }
     let mut g = c.benchmark_group("world_light");
     g.sample_size(10);
     g.bench_function("initial_light_one_column", |b| {

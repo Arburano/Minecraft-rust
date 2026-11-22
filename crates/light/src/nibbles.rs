@@ -28,6 +28,19 @@ impl Default for Nibbles {
 }
 
 impl Nibbles {
+    /// Unpacks all 4,096 levels (YZX).
+    pub fn unpack_into(&self, out: &mut [u8; SECTION_VOLUME]) {
+        match self {
+            Self::Single(v) => out.fill(*v),
+            Self::Packed(p) => {
+                for (pair, &b) in out.chunks_exact_mut(2).zip(p.iter()) {
+                    pair[0] = b & MAX_LIGHT;
+                    pair[1] = b >> 4;
+                }
+            }
+        }
+    }
+
     /// Builds the most compact representation of 4,096 levels (each `<= 15`).
     #[must_use]
     pub fn from_levels(levels: &[u8; SECTION_VOLUME]) -> Self {

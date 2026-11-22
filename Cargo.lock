@@ -1829,6 +1829,7 @@ dependencies = [
  "criterion",
  "engine-core",
  "proptest",
+ "rayon",
  "world",
  "worldgen",
 ]
