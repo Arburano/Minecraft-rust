@@ -51,7 +51,30 @@ Measured in T0-08 (VM, 4 vCPU Xeon 2.1 GHz, 3 runs; T0-12 corpus with 8 torches 
 - `light::WorldLight` keeps light per `SectionPos`, apart from the blocks; `encode_column`/`decode_column` give the blob stored in `world::storage::ColumnRecord::light`.
 - **Initial lighting** (`light_column`): every section is the exact center of its own snapshot built from the world's blocks (neighbors' blocks must be loaded, their light is not needed), so the result does not depend on the order columns are lit in — no seams by construction (tested against a full relight). Shortcuts: an all-opaque non-emitting section is dark; a section with all 27 neighbors empty and every heightmap value of the 3×3 columns at or below its bottom is open sky. This replaces the "2×2 column groups" idea: per-section snapshots make borders exact without grouping.
 - **Edits** (`LightUpdates`): edits are recorded with the block's light properties before the edit and processed a limited number of sections per call (`max_sections`, the per-tick limit); the rest waits and the client shows the old light. Per section: a snapshot with the stored light imported and the surrounding one-cell layer **frozen** at the world's light; every still-pending edit inside it reverted to its old properties (so the stored light matches the blocks); this section's edits applied incrementally; only touched sections exported. Highest sections are processed first, so no pending edit lies above a snapshot.
-- **Direct sky is not limited to 15 blocks:** a block placed over a deep shaft darkens it all the way down. An edit that changes whether a cell passes direct sky therefore recomputes the 3×3 sections below (from the snapshot's bottom ring downwards, exact full snapshot BFS) until a whole level is unchanged. Only edits at or above the column's current sky height − 1 can do that (the heightmap counts exactly the blocks with opacity > 0, so the height changes only when the edit removed the old top blocker or is the new one); deeper edits skip the downward pass (T1-12: an underground torch went from ≈ 14 ms to ≈ 0.7–1.2 ms on the VM).
+- **Direct sky is not limited to 15 blocks:** a block placed over a deep shaft darkens it all the way down, so a pass checks how far down a column's direct-sky run moved (see T1-16 below).
 - Tests: incremental world edits (3 seeds × 60 random edits, processed one section per "tick") equal a fresh initial lighting of the final world; breaking the roof of a 110-block shaft lights its bottom.
 - **Owner decision (2026-11-22):** the world-path cost below is accepted for stage 1; [T1-16](../../tasks/stage-1/T1-16-light-fast-world-path.md) replaces it with a faster algorithm later, on the condition that the look and feel do not change.
-- **Cost (VM):** the BFS itself stays within budget, but each processed section rebuilds a 48³ snapshot from the world (≈ 0.5 ms build + ≈ 0.3 ms import) — see performance-budgets "Lighting through the world path". Faster designs (a smaller window around the edit, persistent per-region light grids instead of snapshot copies, incremental vertical sky propagation) are listed in the T1-09 report for the owner's decision.
+- **Cost:** see T1-16 below and performance-budgets "Lighting through the world path".
+
+## Faster world path (T1-16)
+
+Same results, bit for bit (every T1-09 equality test unchanged and green, plus new tests below); less work per edit.
+
+- **Box instead of the whole snapshot.** Light changes from an edit reach at most 14 cells. A pass loads blocks, imports stored light and freezes the surrounding layer only for the box of ±15 cells around its section's edits (31³ for one edit instead of 48³). Sections the box covers only partly are read cell by cell; the frozen layer is decoded once per section; the next load clears only the box written before. Exported sections merge the box with the stored light outside it.
+- **When direct sky can move.** An edit whose opacity flips (0 ↔ > 0) at or above its column's sky height − 1 extends the box down to the snapshot's bottom. The heightmap counts exactly the blocks with opacity > 0, so no other edit can move a run. If a run nevertheless moves while the box does not reach the bottom, the pass is redone with the whole snapshot (a safety net).
+- **What happens below.** The pass records the lowest local y whose direct-sky source changed (`sky_low`).
+  - `sky_low` ≥ 15: nothing reaches the snapshot's bottom; done. The exact bound is 13 (a changed source at row 13 lights the border layer with 15 − 13 − 1 − 1 = 0 at best), and the rule keeps a margin of 2.
+  - 1 ≤ `sky_low` < 15: the run ends inside the snapshot. Only a slab ±15 cells around the snapshot's bottom `B` can be wrong:
+    - rows from `B + 14` up are exact, because the stale bottom border reaches 14 rows at most;
+    - nothing below `B − 14` changes.
+    
+    The slab is recomputed from scratch for sky only (block light is unchanged below the pass's section), with its top face frozen at the exact new light and its other faces at the unchanged world light.
+  - `sky_low` = 0: the run reaches the bottom and may continue to any depth. The 9 sections of each level below are recomputed as exact centers of their own snapshots, sky only, in parallel (rayon, one reusable snapshot per thread), until a whole level is unchanged.
+- **Full relights queue only useful sources:** a source is queued only if it can raise a neighbor, which skips most open-sky cells.
+- **Bug fixed on the way:** a decrease that reached the snapshot's bottom border made the BFS step outside the grid and panic. The new sky tests found it; neighbors outside the grid are now skipped.
+- **Tests:**
+  - `sky_edits_at_section_borders_equal_fresh_lighting`: 5 seeds, shafts of random depth, rooms and tunnels below them, roofs on section border rows, random batch sizes.
+  - `roof_over_a_shallow_run_darkens_below_the_snapshot`: runs ending 1, 5 and 12 rows above the bottom.
+  
+  Both fail if the `sky_low` threshold drops to 12, if the box margin drops to 12, or if the slab is thinned (bottom at +6 or top at 21).
+- **Not done yet:** persistent per-region light grids, which are the way to ≤ 100 µs and need an ADR, and a cheaper deep-run pass, which would chain slabs instead of 9 snapshots per level.

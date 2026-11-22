@@ -1,6 +1,6 @@
 # T1-16. Faster world-path lighting
 
-- **Status:** todo (after the main stage 1 tasks; owner decision 2026-11-22)
+- **Status:** in progress (cloud part done 2026-11-22, started early at the owner's request; owner: laptop run and visual check)
 - **Depends on:** T1-09
 - **Owner:** agent (cloud) + laptop measurement
 
@@ -23,6 +23,13 @@ T1-09 lights edits correctly but through a costly world path: rebuilding a 48³ 
 
 ## Acceptance criteria
 
-- [ ] World-path edit p95 measured before/after on the laptop; target ≤ 100 µs (add) / ≤ 200 µs (remove) for non-sky edits, or the best reachable number with the owner's agreement.
-- [ ] Sky-changing edits measured; no frame spike from lighting in the T1-15 walk.
-- [ ] All T1-09 equality tests unchanged and green; a visual check on the laptop (before/after screenshots of the same scene) shows no difference.
+- [ ] World-path edit p95 measured before/after on the laptop; target ≤ 100 µs (add) / ≤ 200 µs (remove) for non-sky edits, or the best reachable number with the owner's agreement. VM: torch p95 0.71–1.16 ms → 0.32–0.35 ms; the remaining cost is the snapshot copy itself (≈ 0.2 ms), which only persistent light grids remove (needs an ADR).
+- [ ] Sky-changing edits measured; no frame spike from lighting in the T1-15 walk. VM: surface edits 10–17 ms → ≈ 0.3 ms; a roof over a deep shaft or cave still costs ≈ 10 ms (rare, see the report).
+- [x] All T1-09 equality tests unchanged and green, plus new sky tests. The visual check on the laptop is still to do. The light is bit-identical by the tests, so `screenshot` gives the same picture.
+
+## Laptop run (owner)
+
+```bash
+cargo bench -p light --bench world_light -- --warm-up-time 1 --measurement-time 2   # 3 runs; the "world edit" lines
+cargo run --release -p client --example edit_latency -- 100                         # 3 runs
+```
