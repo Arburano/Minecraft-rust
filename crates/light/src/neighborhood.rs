@@ -139,6 +139,24 @@ pub struct LightNeighborhood {
     sky_floor: Box<[u8]>,
     inc: Vec<u32>,
     dec: Vec<u32>,
+    /// Bit `(dy * 3 + dz) * 3 + dx` set when a cell of that section changed
+    /// light since the last [`Self::take_touched`].
+    touched: u32,
+}
+
+/// Section bit of a padded index (border cells map to the nearest section).
+#[inline]
+fn section_bit(i: usize) -> u32 {
+    let (y, rem) = (i / P2, i % P2);
+    let (z, x) = (rem / P, rem % P);
+    let s = |v: usize| (v.saturating_sub(1) / SECTION_SIZE as usize).min(2);
+    1 << ((s(y) * 3 + s(z)) * 3 + s(x))
+}
+
+fn mark(touched: &mut u32, queue: &[u32]) {
+    for &e in queue {
+        *touched |= section_bit((e & INDEX_MASK) as usize);
+    }
 }
 
 #[inline]
@@ -219,6 +237,7 @@ impl LightNeighborhood {
             sky_floor: vec![EDGE as u8; COLUMNS].into_boxed_slice(),
             inc: Vec::with_capacity(2 * VOLUME),
             dec: Vec::with_capacity(VOLUME),
+            touched: 0,
         };
         for y in 0..EDGE {
             for z in 0..EDGE {
@@ -254,20 +273,18 @@ impl LightNeighborhood {
         for channel in [&mut self.block, &mut self.sky] {
             channel.light.fill(0);
             self.inc.clear();
-            for y in 0..EDGE {
-                for z in 0..EDGE {
-                    for x in 0..EDGE {
-                        let i = padded(x, y, z);
-                        let s = channel.src[i];
-                        if s > 0 {
-                            channel.light[i] = s;
-                            self.inc.push(i as u32);
-                        }
-                    }
+            // Every cell with a source, including frozen border cells imported
+            // from the world (`from_world`).
+            for (i, &s) in channel.src.iter().enumerate() {
+                if s > 0 {
+                    channel.light[i] = s;
+                    self.inc.push(i as u32);
                 }
             }
             propagate_increase(channel, &self.opacity, &mut self.inc);
+            self.inc.clear();
         }
+        self.touched = (1 << 27) - 1;
     }
 
     /// Applies a block change that cannot darken anything (emission does not
@@ -359,6 +376,123 @@ impl LightNeighborhood {
         out
     }
 
+    /// Starts reloading this snapshot in place (no allocation): every cell
+    /// opaque and dark until the loaders below fill the interior.
+    pub(crate) fn begin_load(&mut self, origin: BlockPos) {
+        self.origin = origin;
+        self.opacity.fill(MAX_LIGHT);
+        for c in [&mut self.block, &mut self.sky] {
+            c.light.fill(0);
+            c.src.fill(0);
+        }
+        self.open_top.fill(false);
+        self.touched = 0;
+    }
+
+    /// Loads one section of cells with the same properties.
+    pub(crate) fn load_uniform(&mut self, dx: usize, dy: usize, dz: usize, props: LightProps) {
+        let s = SECTION_SIZE as usize;
+        for ly in 0..s {
+            for lz in 0..s {
+                let row = padded(dx * s, dy * s + ly, dz * s + lz);
+                self.opacity[row..row + s].fill(props.opacity);
+                self.block.src[row..row + s].fill(props.emission);
+            }
+        }
+    }
+
+    /// Loads one section from block ids (YZX).
+    pub(crate) fn load_ids(
+        &mut self,
+        dx: usize,
+        dy: usize,
+        dz: usize,
+        ids: &[BlockStateId; SECTION_VOLUME],
+        props: &impl Fn(BlockStateId) -> LightProps,
+    ) {
+        let s = SECTION_SIZE as usize;
+        for ly in 0..s {
+            for lz in 0..s {
+                let row = padded(dx * s, dy * s + ly, dz * s + lz);
+                let base = (ly * s + lz) * s;
+                for lx in 0..s {
+                    let p = props(ids[base + lx]);
+                    self.opacity[row + lx] = p.opacity;
+                    self.block.src[row + lx] = p.emission;
+                }
+            }
+        }
+    }
+
+    /// Sets whether a snapshot column is open to the sky above the snapshot.
+    pub(crate) fn set_open_top(&mut self, x: usize, z: usize, open: bool) {
+        self.open_top[z * EDGE + x] = open;
+    }
+
+    /// Sections whose light changed since the last call, as `(dx, dy, dz)` bits.
+    pub(crate) fn take_touched(&mut self) -> u32 {
+        std::mem::take(&mut self.touched)
+    }
+
+    /// Imports stored levels into one interior section (`d* in 0..3`).
+    pub(crate) fn import_section(&mut self, dx: usize, dy: usize, dz: usize, light: &SectionLight) {
+        let s = SECTION_SIZE as usize;
+        for (channel, levels) in [(&mut self.block, &light.block), (&mut self.sky, &light.sky)] {
+            for ly in 0..s {
+                for lz in 0..s {
+                    let row = padded(dx * s, dy * s + ly, dz * s + lz);
+                    let base = (ly * s + lz) * s;
+                    match levels {
+                        Nibbles::Single(v) => channel.light[row..row + s].fill(*v),
+                        Nibbles::Packed(p) => {
+                            for lx in 0..s {
+                                let j = base + lx;
+                                channel.light[row + lx] = (p[j / 2] >> ((j & 1) * 4)) & MAX_LIGHT;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Freezes a border cell (local coordinates `-1` or `48` on one axis) at
+    /// the world's light: it acts as a fixed source, so light from outside the
+    /// snapshot flows in and a decrease pass cannot erase it.
+    pub(crate) fn freeze_border(&mut self, x: i32, y: i32, z: i32, block: u8, sky: u8) {
+        let i = ((y + 1) as usize * P + (z + 1) as usize) * P + (x + 1) as usize;
+        self.block.light[i] = block;
+        self.block.src[i] = block;
+        self.sky.light[i] = sky;
+        self.sky.src[i] = sky;
+    }
+
+    /// Sets a cell's properties without relighting (to rebuild the state the
+    /// stored light belongs to). Call [`Self::rebuild_sky_runs`] afterwards.
+    pub(crate) fn set_props_raw(
+        &mut self,
+        pos: BlockPos,
+        props: LightProps,
+    ) -> Result<(), LightError> {
+        let i = self.index(pos)?;
+        self.opacity[i] = props.opacity;
+        self.block.src[i] = props.emission;
+        Ok(())
+    }
+
+    /// Recomputes every column's exposed sky run from the opacities.
+    pub(crate) fn rebuild_sky_runs(&mut self) {
+        for z in 0..EDGE {
+            for x in 0..EDGE {
+                let floor = self.scan_floor(x, z, EDGE);
+                self.sky_floor[z * EDGE + x] = floor as u8;
+                for y in 0..EDGE {
+                    self.sky.src[padded(x, y, z)] = if y >= floor { MAX_LIGHT } else { 0 };
+                }
+            }
+        }
+    }
+
     fn index(&self, pos: BlockPos) -> Result<usize, LightError> {
         let (x, y, z) = (
             pos.x - self.origin.x,
@@ -445,6 +579,8 @@ impl LightNeighborhood {
             &mut self.sky
         };
         propagate_decrease(channel, &mut self.inc, &mut self.dec);
+        mark(&mut self.touched, &self.dec);
+        self.dec.clear();
         // Light may now flow into the changed cell (lower opacity) or out of it.
         self.inc.push(changed as u32);
         for off in NEIGHBORS {
@@ -457,6 +593,8 @@ impl LightNeighborhood {
             }
         }
         propagate_increase(channel, &self.opacity, &mut self.inc);
+        mark(&mut self.touched, &self.inc);
+        self.inc.clear();
     }
 }
 
@@ -496,7 +634,6 @@ fn propagate_decrease(channel: &mut Channel, inc: &mut Vec<u32>, dec: &mut Vec<u
             }
         }
     }
-    dec.clear();
 }
 
 /// Forward BFS from every queued cell; each step costs 1 + the target's opacity.
@@ -518,5 +655,4 @@ fn propagate_increase(channel: &mut Channel, opacity: &[u8], inc: &mut Vec<u32>)
             }
         }
     }
-    inc.clear();
 }

@@ -20,5 +20,9 @@ worldgen = { path = "../worldgen" }
 name = "light"
 harness = false
 
+[[bench]]
+name = "world_light"
+harness = false
+
 [lints]
 workspace = true

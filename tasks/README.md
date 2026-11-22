@@ -57,13 +57,13 @@ Core and single-player world ([roadmap](../docs/process/roadmap.md), PRD §9). E
 | --- | --- | --- | --- | --- |
 | [T1-01](stage-1/T1-01-world-columns-registry.md) | World columns, block registry and ID table | T0-03 | agent (cloud) | done |
 | [T1-02](stage-1/T1-02-world-save-format.md) | On-disk world format: save and load | T1-01 | agent (cloud) | done |
-| [T1-03](stage-1/T1-03-worldgen-pipeline.md) | Terrain generator pipeline | T1-01, T0-12 | agent (cloud) | todo |
+| [T1-03](stage-1/T1-03-worldgen-pipeline.md) | Terrain generator pipeline | T1-01, T0-12 | agent (cloud) | done |
 | [T1-04](stage-1/T1-04-section-mesh-hot-paths.md) | Optimize section get/set and gather + masks | T0-16 | agent (cloud) + laptop confirmation | in-progress (laptop run) |
 | [T1-05](stage-1/T1-05-render-backend-selection.md) | Renderer backend and adapter selection with fallback | T0-14 | agent (cloud) + laptop checks | in-progress (laptop checks) |
 | [T1-06](stage-1/T1-06-profiling-and-ci-benchmarks.md) | Profiler zones, Tracy and benchmarks in CI | T0-01, T0-02 | agent (cloud) + Tracy screenshot on the laptop | in-progress |
 | [T1-07](stage-1/T1-07-assets-fallback-and-cache.md) | Fallback asset set, asset cache and texture arrays | T0-01 | agent (cloud) | done |
 | [T1-08](stage-1/T1-08-offline-mode.md) | Offline mode for client and server | owner decision (legal.md rule 7) | agent (cloud) | done |
-| [T1-09](stage-1/T1-09-light-in-world.md) | Lighting integrated with the world | T1-01, T1-03 | agent (cloud) | todo |
+| [T1-09](stage-1/T1-09-light-in-world.md) | Lighting integrated with the world | T1-01, T1-03 | agent (cloud) | in-progress (owner decision on the world-path budget) |
 | [T1-10](stage-1/T1-10-loading-queue.md) | Chunk loading queue with priorities | T1-01, T1-03 | agent (cloud) | todo |
 | [T1-11](stage-1/T1-11-renderer-terrain.md) | Terrain renderer: upload, culling, texture arrays, profiles | T1-05, T1-07 | agent (cloud) + laptop measurements | todo |
 | [T1-12](stage-1/T1-12-player-physics-and-editing.md) | Player physics, digging and placing blocks | T1-01, T1-09, T1-10 | agent (cloud) | todo |
@@ -82,3 +82,7 @@ Core and single-player world ([roadmap](../docs/process/roadmap.md), PRD §9). E
 | 5 | T1-15 | everything above |
 
 Wave 1 tasks touch different crates (`world`, `mesh`, `render`, `engine-core`, `assets`, `auth`), so up to six agents can work at once; merge `main` before each PR and keep both sides' rows in shared files.
+
+### Stage 1 follow-ups
+
+- World map `get_block`/`set_block` are 2.8× / 2.4× the section access (VM, T1-01); the owner kept the 2× target (2026-11-22). Optimize when profiling shows map access in a hot path (physics, edits), e.g. a per-caller column cache or batched access APIs; re-measure on the laptop.

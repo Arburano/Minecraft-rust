@@ -21,6 +21,11 @@
 mod neighborhood;
 mod nibbles;
 pub mod reference;
+pub mod world_light;
 
 pub use neighborhood::{COLUMNS, EDGE, LightError, LightNeighborhood, LightProps, VOLUME};
 pub use nibbles::{MAX_LIGHT, Nibbles, PACKED_BYTES, SectionLight};
+pub use world_light::{
+    ColumnLightStats, LightUpdates, WorldLight, WorldLightError, light_column, props_from_registry,
+    reload_from_world, snapshot_from_world,
+};

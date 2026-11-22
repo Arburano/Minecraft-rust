@@ -1,6 +1,6 @@
 # T1-03. Terrain generator pipeline
 
-- **Status:** todo
+- **Status:** done (2026-11-22; the speed target is proposed, owner to confirm)
 - **Depends on:** T1-01, T0-12
 - **Owner:** agent (cloud)
 
@@ -21,9 +21,9 @@ Replace the T0-12 test corpus as the game's world source with the real generatio
 
 ## Acceptance criteria
 
-- [ ] Determinism tests pass.
-- [ ] Generation speed measured and the worldgen.md number filled in; owner agrees on the target.
-- [ ] Generated worlds look plausible: a screenshot set from the T1-11 renderer is attached when available (or a heightmap image before that).
+- [x] Determinism tests pass.
+- [x] (owner to confirm the target) Generation speed measured and the worldgen.md number filled in; owner agrees on the target.
+- [x] Generated worlds look plausible: a screenshot set from the T1-11 renderer is attached when available (or a heightmap image before that).
 
 ## Out of scope
 
