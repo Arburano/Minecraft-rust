@@ -19,9 +19,9 @@ net = { path = "../net" }
 sim = { path = "../sim" }
 assets = { path = "../assets" }
 auth = { path = "../auth" }
+glam = { workspace = true }
 
 [dev-dependencies]
-glam = { workspace = true }
 wgpu = { workspace = true }
 pollster = { workspace = true }
 

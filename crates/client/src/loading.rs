@@ -17,7 +17,7 @@ use std::time::{Duration, Instant};
 use engine_core::jobs::{CancelToken, JobPool, Priority};
 use light::{SectionLight, WorldLight, light_column, props_from_registry};
 use mesh::{ChunkVisibility, MeshChunkBuilder, MeshChunkQuads, SectionNeighborhood};
-use world::coords::{MeshChunkPos, SectionPos};
+use world::coords::{BlockPos, MeshChunkPos, SectionPos};
 use world::{BlockStateId, Column, ColumnPos, ColumnState, Registry, Section, WorldMap};
 use worldgen::{GenContext, Pipeline};
 
@@ -158,6 +158,9 @@ pub struct Loader {
     lit: HashSet<ColumnPos>,
     meshes: HashMap<MeshChunkPos, MeshChunkQuads>,
     visibility: HashMap<MeshChunkPos, ChunkVisibility>,
+    /// Mesh chunks stored or dropped since the last `take_changed_meshes`,
+    /// when tracking is on.
+    changed_meshes: Option<HashSet<MeshChunkPos>>,
     finished: VecDeque<JobOutput>,
     stats: LoadStats,
 }
@@ -180,6 +183,7 @@ impl Loader {
             lit: HashSet::new(),
             meshes: HashMap::new(),
             visibility: HashMap::new(),
+            changed_meshes: None,
             finished: VecDeque::new(),
             stats: LoadStats::default(),
         }
@@ -202,6 +206,69 @@ impl Loader {
     #[must_use]
     pub fn visibility(&self) -> &HashMap<MeshChunkPos, ChunkVisibility> {
         &self.visibility
+    }
+
+    /// Starts recording which mesh chunks change (for the renderer's batch
+    /// re-copy); off by default so headless users keep no log.
+    pub fn track_mesh_changes(&mut self) {
+        self.changed_meshes.get_or_insert_with(HashSet::new);
+    }
+
+    /// Moves the mesh chunks stored or dropped since the last call into `out`.
+    /// A chunk missing from [`Self::meshes`] was unloaded.
+    pub fn take_changed_meshes(&mut self, out: &mut Vec<MeshChunkPos>) {
+        if let Some(c) = &mut self.changed_meshes {
+            out.extend(c.drain());
+        }
+    }
+
+    /// Replaces a mesh chunk's quads and visibility (the edit path re-meshes
+    /// on the main thread).
+    pub fn store_mesh(&mut self, m: MeshChunkPos, quads: MeshChunkQuads, vis: ChunkVisibility) {
+        self.meshes.insert(m, quads);
+        if vis == ChunkVisibility::ALL {
+            self.visibility.remove(&m);
+        } else {
+            self.visibility.insert(m, vis);
+        }
+        if let Some(c) = &mut self.changed_meshes {
+            c.insert(m);
+        }
+    }
+
+    /// Call after a block edit at `pos`: cancels jobs whose inputs (copied
+    /// blocks) now are stale — meshing of the affected mesh chunks and
+    /// lighting of the 3×3 columns around — and drops their finished but not
+    /// yet applied results. Cancelled targets are scheduled again.
+    pub fn block_changed(&mut self, pos: BlockPos) {
+        let affected = mesh::affected_mesh_chunks(pos);
+        let col = ColumnPos::of_block(pos);
+        let stale = |t: &Target| match *t {
+            Target::Mesh(m) => affected.as_slice().contains(&m),
+            Target::Light(c) => (c.x - col.x).abs() <= 1 && (c.z - col.z).abs() <= 1,
+            Target::Generate(_) => false,
+        };
+        let mut cancelled = 0;
+        self.in_flight.retain(|t, token| {
+            let keep = !stale(t);
+            if !keep {
+                token.cancel();
+                cancelled += 1;
+            }
+            keep
+        });
+        self.stats.cancelled += cancelled;
+        self.finished.retain(|out| match out {
+            JobOutput::Meshed(m, ..) => !stale(&Target::Mesh(*m)),
+            JobOutput::Lit(c, _) => !stale(&Target::Light(*c)),
+            _ => true,
+        });
+    }
+
+    /// Whether a mesh chunk has been meshed (and not unloaded).
+    #[must_use]
+    pub fn has_mesh(&self, m: MeshChunkPos) -> bool {
+        self.meshes.contains_key(&m)
     }
 
     /// Whether a column has blocks, light and all its mesh chunks.
@@ -275,14 +342,19 @@ impl Loader {
             map.remove_column(c);
             light.remove_column(c);
         }
+        let changed = &mut self.changed_meshes;
         self.meshes.retain(|m, _| {
-            inside(
+            let keep_it = inside(
                 ColumnPos {
                     x: m.x * 2,
                     z: m.z * 2,
                 },
                 keep + 1,
-            )
+            );
+            if !keep_it && let Some(c) = changed.as_mut() {
+                c.insert(*m);
+            }
+            keep_it
         });
         self.visibility.retain(|m, _| {
             inside(
@@ -337,8 +409,10 @@ impl Loader {
                     }
                 }
                 JobOutput::Lit(pos, sections) => {
-                    self.in_flight.remove(&Target::Light(pos));
-                    if inside(pos, keep) && map.column(pos).is_some() {
+                    if self.in_flight.remove(&Target::Light(pos)).is_some()
+                        && inside(pos, keep)
+                        && map.column(pos).is_some()
+                    {
                         for (sp, l) in sections {
                             light.insert(sp, l);
                         }
@@ -349,20 +423,18 @@ impl Loader {
                     }
                 }
                 JobOutput::Meshed(m, quads, vis) => {
-                    self.in_flight.remove(&Target::Mesh(m));
-                    if inside(
-                        ColumnPos {
-                            x: m.x * 2,
-                            z: m.z * 2,
-                        },
-                        keep + 1,
-                    ) {
-                        self.meshes.insert(m, quads);
-                        if vis == ChunkVisibility::ALL {
-                            self.visibility.remove(&m);
-                        } else {
-                            self.visibility.insert(m, vis);
-                        }
+                    // A result whose job was cancelled (an edit made its
+                    // input stale) is dropped.
+                    if self.in_flight.remove(&Target::Mesh(m)).is_some()
+                        && inside(
+                            ColumnPos {
+                                x: m.x * 2,
+                                z: m.z * 2,
+                            },
+                            keep + 1,
+                        )
+                    {
+                        self.store_mesh(m, quads, vis);
                     }
                 }
             }
@@ -445,7 +517,7 @@ impl Loader {
                         })
                     });
                     if empty {
-                        self.meshes.insert(m, MeshChunkQuads::default());
+                        self.store_mesh(m, MeshChunkQuads::default(), ChunkVisibility::ALL);
                     } else {
                         candidates.push((viewer.mesh_priority(m), Target::Mesh(m)));
                     }
