@@ -70,7 +70,7 @@ Core and single-player world ([roadmap](../docs/process/roadmap.md), PRD §9). E
 | [T1-13](stage-1/T1-13-client-app-and-menu.md) | Client application, main menu and single-player | T1-07, T1-08, T1-10, T1-11 | agent (cloud) + laptop | todo |
 | [T1-14](stage-1/T1-14-local-asset-import.md) | Import assets from a local licensed installation | T1-07 | agent (cloud) + laptop | todo |
 | [T1-16](stage-1/T1-16-light-fast-world-path.md) | Faster world-path lighting (same look) | T1-09 | agent + laptop | todo (later) |
-| [T1-17](stage-1/T1-17-worldgen-modes.md) | World generation modes: normal and extended (Terralith as look reference) | T1-03, T1-13 | agent + owner review | todo (later) |
+| [T1-17](stage-1/T1-17-worldgen-modes.md) | World generation modes: normal and extended (Tectonic as reference) | T1-03, T1-13 | agent + owner review | todo (later) |
 | [T1-15](stage-1/T1-15-stage-1-exit-harness.md) | Stage 1 exit measurement | T1-01 … T1-14 | agent + owner's laptop | todo |
 
 ### Stage 1: order and parallel work

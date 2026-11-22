@@ -9,15 +9,18 @@
 Two generation modes chosen when a world is created:
 
 - **Normal** — the T1-03 pipeline (`mods/core/data/worldgen/overworld.toml`). This is the mode all current work targets.
-- **Extended** — a richer generator of our own: multi-noise biome placement (temperature, humidity, continentalness, erosion), height splines for mountains, plateaus and canyons, smooth biome blending, more cave types, more biomes and surface variety.
+- **Extended** — a richer generator of our own, modeled on Tectonic: multi-noise biome placement (temperature, humidity, continentalness, erosion), height splines for mountains, plateaus and canyons, smooth biome blending, more cave types, more biomes and surface variety.
 
-## Reference: Terralith (look and feel only)
+## Reference: Tectonic (owner decision 2026-11-22)
 
-The owner chose **Terralith** (Stardust Labs) as the reference for what "extended" should feel like. Its license (Stardust Labs license, last altered 2023-02-05) forbids copying parts into another project, using portions in other projects without permission, and using anything created by Stardust Labs in AI projects. Therefore:
+The owner chose **Tectonic** (by Apollo, `Apollounknowndev/tectonic`, Modrinth project `tectonic`) as the reference for the extended generator, replacing Terralith (whose Stardust Labs license forbids copying and any AI use, so it is not used at all).
 
-- Agents must **not** download, read, parse or port Terralith files or code, and nothing from it goes into the repository.
-- The reference is **human observation**: the owner plays Terralith worlds and describes, with screenshots in `docs/research/worldgen-reference/`, the landscapes, biome variety and transitions wanted. Agents implement those goals with our own design from public, general techniques.
-- Using Terralith's actual data (e.g. a datapack-interpreter mode) requires written permission from Stardust Labs and the lawyer's answer (T0-10); it is out of scope here.
+License status (checked 2026-11-22):
+
+- Modrinth declares **MIT**. The GitHub repository has **no LICENSE file**, so the copyright line MIT requires us to reproduce is not published.
+- Until that is clarified, agents may read Tectonic and port its **ideas and parameters** (terrain shaping, continent/erosion/ridge splines, biome placement), crediting it in `THIRD_PARTY.md`. Copying Tectonic files verbatim into the repository waits for a published LICENSE with a copyright line (the owner asks the author to add one, or confirms the holder and year in writing).
+- Tectonic builds on Minecraft's density-function world generation and may contain or override **vanilla data** (`minecraft:` worldgen files). Anything derived from vanilla data is Mojang's and never enters the repository (`docs/legal.md` rule 2). Our implementation of density-function-style generation is written from public documentation, never from decompiled Minecraft code (rule 1).
+- The owner's observations and screenshots of Tectonic worlds go to `docs/research/worldgen-reference/`.
 
 ## Deliverables
 

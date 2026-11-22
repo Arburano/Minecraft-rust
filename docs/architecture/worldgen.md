@@ -35,7 +35,7 @@ heightmap+biomes (cheap, 2D) ─► terrain ─► caves ─► ores ─► stru
 
 - **Normal** — the T1-03 pipeline below. All current work targets this mode.
 - **Extended** — a richer generator of our own (multi-noise biomes, height splines, smooth blending, more caves and biomes), task [T1-17](../../tasks/stage-1/T1-17-worldgen-modes.md), after the main stage 1 tasks. The world remembers its mode.
-- **Reference for "extended": Terralith** (Stardust Labs) — for the look and feel only. Its license forbids copying parts into other projects and any use in AI projects, so agents never download, read or port its files; the owner provides observations and screenshots (`docs/research/worldgen-reference/`) and agents build the result with our own design. Using its actual data needs written permission from Stardust Labs and the lawyer (T0-10).
+- **Reference for "extended": Tectonic** (Apollo, MIT on Modrinth; replaces Terralith, which is not used because its license forbids copying and AI use). Agents may study it and port ideas and parameters with credit in `THIRD_PARTY.md`; verbatim copies wait for a published LICENSE with a copyright line (the GitHub repository has none yet). Vanilla-derived data in it stays out of the repository, and our density-function-style generation is written from public documentation. Details: [T1-17](../../tasks/stage-1/T1-17-worldgen-modes.md).
 
 ## Implementation (T1-03)
 

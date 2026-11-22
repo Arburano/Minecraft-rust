@@ -14,7 +14,9 @@ This is not legal advice. It is a list of rules the team follows until a lawyer'
 
 **Status 2026-11-21:** the questions below were sent (T0-10). Development does not wait for the answers: offline mode (rule 7) replaces Microsoft login for testing, and developers test with assets from their own licensed installation (rule 2). Nothing is launched publicly until the answers arrive.
 
-**Third-party content (2026-11-22):** Terralith (Stardust Labs) is a visual reference for the extended world generator only. Its license forbids copying parts into another project and any use of Stardust Labs works in AI projects: no Terralith files in the repository, and agents do not read or port them. Using its data needs written permission from Stardust Labs.
+**Third-party content (2026-11-22):**
+- **Tectonic** (Apollo) is the reference for the extended world generator. Modrinth declares MIT, but the source repository has no LICENSE file, so the copyright notice MIT requires is unknown: ideas and parameters may be ported with credit in `THIRD_PARTY.md`; verbatim copies only after a LICENSE with a copyright line is published or confirmed in writing. Any vanilla Minecraft data inside it is Mojang's and never enters the repository.
+- **Terralith** (Stardust Labs) is **not used**: its license forbids copying parts into other projects and any use in AI projects.
 
 ## Questions for the lawyer
 
