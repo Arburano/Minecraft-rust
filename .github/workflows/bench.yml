@@ -1,14 +1,21 @@
 name: Benchmarks
 
-# A fast benchmark subset on every PR and on main (T1-06). Results are uploaded
-# as an artifact; PRs are compared with the latest successful main run.
+# A fast benchmark subset after every merge to main, and on demand for any
+# branch ("Run workflow" in the Actions tab) (T1-06). Not on every PR: Actions
+# minutes on a private repository are limited (owner decision 2026-11-22).
+# Results are uploaded as an artifact; a manual run on a branch is compared
+# with the latest successful main run.
 # Advisory: shared runners are noisy, so regressions are reported, not failed
 # (docs/process/testing-and-benchmarks.md). Switch to --strict on a stable runner.
 
 on:
   push:
     branches: [main]
-  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: bench-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -37,6 +44,8 @@ jobs:
         with:
           toolchain: "1.97"
       - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: bench
       - name: Run benchmark subset
         run: |
           cargo bench -p world --bench section --bench map -- $CRITERION_ARGS
@@ -50,7 +59,7 @@ jobs:
           name: bench-results
           path: bench-results.json
       - name: Compare with main
-        if: github.event_name == 'pull_request'
+        if: github.ref != 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
