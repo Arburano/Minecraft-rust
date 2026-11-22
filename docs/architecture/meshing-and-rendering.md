@@ -42,12 +42,13 @@ Measured (VM, T0-04, 32³ mesh chunk, seeded terrain corpus 4×2×4 chunks, 8.1%
 | Bits | Field |
 | --- | --- |
 | 0–5, 6–11, 12–17 | x, y, z in the batch (0..63, modulo 64: a max-corner field of 0 means 64, see above) |
-| 18–23, 24–29 | width, height − 1 |
+| 18–23, 24–29 | width, height (stored as is, 1..=32 within a mesh chunk) |
 | 32–47 | block type / texture index (16 bits) |
 | 48–55 | flat face light (reserve, if the 3D light texture is unavailable) |
+| 61–63 | face direction (0 Up, 1 Down, 2 +X, 3 −X, 4 +Z, 5 −Z) — written only into the GPU copy at upload (T1-11), never by the mesher |
 | rest | reserved (AO flags, animation) |
 
-The face direction is not stored in the quad — it is given by the list (6 ranges). Smooth light and AO are not put into the quad: greedy merging would break quads on every light change. The shader reads light from the sections' 3D light texture.
+On the CPU the face direction is not stored in the quad — it is given by the list (6 ranges). The upload writes it into bits 61–63 of the GPU copy so that one draw can cover several neighboring direction ranges of a batch. Smooth light and AO are not put into the quad: greedy merging would break quads on every light change. The shader reads light from the sections' 3D light texture.
 
 ## Capability probe (at client start)
 
@@ -56,7 +57,7 @@ We read `adapter.features()`, `limits()`, `get_downlevel_capabilities()` and cho
 | Path | Condition | What we do |
 | --- | --- | --- |
 | A. GPU-driven | `INDIRECT_EXECUTION` + compute + `MULTI_DRAW_INDIRECT_COUNT` (DX12, Vulkan 1.2+) | compute culling writes indirect arguments, 1–3 calls per pass |
-| B. Vertex pulling | `DownlevelFlags::VERTEX_STORAGE` | CPU culling, a draw per render batch × direction, quads from a storage buffer, vertex from `vertex_index` (quad = `vertex_index / 6`), `first_instance` not needed |
+| B. Vertex pulling | `DownlevelFlags::VERTEX_STORAGE` | CPU culling, a draw per render batch × direction, quads from a storage buffer, vertex from `vertex_index` (quad = `vertex_index / 6`); `first_instance` carries the render batch slot (direct draws only) |
 | C. Fallback | no storage in the vertex shader (GL ES 3.0, old drivers) | the same 8 bytes as a per-instance `Uint32x2` attribute, 4 vertices per instance |
 
 Stages 0–1 build B and C; A comes from stage 2, only after measurements (analysis §13.3). Capability dump on an iGPU and GTX 1050 (Vulkan, DX12, GL) — task T0-06; stage 0 evidence is taken on Radeon RX Vega 10 + GTX 1660 Ti instead (open question 12, T0-14), so GTX 1050 remains unverified. The [2026-11-19 laptop probe](../research/gpu/laptop-probe-2026-11-19.json) shows `VERTEX_STORAGE` and `TIMESTAMP_QUERY` on both adapters on all three backends, so both select path B; B/C measurements and the [summary](../research/gpu/summary-2026-11-19.md) are in T0-14.
@@ -75,6 +76,16 @@ Platform findings from T0-14 that the stage 1 renderer must handle:
 2. Face directions: draw only ≤ 3 directions facing the camera (per batch).
 3. Cave culling: a visibility graph between mesh chunk faces (which faces are connected by air); BFS traversal from the camera. Target ≥ 50% of units discarded in a cave.
 4. Hi-Z occlusion — only on path A and only after measurements; with a second pass for what was rejected by the previous frame.
+
+## Terrain renderer (T1-11, `render::terrain`)
+
+- **Quad buffer:** one GPU buffer for all render batches. `RangeArena` (first fit, coalescing free list) gives each batch one contiguous range holding its six direction lists back to back; replacing a batch frees and re-allocates its range. A full buffer is an error the caller handles (bigger buffer or lower distance); defragmentation is not needed at stage 1 sizes.
+- **Batch slots:** up to 4,096 resident batches; a uniform array holds each slot's world origin. Path B passes the slot as `first_instance`, path C as `first_vertex / 4` (its instances are the quads). The indexed B variant (open question 13) pulls 4 vertices per quad with a shared `0 1 2 2 1 3` index buffer of 65,536 quads and `base_vertex = first quad × 4`.
+- **Light:** a 512 × 512 × 128 `R8Uint` atlas of 8,192 bricks (16³, texel `block | sky << 4`, brick axes x, z, y so the section's YZX bytes upload as is) plus a toroidal 64 × 32 × 64 `R32Uint` indirection volume of sections: bit 31 = brick slot, otherwise the section's uniform light (most sections: open sky or dark rock need no brick). Unknown sections read as open sky. The fragment shader takes the light of the cell in front of the face (flat light; smooth light and AO later).
+- **Textures:** one `texture_2d_array` with the asset pipeline's mips; a `state × direction → layer` table in an `R32Uint` texture; repeat sampler, world-space UVs, alpha test at 0.5.
+- **Culling per frame (`prepare`):** frustum per batch AABB, then face directions (`visible_face_mask`, at most 3 when the camera is outside the box), neighboring visible directions merged into one draw. Cave culling: the loader computes `mesh::ChunkVisibility` (which of a mesh chunk's 6 faces are connected through non-opaque cells, a 36-bit matrix) in each mesh job; `cave_visible` walks from the camera's mesh chunk through connected faces, never stepping back against a direction already taken, limited by the frustum and the render distance. Its result (as a set of batches) can be passed to `prepare`.
+- **Quality profiles:** `QualityProfile::{Low, Default, High}` = 8 / 12 / 16 chunks, fog start, mipmaps; render distance is never below 8.
+- **Example:** `cargo run --release -p client --example screenshot -- [radius] [out.bmp] [B|Bi|C]` renders a generated world offscreen (works on software Vulkan); `FRAMES=n` adds timed frames with GPU timestamps for the laptop measurement.
 
 ## Textures
 

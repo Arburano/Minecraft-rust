@@ -65,7 +65,7 @@ Core and single-player world ([roadmap](../docs/process/roadmap.md), PRD §9). E
 | [T1-08](stage-1/T1-08-offline-mode.md) | Offline mode for client and server | owner decision (legal.md rule 7) | agent (cloud) | done |
 | [T1-09](stage-1/T1-09-light-in-world.md) | Lighting integrated with the world | T1-01, T1-03 | agent (cloud) | done |
 | [T1-10](stage-1/T1-10-loading-queue.md) | Chunk loading queue with priorities | T1-01, T1-03 | agent (cloud) | in-progress (owner: confirm 0.5 s; laptop run) |
-| [T1-11](stage-1/T1-11-renderer-terrain.md) | Terrain renderer: upload, culling, texture arrays, profiles | T1-05, T1-07 | agent (cloud) + laptop measurements | todo |
+| [T1-11](stage-1/T1-11-renderer-terrain.md) | Terrain renderer: upload, culling, texture arrays, profiles | T1-05, T1-07 | agent (cloud) + laptop measurements | in-progress (owner: laptop run, OQ 13/14) |
 | [T1-12](stage-1/T1-12-player-physics-and-editing.md) | Player physics, digging and placing blocks | T1-01, T1-09, T1-10 | agent (cloud) | todo |
 | [T1-13](stage-1/T1-13-client-app-and-menu.md) | Client application, main menu and single-player | T1-07, T1-08, T1-10, T1-11 | agent (cloud) + laptop | todo |
 | [T1-14](stage-1/T1-14-local-asset-import.md) | Import assets from a local licensed installation | T1-07 | agent (cloud) + laptop | todo |
