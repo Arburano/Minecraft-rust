@@ -641,10 +641,13 @@ dependencies = [
  "auth",
  "clap",
  "engine-core",
+ "light",
+ "mesh",
  "net",
  "render",
  "sim",
  "world",
+ "worldgen",
 ]
 
 [[package]]
@@ -1220,6 +1223,7 @@ dependencies = [
  "crossbeam-channel",
  "rayon",
  "thiserror 2.0.21",
+ "thread-priority",
  "tracy-client",
 ]
 

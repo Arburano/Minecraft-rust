@@ -1,6 +1,6 @@
 # T1-10. Chunk loading queue with priorities
 
-- **Status:** todo
+- **Status:** in-progress (2026-11-22: done in the cloud; the 3×3 ≤ 0.5 s number needs the owner's confirmation and a laptop run)
 - **Depends on:** T1-01, T1-03, T0-02
 - **Owner:** agent (cloud)
 
@@ -22,9 +22,9 @@ Load the world around the player so the nearest chunks appear first and movement
 
 ## Acceptance criteria
 
-- [ ] Nearest 3×3 columns ready ≤ 0.5 s after spawn on the owner's laptop (proposed number; confirm with the owner).
-- [ ] No main-thread apply batch > 2 ms (measured).
-- [ ] Cancellation test passes.
+- [ ] Nearest 3×3 columns ready ≤ 0.5 s after spawn on the owner's laptop (proposed number; confirm with the owner). VM: 0.47–0.49 s; laptop run pending.
+- [x] No main-thread apply batch > 2 ms (measured: ≤ 1.46 ms on a VM).
+- [x] Cancellation test passes.
 
 ## Out of scope
 

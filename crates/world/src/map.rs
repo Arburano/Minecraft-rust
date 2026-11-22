@@ -214,6 +214,14 @@ impl WorldMap {
         removed.map(|l| l.column)
     }
 
+    /// Positions of all loaded columns (any order).
+    pub fn column_positions(&self) -> impl Iterator<Item = ColumnPos> + '_ {
+        self.slots
+            .iter()
+            .filter_map(|s| s.as_ref().map(|l| l.column.pos()))
+            .chain(self.overflow.keys().copied())
+    }
+
     /// A loaded column.
     #[must_use]
     pub fn column(&self, pos: ColumnPos) -> Option<&Column> {

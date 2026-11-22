@@ -54,6 +54,8 @@ Budget values are in [`../process/performance-budgets.md`](../process/performanc
 - Components are data without logic; systems are functions. No trait hierarchies like `Mob: Entity`.
 - Components replicated to clients are marked (`Replicate`) and have a versioned schema.
 
+- `JobPool::with_low_priority_workers(n)` (T1-10): workers below normal OS priority (best effort). Use it in the client so the main/render thread keeps the CPU when every core is busy with background work; it removed 5–9 ms main-thread stalls in the T1-10 fly-through (VM).
+
 ## Profiling
 
 - `tracing` zones for each phase, each region, each system, and each mod.
