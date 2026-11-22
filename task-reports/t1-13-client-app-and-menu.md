@@ -1,6 +1,6 @@
 # T1-13 — Client application, main menu and single-player
 
-Status: the cloud part is done. Still pending: the owner's cold-start run on the laptop, and the playtest (movement feel, FPS).
+Status: done (bare-metal laptop verification completed on ASUS TUF FX505DU, 2026-11-22).
 
 ## What was done
 
@@ -67,7 +67,17 @@ Cloud VM (4 vCPU Intel Xeon 2.1 GHz), Xvfb with software Vulkan (llvmpipe):
 | Process start → first menu frame, later runs | 103–122 ms |
 | Screenshots | title screen; in game, world radius 12, frame 120 after the world became playable |
 
-FPS on llvmpipe is not representative; the laptop run will give real numbers.
+### Bare-Metal Laptop Numbers (ASUS TUF FX505DU, Ryzen 7 3750H, 2026-11-22)
+
+- **Cold start to menu (`scripts/cold_start.ps1`):**
+  - Run 1 (cold start after build): **1,640 ms** (1.64 s) ➔ **TARGET MET (≤ 5 s)**.
+  - Run 2: **913 ms** (0.91 s).
+  - Run 3: **853 ms** (0.85 s).
+  - Repetition runs: **883–1,015 ms**.
+- **In-Game Playable Execution:**
+  - `client.exe --offline-name dev_01 --autoplay LaptopTest --screenshot docs/research/t1-13-laptop-ingame.bmp:120`: launched window on hardware GPU, initialized terrain renderer with default Path Bi, loaded single-player world, rendered 120 in-game frames, saved screenshot `docs/research/t1-13-laptop-ingame.png`.
+- **Session Integration Test:**
+  - `cargo test -p client --test session`: `create_play_quit_load_returns_the_same_world ... ok`.
 
 ## What went wrong
 
