@@ -1,6 +1,10 @@
 # T1-14. Import assets from a local licensed installation
 
+<<<<<<< Updated upstream
 - **Status:** done (laptop confirmation 2026-11-22)
+=======
+- **Status:** done (laptop run completed with real licensed installation)
+>>>>>>> Stashed changes
 - **Depends on:** T1-07, open question 5 (owner decision)
 - **Owner:** agent (cloud for code, owner's laptop for real-asset tests)
 

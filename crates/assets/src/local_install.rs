@@ -18,6 +18,16 @@ use crate::image::Rgba8Image;
 /// Environment variable that points at an installation folder (development).
 pub const ENV_VAR: &str = "ASSETS_LOCAL_INSTALL";
 
+/// True if `dir` contains installed versions (vanilla, Prism Launcher, or direct archive).
+#[must_use]
+pub fn has_versions(dir: &Path) -> bool {
+    dir.join("versions").is_dir()
+        || dir.file_name().is_some_and(|n| n == "versions")
+        || dir.join("libraries/com/mojang/minecraft").is_dir()
+        || dir.ends_with("libraries/com/mojang/minecraft")
+        || (dir.is_file() && dir.extension().is_some_and(|ext| ext == "jar"))
+}
+
 /// Usual installation folders for this OS, existing ones first.
 #[must_use]
 pub fn default_dirs() -> Vec<PathBuf> {
@@ -28,12 +38,20 @@ pub fn default_dirs() -> Vec<PathBuf> {
     }
     if let Some(a) = env("APPDATA") {
         out.push(a.join(".minecraft"));
+        out.push(a.join("PrismLauncher"));
+    }
+    for drive in ["D", "C", "E"] {
+        let p = PathBuf::from(format!(r"{drive}:\Games\Prism Launcher"));
+        if p.is_dir() {
+            out.push(p);
+        }
     }
     if let Some(h) = env("HOME") {
         out.push(h.join("Library/Application Support/minecraft"));
         out.push(h.join(".minecraft"));
+        out.push(h.join(".local/share/PrismLauncher"));
     }
-    out.sort_by_key(|p| !p.join("versions").is_dir());
+    out.sort_by_key(|p| !has_versions(p));
     out
 }
 
@@ -51,44 +69,138 @@ pub struct InstalledVersion {
 }
 
 /// Versions with a client archive in `dir`, newest release first, then
-/// other kinds by time.
+/// other kinds by time. Supports standard vanilla launcher layout,
+/// Prism Launcher / MultiMC layout, or direct JAR files.
 pub fn versions(dir: &Path) -> Result<Vec<InstalledVersion>, AssetError> {
-    let root = dir.join("versions");
-    let entries =
-        std::fs::read_dir(&root).map_err(|e| AssetError::Io(format!("{}: {e}", root.display())))?;
-    let mut out = Vec::new();
-    for e in entries.flatten() {
-        let id = e.file_name().to_string_lossy().into_owned();
-        let jar = e.path().join(format!("{id}.jar"));
-        if !jar.is_file() {
-            continue;
-        }
-        let (kind, released) = std::fs::read_to_string(e.path().join(format!("{id}.json")))
-            .ok()
-            .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
-            .map(|v| {
-                let s = |k: &str| {
-                    v.get(k)
-                        .and_then(|x| x.as_str())
-                        .unwrap_or_default()
-                        .to_owned()
-                };
-                (s("type"), s("releaseTime"))
-            })
-            .unwrap_or_default();
-        out.push(InstalledVersion {
+    if dir.is_file() {
+        let name = dir.file_stem().unwrap_or_default().to_string_lossy();
+        let id = name
+            .strip_prefix("minecraft-")
+            .unwrap_or(&name)
+            .strip_suffix("-client")
+            .unwrap_or(&name)
+            .to_string();
+        return Ok(vec![InstalledVersion {
             id,
-            jar,
-            kind,
-            released,
-        });
+            jar: dir.to_path_buf(),
+            kind: "custom".into(),
+            released: String::new(),
+        }]);
     }
+
+    let mut out = Vec::new();
+    let mut searched_any = false;
+
+    // 1. Standard vanilla launcher layout: <dir>/versions/<id>/<id>.jar
+    let root = if dir.file_name().is_some_and(|n| n == "versions") {
+        dir.to_path_buf()
+    } else {
+        dir.join("versions")
+    };
+    if let Ok(entries) = std::fs::read_dir(&root) {
+        searched_any = true;
+        for e in entries.flatten() {
+            let id = e.file_name().to_string_lossy().into_owned();
+            let jar = e.path().join(format!("{id}.jar"));
+            if !jar.is_file() {
+                continue;
+            }
+            let (kind, released) = std::fs::read_to_string(e.path().join(format!("{id}.json")))
+                .ok()
+                .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
+                .map(|v| {
+                    let s = |k: &str| {
+                        v.get(k)
+                            .and_then(|x| x.as_str())
+                            .unwrap_or_default()
+                            .to_owned()
+                    };
+                    (s("type"), s("releaseTime"))
+                })
+                .unwrap_or_default();
+            out.push(InstalledVersion {
+                id,
+                jar,
+                kind,
+                released,
+            });
+        }
+    }
+
+    // 2. Prism Launcher / MultiMC layout:
+    // <dir>/libraries/com/mojang/minecraft/<id>/minecraft-<id>-client.jar
+    let prism_root = if dir.ends_with("libraries/com/mojang/minecraft") {
+        dir.to_path_buf()
+    } else {
+        dir.join("libraries/com/mojang/minecraft")
+    };
+    if let Ok(entries) = std::fs::read_dir(&prism_root) {
+        searched_any = true;
+        for e in entries.flatten() {
+            let id = e.file_name().to_string_lossy().into_owned();
+            let mut jar = e.path().join(format!("minecraft-{id}-client.jar"));
+            if !jar.is_file() {
+                jar = e.path().join(format!("{id}.jar"));
+            }
+            if !jar.is_file() {
+                if let Ok(sub) = std::fs::read_dir(e.path()) {
+                    if let Some(f) = sub
+                        .flatten()
+                        .find(|f| f.path().extension().is_some_and(|x| x == "jar"))
+                    {
+                        jar = f.path();
+                    }
+                }
+            }
+            if !jar.is_file() {
+                continue;
+            }
+
+            let meta_path = dir.join("meta/net.minecraft").join(format!("{id}.json"));
+            let (kind, released) = std::fs::read_to_string(meta_path)
+                .ok()
+                .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
+                .map(|v| {
+                    let s = |k: &str| {
+                        v.get(k)
+                            .and_then(|x| x.as_str())
+                            .unwrap_or_default()
+                            .to_owned()
+                    };
+                    (s("type"), s("releaseTime"))
+                })
+                .unwrap_or_else(|| {
+                    let kind = if id.contains('w') || id.contains("pre") || id.contains("rc") {
+                        "snapshot"
+                    } else {
+                        "release"
+                    };
+                    (kind.to_string(), String::new())
+                });
+
+            out.push(InstalledVersion {
+                id,
+                jar,
+                kind,
+                released,
+            });
+        }
+    }
+
+    if !searched_any {
+        return Err(AssetError::Io(format!(
+            "{}: neither versions nor libraries/com/mojang/minecraft directory exists",
+            dir.display()
+        )));
+    }
+
     out.sort_by(|a, b| {
         (b.kind == "release")
             .cmp(&(a.kind == "release"))
             .then(b.released.cmp(&a.released))
             .then(b.id.cmp(&a.id))
     });
+    out.dedup_by(|a, b| a.id == b.id);
     Ok(out)
 }
 
@@ -102,6 +214,21 @@ pub struct InstalledTextures {
 impl InstalledTextures {
     /// Opens `version` (or the newest release) of the installation in `dir`.
     pub fn open(dir: &Path, version: Option<&str>) -> Result<Self, AssetError> {
+        if dir.is_file() {
+            let id = version
+                .map(ToOwned::to_owned)
+                .or_else(|| {
+                    let stem = dir.file_stem()?.to_string_lossy();
+                    let s = stem
+                        .strip_prefix("minecraft-")
+                        .unwrap_or(&stem)
+                        .strip_suffix("-client")
+                        .unwrap_or(&stem);
+                    Some(s.to_string())
+                })
+                .unwrap_or_else(|| "custom".to_string());
+            return Self::open_jar(dir, &id);
+        }
         let all = versions(dir)?;
         let v = match version {
             Some(want) => all.into_iter().find(|v| v.id == want),
@@ -318,6 +445,46 @@ mod tests {
             [9, 8, 7, 255]
         );
         assert!(t.texture("minecraft:block/missing").is_none());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn reads_prism_launcher_installation() {
+        let dir = std::env::temp_dir().join(format!("assets-prism-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let id = "1.21.4";
+        let sub = dir.join("libraries/com/mojang/minecraft").join(id);
+        std::fs::create_dir_all(&sub).expect("dir");
+        let meta = dir.join("meta/net.minecraft");
+        std::fs::create_dir_all(&meta).expect("meta");
+        std::fs::write(
+            meta.join(format!("{id}.json")),
+            r#"{"type":"release","releaseTime":"2024-12-03"}"#,
+        )
+        .expect("json");
+        let f = File::create(sub.join(format!("minecraft-{id}-client.jar"))).expect("jar");
+        let mut z = zip::ZipWriter::new(f);
+        z.start_file(
+            "assets/minecraft/textures/block/stone.png",
+            zip::write::SimpleFileOptions::default(),
+        )
+        .expect("entry");
+        std::io::Write::write_all(&mut z, &png_bytes(1, 1, png::ColorType::Rgb, &[12, 34, 56]))
+            .expect("write");
+        z.finish().expect("finish");
+
+        assert!(has_versions(&dir));
+        let v = versions(&dir).expect("versions");
+        assert_eq!(v.len(), 1);
+        assert_eq!(v[0].id, id);
+        assert_eq!(v[0].kind, "release");
+
+        let mut t = InstalledTextures::open(&dir, Some("1.21.4")).expect("open");
+        assert_eq!(t.version, "1.21.4");
+        assert_eq!(
+            t.texture("minecraft:block/stone").expect("stone").get(0, 0),
+            [12, 34, 56, 255]
+        );
         let _ = std::fs::remove_dir_all(dir);
     }
 
