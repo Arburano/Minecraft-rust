@@ -40,6 +40,9 @@ struct Args {
     /// Save a BMP screenshot of frame N (`file.bmp:N`; in a world, once it is playable), then exit.
     #[arg(long, value_name = "FILE:N")]
     screenshot: Option<String>,
+    /// Start without resource and shader packs (if a pack broke the game).
+    #[arg(long)]
+    safe_mode: bool,
 }
 
 fn mods_dir(arg: Option<PathBuf>) -> PathBuf {
@@ -93,6 +96,7 @@ fn main() -> ExitCode {
         start,
         autoplay: args.autoplay.clone(),
         screenshot,
+        safe_mode: args.safe_mode,
     };
     let event_loop = match winit::event_loop::EventLoop::new() {
         Ok(l) => l,

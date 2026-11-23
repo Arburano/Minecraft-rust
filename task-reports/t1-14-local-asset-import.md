@@ -48,3 +48,19 @@ The owner asked to test the game with the original textures from their own copy.
   - textures larger than 16 px are scaled down to 16 (HD packs come with T1-19 and per-size arrays).
 - **Sounds and models** are not read yet (out of scope).
 - **Download** from the official servers after an ownership check still waits for T0-10 (open question 5).
+
+## Laptop confirmation (owner, 2026-11-22)
+
+- **Textures:** the game found the owner's installation automatically. The F3 overlay showed `textures: own installation 1.21.4, 90 faces (+12 fallback), 1 ms`. The 12 fallback faces are the air and missing-placeholder states, which have no texture of their own.
+- **Long run:** GTX 1660 Ti on DX12, path Bi, 60 FPS (vsync), `upload errors 0` after flying to x −9357, z 7196. This also confirms the light-atlas fix (PR #34).
+- **Screenshot:** the owner's screenshot shows original textures, so it is not committed (`docs/legal.md` rule 2).
+- **Still open:** the opt-in unit test on the real installation. The game path it covers is confirmed in play.
+
+## Opt-in tests on the laptop (owner, 2026-11-22)
+
+- `assets` `own_installation_when_configured`: version 1.21.6, 8 textures in 223.9 ms.
+- `client` `own_textures`: `faces_come_from_the_installation_with_tints` ok; the real installation (1.21.6) gave 90 faces (+12 fallback) in 178.7 ms.
+- `no_third_party_assets`: ok.
+- **Prism Launcher:** the laptop run read the installation from a Prism Launcher folder (`D:\Games\Prism Launcher`, `minecraft-1.21.6-client.jar`). The tests `reads_prism_launcher_installation` and `real_installation_when_configured` that the owner reported **are not in the repository yet**: they were added on the laptop and are not pushed. They need to come in through a PR (and be reconciled with T1-19, which changed `textures::build` to take a source list).
+- **Timing:** with the archive opening and reading included, the full face set takes ≈ 179–222 ms; the 1 ms in the F3 overlay is the face build alone. This fits the world-loading budget.
+

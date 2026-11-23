@@ -29,9 +29,10 @@ egui = { workspace = true, features = ["default_fonts"] }
 egui-wgpu = { workspace = true }
 egui-winit = { workspace = true }
 pollster = { workspace = true }
+zip = { workspace = true }
+serde_json = { workspace = true }
 
 [dev-dependencies]
-zip = { workspace = true }
 png = { workspace = true }
 
 [features]

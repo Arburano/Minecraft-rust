@@ -52,11 +52,11 @@ fn faces_come_from_the_installation_with_tints() {
     b.add_mod("core", blocks_from_dir(&blocks).expect("blocks"));
     let reg = b.build().expect("registry");
     let mut installed = InstalledTextures::open(&dir, None).expect("open");
-    let t = build(&reg, &read_block_faces(&blocks), Some(&mut installed));
+    let t = build(&reg, &read_block_faces(&blocks), &mut [&mut installed]);
     assert!(
-        t.from_installation > 0 && t.fallback > 0,
-        "{} own, {} fallback",
-        t.from_installation,
+        t.per_source[0] > 0 && t.fallback > 0,
+        "{:?} own, {} fallback",
+        t.per_source,
         t.fallback
     );
 
@@ -84,5 +84,70 @@ fn faces_come_from_the_installation_with_tints() {
         [90, 60, 30],
         "grass bottom is dirt"
     );
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+fn pack_with(
+    dir: &std::path::Path,
+    name: &str,
+    size: u32,
+    textures: &[(&str, [u8; 4])],
+) -> client::packs::PackFiles {
+    let p = dir.join(name);
+    std::fs::create_dir_all(p.join("assets/minecraft/textures/block")).expect("dir");
+    std::fs::write(p.join("pack.toml"), format!("name = \"{name}\"")).expect("toml");
+    for (n, px) in textures {
+        let mut out = Vec::new();
+        let mut enc = png::Encoder::new(&mut out, size, size);
+        enc.set_color(png::ColorType::Rgba);
+        enc.set_depth(png::BitDepth::Eight);
+        let mut w = enc.write_header().expect("header");
+        w.write_image_data(&px.repeat((size * size) as usize))
+            .expect("data");
+        drop(w);
+        std::fs::write(
+            p.join(format!("assets/minecraft/textures/block/{n}.png")),
+            out,
+        )
+        .expect("png");
+    }
+    client::packs::PackFiles::open(&p).expect("open")
+}
+
+#[test]
+fn packs_stack_top_first_fall_through_and_keep_hd_detail() {
+    let dir = std::env::temp_dir().join(format!("client-pack-stack-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let mut top = pack_with(&dir, "top", 64, &[("stone", [200, 0, 0, 255])]);
+    let mut lower = pack_with(
+        &dir,
+        "lower",
+        16,
+        &[("stone", [0, 200, 0, 255]), ("dirt", [0, 0, 200, 255])],
+    );
+    let blocks = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../mods/core/data/blocks");
+    let mut b = RegistryBuilder::new();
+    b.add_mod("core", blocks_from_dir(&blocks).expect("blocks"));
+    let reg = b.build().expect("registry");
+    let faces = read_block_faces(&blocks);
+    let t = build(&reg, &faces, &mut [&mut top, &mut lower]);
+    assert_eq!(t.size, 64, "the HD texture sets the layer size");
+    let layer =
+        |block: &str| t.layer_table[usize::from(reg.state_id(block).expect(block).0) * 6] as usize;
+    let pixel = |layer: usize| {
+        let level0 = &t.set.arrays()[0].levels()[0];
+        let i = layer * 64 * 64 * 4;
+        [level0[i], level0[i + 1], level0[i + 2]]
+    };
+    assert_eq!(pixel(layer("core:stone")), [200, 0, 0], "the top pack wins");
+    assert_eq!(
+        pixel(layer("core:dirt")),
+        [0, 0, 200],
+        "falls through to the lower pack"
+    );
+    assert!(t.per_source[0] > 0 && t.per_source[1] > 0 && t.fallback > 0);
+    // Without packs: exactly the fallback look at 16 px.
+    let none = build(&reg, &faces, &mut []);
+    assert_eq!((none.size, none.per_source.len()), (16, 0));
     let _ = std::fs::remove_dir_all(dir);
 }

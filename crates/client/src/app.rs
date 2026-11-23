@@ -39,6 +39,8 @@ pub struct Options {
     pub autoplay: Option<String>,
     /// Save a screenshot after this many frames in the current state, then exit.
     pub screenshot: Option<(PathBuf, u32)>,
+    /// Ignore resource and shader packs (a pack broke the game).
+    pub safe_mode: bool,
 }
 
 struct Gpu {
@@ -47,8 +49,29 @@ struct Gpu {
     queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
     depth: wgpu::TextureView,
+    /// The world rendered off screen when a shader pack has a post pass.
+    scene: Option<wgpu::TextureView>,
     path: TerrainPath,
     egui: egui_wgpu::Renderer,
+}
+
+fn scene_view(device: &wgpu::Device, config: &wgpu::SurfaceConfiguration) -> wgpu::TextureView {
+    device
+        .create_texture(&wgpu::TextureDescriptor {
+            label: Some("scene"),
+            size: wgpu::Extent3d {
+                width: config.width.max(1),
+                height: config.height.max(1),
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: config.format,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+        })
+        .create_view(&wgpu::TextureViewDescriptor::default())
 }
 
 fn depth_view(device: &wgpu::Device, w: u32, h: u32) -> wgpu::TextureView {
@@ -64,7 +87,8 @@ fn depth_view(device: &wgpu::Device, w: u32, h: u32) -> wgpu::TextureView {
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format: DEPTH_FORMAT,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            // Post passes of shader packs read depth.
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
             view_formats: &[],
         })
         .create_view(&wgpu::TextureViewDescriptor::default())
@@ -114,6 +138,13 @@ struct Game {
     selected: usize,
     debug: bool,
     frame_ms: f32,
+    /// The shader pack's post pass, if it has one.
+    post: Option<render::terrain::post::PostPass>,
+    /// Shader pack option values (`pack_option(i)`).
+    pack_options: [f32; 8],
+    started: Instant,
+    /// A message over the hotbar for a few seconds.
+    notice: Option<(String, Instant)>,
 }
 
 const HOTBAR: [&str; 9] = [
@@ -234,6 +265,7 @@ impl App {
         );
         Ok(Gpu {
             depth: depth_view(&selected.device, config.width, config.height),
+            scene: None,
             path: TerrainPath::default_for(selected.adapter.get_downlevel_capabilities().flags),
             surface,
             device: selected.device,
@@ -252,7 +284,7 @@ impl App {
         match Session::open(&dir, config) {
             Ok(session) => {
                 let (textures, line) =
-                    block_textures(&self.settings, &self.opts.mods_dir, session.registry());
+                    block_textures(&self.settings, &self.opts, session.registry());
                 self.textures_line = line;
                 let view = WorldView::new(
                     &gpu.device,
@@ -280,11 +312,92 @@ impl App {
                     selected: 0,
                     debug: false,
                     frame_ms: 16.7,
+                    post: None,
+                    pack_options: [0.0; 8],
+                    started: Instant::now(),
+                    notice: None,
                 });
+                self.apply_shader_pack();
                 self.set_grab(true);
             }
             Err(e) => self.menu.message = Some(format!("Could not open the world: {e}")),
         }
+    }
+
+    /// Applies the chosen shader pack to the running world: terrain hooks,
+    /// post pass and option values. A pack that fails to load or validate is
+    /// reported and the built-in look stays.
+    fn apply_shader_pack(&mut self) {
+        let (Some(gpu), Some(game)) = (&mut self.gpu, &mut self.game) else {
+            return;
+        };
+        let chosen = self
+            .settings
+            .shader_pack
+            .clone()
+            .filter(|_| !self.opts.safe_mode);
+        let loaded = chosen.as_ref().map(|id| {
+            client::packs::list_shader_packs(&self.opts.data_dir.join("shaderpacks"))
+                .into_iter()
+                .find(|p| &p.id == id)
+                .ok_or_else(|| format!("shader pack {id} not found"))
+                .and_then(|info| client::packs::load_shader_pack(&info))
+        });
+        let mut error = None;
+        let mut options = [0f32; 8];
+        let mut post = None;
+        match loaded {
+            None => {
+                let _ = game.view.set_shader(&gpu.device, None);
+            }
+            Some(Err(e)) => error = Some(e),
+            Some(Ok(pack)) => {
+                let values = self
+                    .settings
+                    .shader_options
+                    .get(chosen.as_deref().unwrap_or_default());
+                for (slot, o) in options.iter_mut().zip(&pack.options) {
+                    *slot = values
+                        .and_then(|v| v.get(&o.id).copied())
+                        .unwrap_or(o.default);
+                }
+                if let Err(e) = game.view.set_shader(&gpu.device, pack.shade.as_deref()) {
+                    error = Some(format!("{}: {e}", pack.name));
+                    let _ = game.view.set_shader(&gpu.device, None);
+                } else if let Some(code) = &pack.post {
+                    match render::terrain::post::PostPass::new(&gpu.device, gpu.config.format, code)
+                    {
+                        Ok(p) => post = Some(p),
+                        Err(e) => {
+                            error = Some(format!("{} (post): {e}", pack.name));
+                            let _ = game.view.set_shader(&gpu.device, None);
+                        }
+                    }
+                }
+            }
+        }
+        if let Some(e) = &error {
+            eprintln!("shader pack: {e}");
+            game.notice = Some((
+                "The shader pack failed to load; using the built-in look (details in the console)."
+                    .into(),
+                Instant::now(),
+            ));
+            options = [0.0; 8];
+        }
+        gpu.scene = post.as_ref().map(|_| scene_view(&gpu.device, &gpu.config));
+        game.post = post;
+        game.pack_options = options;
+    }
+
+    /// Rebuilds block textures for the running world (resource packs changed).
+    fn apply_resource_packs(&mut self) {
+        let (Some(gpu), Some(game)) = (&self.gpu, &mut self.game) else {
+            return;
+        };
+        let (textures, line) = block_textures(&self.settings, &self.opts, game.session.registry());
+        game.view.set_textures(&gpu.device, &gpu.queue, &textures);
+        self.textures_line = line;
     }
 
     fn close_world(&mut self) {
@@ -417,10 +530,16 @@ impl App {
                 let debug = g
                     .debug
                     .then(|| format!("{}\n{textures_line}", debug_text(g, &menu.gpu_line)));
-                let status = g
-                    .session
-                    .is_flying()
-                    .then(|| format!("Flying — speed ×{:.2} (mouse wheel)", g.session.fly_speed()));
+                let notice = g
+                    .notice
+                    .as_ref()
+                    .filter(|(_, t)| t.elapsed() < Duration::from_secs(8))
+                    .map(|(n, _)| n.clone());
+                let status = notice.or_else(|| {
+                    g.session.is_flying().then(|| {
+                        format!("Flying — speed ×{:.2} (mouse wheel)", g.session.fly_speed())
+                    })
+                });
                 menu::hud(
                     ui,
                     &names,
@@ -430,7 +549,11 @@ impl App {
                     !g.session.is_playing(),
                 );
                 if g.paused {
-                    pause_action = menu::pause(ui);
+                    if menu.in_pack_screen() {
+                        menu_action = menu.show(ui, settings);
+                    } else {
+                        pause_action = menu::pause(ui);
+                    }
                 }
             }
         });
@@ -454,6 +577,11 @@ impl App {
             .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
         let aspect = gpu.config.width as f32 / gpu.config.height.max(1) as f32;
         if let Some(game) = &mut self.game {
+            let t = game.started.elapsed().as_secs_f32();
+            game.view.set_pack_params(&gpu.queue, &game.pack_options, t);
+            if let Some(p) = &game.post {
+                p.set_params(&gpu.queue, &game.pack_options, t);
+            }
             game.view.sync(&gpu.queue, &mut game.session);
             let alpha = game.acc.as_secs_f64() / TICK.as_secs_f64();
             let rs = self.settings.quality.settings();
@@ -476,11 +604,16 @@ impl App {
         } else {
             wgpu::Color::BLACK
         };
+        let post = self.game.as_ref().and_then(|g| g.post.as_ref());
+        let world_target = match (&gpu.scene, post) {
+            (Some(scene), Some(_)) => scene,
+            _ => &view,
+        };
         {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("world"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &view,
+                    view: world_target,
                     depth_slice: None,
                     resolve_target: None,
                     ops: wgpu::Operations {
@@ -492,7 +625,11 @@ impl App {
                     view: &gpu.depth,
                     depth_ops: Some(wgpu::Operations {
                         load: wgpu::LoadOp::Clear(1.0),
-                        store: wgpu::StoreOp::Discard,
+                        store: if post.is_some() {
+                            wgpu::StoreOp::Store
+                        } else {
+                            wgpu::StoreOp::Discard
+                        },
                     }),
                     stencil_ops: None,
                 }),
@@ -501,6 +638,9 @@ impl App {
             if let Some(game) = &self.game {
                 game.view.render(&mut pass);
             }
+        }
+        if let (Some(scene), Some(p)) = (&gpu.scene, post) {
+            p.render(&gpu.device, &mut encoder, scene, &gpu.depth, &view);
         }
         let screen = egui_wgpu::ScreenDescriptor {
             size_in_pixels: [gpu.config.width, gpu.config.height],
@@ -577,6 +717,15 @@ impl App {
                 self.settings = s;
                 self.save_settings();
             }
+            MenuAction::ApplyPacks(s) => {
+                let textures_changed = s.resource_packs != self.settings.resource_packs;
+                self.settings = s;
+                self.save_settings();
+                if textures_changed {
+                    self.apply_resource_packs();
+                }
+                self.apply_shader_pack();
+            }
             MenuAction::Quit => event_loop.exit(),
         }
         match pause_action {
@@ -588,44 +737,81 @@ impl App {
                 self.set_grab(true);
             }
             PauseAction::SaveAndQuit => self.close_world(),
+            PauseAction::Packs(screen) => self.menu.open_packs_from_game(screen, &self.settings),
         }
     }
 }
 
-/// Builds the world's block textures: from the player's own installation if
-/// enabled and found, fallback textures for everything else. Returns a status
-/// line for the debug overlay.
+/// Builds the world's block textures from the enabled resource packs (top
+/// first), then the player's own installation, then fallback textures.
+/// Returns a status line for the debug overlay.
 fn block_textures(
     settings: &Settings,
-    mods_dir: &std::path::Path,
+    opts: &Options,
     registry: &world::Registry,
 ) -> (client::textures::BlockTextures, String) {
-    let faces = client::textures::read_block_faces(&mods_dir.join("blocks"));
-    let mut status = String::from("textures: fallback");
+    let faces = client::textures::read_block_faces(&opts.mods_dir.join("blocks"));
+    let mut notes = Vec::new();
+    // Resource packs in the player's order.
+    let mut packs: Vec<(String, client::packs::PackFiles)> = Vec::new();
+    if !opts.safe_mode {
+        let available = client::packs::list_resource_packs(&opts.data_dir.join("resourcepacks"));
+        for id in &settings.resource_packs {
+            match available.iter().find(|p| &p.id == id) {
+                Some(info) => match client::packs::PackFiles::open(&info.path) {
+                    Ok(f) => packs.push((info.name.clone(), f)),
+                    Err(e) => notes.push(format!("pack {id}: {e}")),
+                },
+                None => notes.push(format!("pack {id} not found")),
+            }
+        }
+    } else {
+        notes.push("safe mode: packs off".into());
+    }
     let mut installed = None;
     if settings.own_assets.enabled {
         match settings.own_assets.resolve_folder() {
-            None => status = "textures: fallback (no own installation found)".into(),
+            None => notes.push("no own installation found".into()),
             Some(dir) => match assets::local_install::InstalledTextures::open(
                 &dir,
                 settings.own_assets.version.as_deref(),
             ) {
                 Ok(t) => installed = Some(t),
-                Err(e) => status = format!("textures: fallback ({e})"),
+                Err(e) => notes.push(e.to_string()),
             },
         }
     }
     let t0 = Instant::now();
-    let version = installed.as_ref().map(|t| t.version.clone());
-    let built = client::textures::build(registry, &faces, installed.as_mut());
-    if let Some(v) = version {
-        status = format!(
-            "textures: own installation {v}, {} faces (+{} fallback), {:.0} ms",
-            built.from_installation,
-            built.fallback,
-            t0.elapsed().as_secs_f64() * 1000.0
-        );
+    let mut names: Vec<String> = packs.iter().map(|(n, _)| n.clone()).collect();
+    if let Some(t) = &installed {
+        names.push(format!("own installation {}", t.version));
     }
+    let mut sources: Vec<&mut dyn client::packs::TextureSource> = packs
+        .iter_mut()
+        .map(|(_, f)| f as &mut dyn client::packs::TextureSource)
+        .collect();
+    if let Some(t) = installed.as_mut() {
+        sources.push(t);
+    }
+    let built = client::textures::build(registry, &faces, &mut sources);
+    let used: Vec<String> = names
+        .iter()
+        .zip(&built.per_source)
+        .map(|(n, c)| format!("{n} {c}"))
+        .collect();
+    let status = format!(
+        "textures: {}{} fallback {}, {} px, {:.0} ms{}",
+        used.join(", "),
+        if used.is_empty() { "" } else { ";" },
+        built.fallback,
+        built.size,
+        t0.elapsed().as_secs_f64() * 1000.0,
+        if notes.is_empty() {
+            String::new()
+        } else {
+            format!(" ({})", notes.join("; "))
+        }
+    );
     (built, status)
 }
 
@@ -789,6 +975,9 @@ impl ApplicationHandler for App {
                     gpu.config.height = size.height.max(1);
                     gpu.surface.configure(&gpu.device, &gpu.config);
                     gpu.depth = depth_view(&gpu.device, gpu.config.width, gpu.config.height);
+                    if gpu.scene.is_some() {
+                        gpu.scene = Some(scene_view(&gpu.device, &gpu.config));
+                    }
                 }
             }
             WindowEvent::Focused(false) => {

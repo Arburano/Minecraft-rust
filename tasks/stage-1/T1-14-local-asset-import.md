@@ -1,6 +1,6 @@
 # T1-14. Import assets from a local licensed installation
 
-- **Status:** in progress (cloud part done; owner: run with the own installation on the laptop)
+- **Status:** done (laptop confirmation 2026-11-22)
 - **Depends on:** T1-07, open question 5 (owner decision)
 - **Owner:** agent (cloud for code, owner's laptop for real-asset tests)
 
@@ -22,9 +22,9 @@ Let developers and players see real textures from **their own** licensed install
 
 ## Acceptance criteria
 
-- [ ] Opt-in tests pass on the owner's laptop; CI skips them (`ASSETS_LOCAL_INSTALL=<folder> cargo test -p assets own_installation -- --nocapture`).
+- [x] Opt-in tests pass on the owner's laptop; CI skips them. Owner, 2026-11-22: `own_installation_when_configured` read version 1.21.6, 8 textures in 223.9 ms; the client's real-installation run built 90 faces (+12 fallback) in 178.7 ms. Both read from a Prism Launcher folder (`D:\Games\Prism Launcher`, `minecraft-1.21.6-client.jar` / `minecraft-1.21.4-client.jar`).
 - [x] A `.gitignore` and CI guard prevents committing converted or original files (`crates/assets/tests/no_third_party_assets.rs`).
-- [ ] Conversion time measured on the laptop. The game prints it in the F3 overlay. In the cloud, a generated test installation with 10 textures builds in a few ms (not representative).
+- [x] Conversion time measured on the laptop: the full set of 90 block faces with all tints in ≈ 179–222 ms including opening and reading the archive (the F3 overlay's 1 ms is the face build alone, with the archive already open). This fits the world-loading budget.
 
 ## Laptop run (owner)
 

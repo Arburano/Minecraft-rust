@@ -89,6 +89,44 @@ impl WorldView {
         }
     }
 
+    /// Replaces the block textures (resource packs changed).
+    pub fn set_textures(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        textures: &BlockTextures,
+    ) {
+        let empty: Vec<Vec<u8>> = Vec::new();
+        let (size, layers, levels) = textures
+            .set
+            .arrays()
+            .first()
+            .map_or((16, 0, empty.as_slice()), |a| {
+                (a.size(), a.layers() as u32, a.levels())
+            });
+        self.terrain.set_textures(
+            device,
+            queue,
+            &TerrainTextures {
+                size,
+                layers,
+                levels,
+            },
+            &textures.layer_table,
+        );
+    }
+
+    /// Uses a shader pack's terrain hooks (`None` = built-in); errors leave
+    /// the current look in place.
+    pub fn set_shader(&mut self, device: &wgpu::Device, shade: Option<&str>) -> Result<(), String> {
+        self.terrain.set_shader_pack(device, shade)
+    }
+
+    /// Shader pack option values and time.
+    pub fn set_pack_params(&self, queue: &wgpu::Queue, options: &[f32; 8], time: f32) {
+        self.terrain.set_pack_params(queue, options, time);
+    }
+
     /// Culls and prepares a frame; returns the camera used.
     pub fn prepare(
         &mut self,
