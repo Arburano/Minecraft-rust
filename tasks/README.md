@@ -66,14 +66,15 @@ Core and single-player world ([roadmap](../docs/process/roadmap.md), PRD §9). E
 | [T1-09](stage-1/T1-09-light-in-world.md) | Lighting integrated with the world | T1-01, T1-03 | agent (cloud) | done |
 | [T1-10](stage-1/T1-10-loading-queue.md) | Chunk loading queue with priorities | T1-01, T1-03 | agent (cloud) + laptop | done |
 | [T1-11](stage-1/T1-11-renderer-terrain.md) | Terrain renderer: upload, culling, texture arrays, profiles | T1-05, T1-07 | agent (cloud) + laptop | done |
-| [T1-12](stage-1/T1-12-player-physics-and-editing.md) | Player physics, digging and placing blocks | T1-01, T1-09, T1-10 | agent (cloud) + laptop | in-progress (feel review after T1-13) |
+| [T1-12](stage-1/T1-12-player-physics-and-editing.md) | Player physics, digging and placing blocks | T1-01, T1-09, T1-10 | agent (cloud) + laptop | done |
 | [T1-13](stage-1/T1-13-client-app-and-menu.md) | Client application, main menu and single-player | T1-07, T1-08, T1-10, T1-11 | agent (cloud) + laptop | done |
 | [T1-14](stage-1/T1-14-local-asset-import.md) | Import assets from a local licensed installation | T1-07 | agent (cloud) + laptop | done |
 | [T1-16](stage-1/T1-16-light-fast-world-path.md) | Faster world-path lighting (same look) | T1-09 | agent + laptop | done (follow-ups: deep-shaft pass, persistent-grids ADR — see Stage 1 follow-ups) |
 | [T1-17](stage-1/T1-17-worldgen-modes.md) | World generation modes: normal and extended (Tectonic as reference) | T1-03, T1-13 | agent + owner review | todo (later) |
 | [T1-18](stage-1/T1-18-gameplay-slots.md) | Gameplay slots: replaceable movement profile and generator (ADR-0013) | T1-12, T1-13 | agent (cloud) | todo |
 | [T1-19](stage-1/T1-19-resource-and-shader-packs.md) | Resource, texture and shader packs (ADR-0014) | T1-11, T1-13 | agent (cloud) + laptop | in-progress (owner: try packs, shader-pack GPU cost) |
-| [T1-15](stage-1/T1-15-stage-1-exit-harness.md) | Stage 1 exit measurement | T1-01 … T1-14 | agent + owner's laptop | todo |
+| [T1-15](stage-1/T1-15-stage-1-exit-harness.md) | Stage 1 exit measurement | T1-01 … T1-14 | agent + owner's laptop | in-progress (harness done; owner: laptop runs) |
+| [T1-20](stage-1/T1-20-stage-1-exit-review.md) | Stage 1 exit review and stage 2 backlog | T1-15 | agent + owner | in-progress (stage 2 backlog done; review waits for T1-15) |
 
 ### Stage 1: order and parallel work
 
@@ -93,3 +94,32 @@ Wave 1 tasks touch different crates (`world`, `mesh`, `render`, `engine-core`, `
 - World map `get_block`/`set_block` are 2.8× / 2.4× the section access (VM, T1-01); the owner kept the 2× target (2026-11-22). Optimize when profiling shows map access in a hot path (physics, edits), e.g. a per-caller column cache or batched access APIs; re-measure on the laptop.
 - Replaceable movement and world generation ("gameplay slots") — [ADR-0013](../docs/adr/0013-replaceable-movement-and-worldgen.md), accepted by the owner 2026-11-22 → [T1-18](stage-1/T1-18-gameplay-slots.md).
 - T1-16 leftovers (the owner accepted both options, 2026-11-22): an ADR for persistent per-region light grids (≤ 100 µs per edit), and a cheaper pass for sky changes reaching below the snapshot (≈ 10 ms on the VM). Chained slabs are preferred because they are exact and have no visible delay; spreading over frames is the fallback.
+
+## Stage 2: network and server
+
+The owner decided on 2026-11-23 to start stage 2 while the T1-15 laptop runs are pending. The stage 1 exit review (T1-20) is written once the numbers arrive. Exit criterion ([roadmap](../docs/process/roadmap.md)): 200 bots on 8 cores, tick ≤ 25 ms p99, ≤ 50 kbit/s per player, measured region capacity.
+
+| Task | Name | Depends on | Owner | Status |
+| --- | --- | --- | --- | --- |
+| [T2-01](stage-2/T2-01-protocol-messages.md) | Protocol crate: messages, versioning, handshake | T0-11, T1-08 | agent (cloud) | todo |
+| [T2-02](stage-2/T2-02-dedicated-server-world.md) | Dedicated server: world, join, chunk streaming | T2-01, T1-02, T1-03 | agent (cloud) | todo |
+| [T2-03](stage-2/T2-03-movement-prediction-replication.md) | Player movement: prediction, reconciliation, entity replication | T2-02, T1-12 | agent + owner's feel review | todo |
+| [T2-04](stage-2/T2-04-network-block-edits.md) | Block edits over the network | T2-02, T2-03 | agent (cloud) | todo |
+| [T2-05](stage-2/T2-05-headless-bots.md) | Headless bot clients and the load harness | T2-03, T2-04 | agent (cloud) | todo |
+| [T2-06](stage-2/T2-06-server-regions.md) | Regional multithreading on the real server | T2-02, T0-09 | agent (cloud) | todo |
+| [T2-07](stage-2/T2-07-entity-sim-lod-pathfinding.md) | Entity simulation LOD and asynchronous pathfinding | T2-06 | agent (cloud) | todo |
+| [T2-08](stage-2/T2-08-multiplayer-menu-and-embedded-server.md) | Multiplayer menu and single-player on an embedded server | T2-02, T2-04 | agent + owner's playtest | todo |
+| [T2-09](stage-2/T2-09-stage-2-exit-measurement.md) | Stage 2 exit measurement | T2-01 … T2-08 | agent + owner's machine | todo |
+
+### Stage 2: order and parallel work
+
+| Wave | Tasks | Waits for |
+| --- | --- | --- |
+| 1 | T2-01 | — |
+| 2 | T2-02 | T2-01 |
+| 3 | T2-03, T2-06 | T2-02 |
+| 4 | T2-04, T2-07 | T2-03 (T2-04); T2-06 (T2-07) |
+| 5 | T2-05, T2-08 | T2-04 |
+| 6 | T2-09 | everything above |
+
+Stage 1 work that continues in parallel: T1-15 laptop runs, T1-17, T1-18, the T1-19 laptop check, the T1-16 follow-ups, and gameplay polish (block highlight, hold to dig, transparent pass, block models, biome tints).
