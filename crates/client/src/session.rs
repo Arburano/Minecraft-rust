@@ -358,6 +358,12 @@ impl Session {
         self.fly_speed
     }
 
+    /// Sets the fly speed multiplier (clamped to the profile's range).
+    pub fn set_fly_speed(&mut self, speed: f64) {
+        let [lo, hi] = self.physics.fly_speed_range;
+        self.fly_speed = speed.clamp(lo, hi);
+    }
+
     /// Changes the fly speed by mouse-wheel notches (×1.25 per notch), within
     /// the movement profile's range.
     pub fn adjust_fly_speed(&mut self, notches: i32) {
