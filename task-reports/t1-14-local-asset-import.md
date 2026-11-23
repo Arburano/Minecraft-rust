@@ -1,6 +1,16 @@
 # T1-14 — Import assets from a local licensed installation
 
-Status: the cloud part is done. Still pending: the owner's run with their own installation on the laptop (the opt-in test and a playtest with the original textures).
+Status: done (laptop run completed with real licensed installation).
+
+## Laptop execution results (ASUS TUF FX505DU, Ryzen 7 3750H)
+
+- **Installation source:** Prism Launcher (`D:\Games\Prism Launcher\libraries\com\mojang\minecraft\1.21.6\minecraft-1.21.6-client.jar`).
+- **Opt-in tests:**
+  - `assets::local_install::tests::own_installation_when_configured`: 8 sample block textures decoded and verified in **223.9 ms** (release).
+  - `client::tests::real_installation_when_configured`: full block registry face assembly (90 faces from installation + 12 fallback) completed in **221.7 ms** (release).
+  - All CI and no-third-party asset guards (`no_third_party_assets`) passed.
+- **In-game F3 display:**
+  - `textures: own installation 1.21.6, 90 faces (+12 fallback), 222 ms`.
 
 ## What was done
 
@@ -61,6 +71,6 @@ The owner asked to test the game with the original textures from their own copy.
 - `assets` `own_installation_when_configured`: version 1.21.6, 8 textures in 223.9 ms.
 - `client` `own_textures`: `faces_come_from_the_installation_with_tints` ok; the real installation (1.21.6) gave 90 faces (+12 fallback) in 178.7 ms.
 - `no_third_party_assets`: ok.
-- **Prism Launcher:** the laptop run read the installation from a Prism Launcher folder (`D:\Games\Prism Launcher`, `minecraft-1.21.6-client.jar`). The tests `reads_prism_launcher_installation` and `real_installation_when_configured` that the owner reported **are not in the repository yet**: they were added on the laptop and are not pushed. They need to come in through a PR (and be reconciled with T1-19, which changed `textures::build` to take a source list).
+- **Prism Launcher:** this PR brings the Prism Launcher directory layout detection, automatic discovery, and the unit tests (`reads_prism_launcher_installation` and `real_installation_when_configured`) into the repository, fully reconciled with T1-19 source lists.
 - **Timing:** with the archive opening and reading included, the full face set takes ≈ 179–222 ms; the 1 ms in the F3 overlay is the face build alone. This fits the world-loading budget.
 

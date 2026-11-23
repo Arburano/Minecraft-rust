@@ -151,3 +151,24 @@ fn packs_stack_top_first_fall_through_and_keep_hd_detail() {
     assert_eq!((none.size, none.per_source.len()), (16, 0));
     let _ = std::fs::remove_dir_all(dir);
 }
+
+#[test]
+fn real_installation_when_configured() {
+    let Some(dir) = std::env::var_os(assets::local_install::ENV_VAR) else {
+        eprintln!("skipped: set ASSETS_LOCAL_INSTALL to your own installation folder");
+        return;
+    };
+    let blocks = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../mods/core/data/blocks");
+    let mut b = RegistryBuilder::new();
+    b.add_mod("core", blocks_from_dir(&blocks).expect("blocks"));
+    let reg = b.build().expect("registry");
+    let t0 = std::time::Instant::now();
+    let mut installed = InstalledTextures::open(std::path::Path::new(&dir), None).expect("open");
+    let t = build(&reg, &read_block_faces(&blocks), &mut [&mut installed]);
+    let elapsed = t0.elapsed();
+    eprintln!(
+        "real installation (version {}): {} faces from installation (+{} fallback) in {:?}",
+        installed.version, t.per_source[0], t.fallback, elapsed
+    );
+    assert!(t.per_source[0] > 0);
+}

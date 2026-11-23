@@ -64,7 +64,7 @@ impl OwnAssets {
         self.folder.clone().or_else(|| {
             assets::local_install::default_dirs()
                 .into_iter()
-                .find(|d| d.join("versions").is_dir())
+                .find(|d| assets::local_install::has_versions(d))
         })
     }
 }
