@@ -9,6 +9,14 @@ publish = false
 
 [dependencies]
 world = { path = "../world" }
+bitcode = { workspace = true }
+zstd = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+proptest = { workspace = true }
+# T2-01 size measurements on real generated columns.
+worldgen = { path = "../worldgen" }
 
 [lints]
 workspace = true

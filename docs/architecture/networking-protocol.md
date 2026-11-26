@@ -29,7 +29,8 @@ Crates: `protocol` (message types), `net` (transport). ADR: 0007 (QUIC + custom 
 ## Handshake
 
 ```text
-client ─ Hello { protocol, client_version, session_jwt } ─► gateway/server
+client ─ HandshakeHeader { magic, protocol } ─► server ─ HandshakeHeader ─► client  (fixed 8 bytes)
+client ─ Hello { client_version, player_name, session_jwt } ─► gateway/server
 server ─ Welcome { server_info, mod_manifest_hash } ──────► client
 client: if the mod manifest differs — download via the menu (see client-menu-and-updater.md)
 server ─ Registry { id_table, component_schemas } ────────► client
@@ -38,6 +39,30 @@ then in the background: the remaining columns by distance, then LOD
 ```
 
 The "login ≤ 5 s" metric is counted up to the moment of controlling the character (columns 3–4 around); the rest is downloaded in the background.
+
+## Implementation (T2-01, `protocol`)
+
+The crate is transport-agnostic (no `quinn`): messages become bytes and back; `net` moves them.
+
+- **Handshake header:** each side first sends 8 fixed bytes on the control stream: magic `VXEN` + `PROTOCOL_VERSION` (u32 LE). Its layout never changes, so builds with different message layouts still recognize each other: a mismatch is `ProtocolError::VersionMismatch` with the hint "Update the game…" (or "the server runs an older version…"). The server answers with its own header and closes. The protocol version therefore lives in the header, not in `Hello`.
+- **Control:** `ClientControl::{Hello, Leave}`, `ServerControl::{Welcome, Registry, Spawn, Kick}`. `Hello` carries the client version, the player name (offline mode; the server validates it with `auth::PlayerName`) and a reserved `session_jwt` (always `None` until T0-10). `Welcome` carries the player ID, tick rate and the mod manifest hash (zeros until stage 3); `RegistrySync` the block ID table (the client maps it with `Registry::remap`) and a reserved component-schema hash.
+- **Framing:** control and events streams carry `u32 LE length + bitcode body` frames (`encode_frame`, `split_frame`); a length above 4 MiB is refused before the body arrives.
+- **Input datagram:** `ack_snapshot` (newest complete entity snapshot) + 1–8 intents with consecutive ticks; an intent is buttons (bits, incl. the one-tick flight toggle), yaw and pitch in 16 bits, and fly-speed wheel steps.
+- **Entity datagram:** `snapshot`, `baseline` (0 = full), an origin block and updates whose fields are `Option`s (absent = unchanged): kind, `RelPos` (i16 × 3 in 1/32 block, ±1,024 blocks), `Look` (three 8-bit angles), flags; plus removed IDs. Up to 128 entries; the server splits bigger deltas over datagrams of the same snapshot.
+- **Chunk stream:** one `ChunkStream::Column` per stream: the position and the T1-02 column record (`world::storage::encode_column`) compressed with zstd level 1. Decoding is bounded (≤ 1 MiB compressed, ≤ 8 MiB decompressed, read incrementally) and checks the position. Light is not sent (ADR-0011). Bumping the world format version also requires a protocol version bump.
+- **Events:** `ClientEvent::{Chat, Dig, Place}` with sequence numbers, `ServerEvent::{Chat, BlockChanges, BlockAck, ForgetColumn}`. Block edits travel here (reliable, exactly once) rather than in input datagrams; T2-04 builds prediction on them.
+- **Safety:** every message has a size limit checked before decoding, `bitcode` rejects malformed bytes, and `Message::validate` rejects values outside the limits (text lengths, control characters, counts, tick order, unknown button bits). The sender runs the same validation, so it never sends what a receiver rejects. `tests/fuzz.rs` feeds random and corrupted bytes into every decoder (4,000 cases per run).
+- **Golden files:** `crates/protocol/tests/golden/` pins the handshake bytes; a change fails CI until `PROTOCOL_VERSION` is raised and the files are refreshed with `UPDATE_GOLDEN=1`.
+
+Measured sizes (`cargo test -p protocol --release --test sizes -- --nocapture`; sizes are deterministic, not machine-dependent):
+
+| Message | Size |
+| --- | --- |
+| Input datagram, 1 / 3 / 8 intents | 14 / 32 / 48 B |
+| Entity delta, 20 entities, every field changed | 252 B → 40.3 kbit/s at 20 Hz, payload only |
+| Fully-changed entities per 1,200-byte datagram | 99 |
+| Generated column (overworld, seed 7, 24 sections, no light), 64 columns | raw record 6.8–11.0 KB (mean 9.4 KB); on the wire 0.87–2.3 KB (mean 1.6 KB) |
+| Login at 12 chunks (625 columns) | ≈ 1.0 MB (vs. the 2.4–9.8 MB estimate below) |
 
 ## Entity deltas
 

@@ -67,7 +67,7 @@ stage 1 carry-over in `tasks/README.md`.
 | Network CPU | ≤ 1 core per 10,000 packets/s | Hypothesis |
 | Nearest 3×3 columns at 2% loss, RTT 100 ms | ≤ 1 s | Measured (VM, T0-11 spike, 8 KB random columns, BBR: 0.46–0.77 s over 6 seeds; quinn's default Cubic misses it — 1.13 s worst; [details](../research/net-quic-spike-2026-11-19.md)) |
 | Entity-delta latency while columns stream (2% loss, RTT 100 ms) | not blocked by chunk streams | Measured (VM, T0-11 spike, BBR: p95 52–58 ms ≈ the 50 ms one-way path delay; [details](../research/net-quic-spike-2026-11-19.md)) |
-| Traffic per player, steady state | ≤ 50 kbit/s (≤ 20 moving entities nearby) | Target |
+| Traffic per player, steady state | ≤ 50 kbit/s (≤ 20 moving entities nearby) | Target. First data (T2-01, message sizes, deterministic): a delta of 20 entities with every field changed is 252 B, 40.3 kbit/s at 20 Hz **payload only**; with QUIC/UDP/IP overhead (≈ 60–80 B per datagram, estimate) ≈ 50–53 kbit/s — at the limit, so the reduced rate for distant entities is needed. Measured on the wire in T2-05/T2-09 |
 | Node RAM, 500 scattered players | ≤ 16 GB | Hypothesis |
 
 ### T0-09 measurements (2026-11-20)
