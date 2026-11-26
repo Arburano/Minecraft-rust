@@ -31,6 +31,7 @@ egui-winit = { workspace = true }
 pollster = { workspace = true }
 zip = { workspace = true }
 serde_json = { workspace = true }
+memory-stats = { workspace = true }
 
 [dev-dependencies]
 png = { workspace = true }

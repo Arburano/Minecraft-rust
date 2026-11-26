@@ -41,6 +41,10 @@ pub struct Options {
     pub screenshot: Option<(PathBuf, u32)>,
     /// Ignore resource and shader packs (a pack broke the game).
     pub safe_mode: bool,
+    /// Run the stage 1 exit route for this many seconds, then exit (T1-15).
+    pub bench: Option<u32>,
+    /// Prefer the GPU whose name contains this text, for this run only.
+    pub gpu: Option<String>,
 }
 
 struct Gpu {
@@ -145,6 +149,8 @@ struct Game {
     started: Instant,
     /// A message over the hotbar for a few seconds.
     notice: Option<(String, Instant)>,
+    /// When the world first became playable.
+    playing_since: Option<Instant>,
 }
 
 const HOTBAR: [&str; 9] = [
@@ -174,6 +180,8 @@ pub struct App {
     first_frame_done: bool,
     grabbed: bool,
     textures_line: String,
+    bench: Option<crate::bench::Bench>,
+    bench_world: Option<PathBuf>,
 }
 
 impl App {
@@ -182,6 +190,9 @@ impl App {
         let (mut settings, error) = Settings::load(&opts.data_dir.join("settings.toml"));
         if let Some(n) = &opts.offline_name {
             settings.offline_name = Some(n.clone());
+        }
+        if let Some(g) = &opts.gpu {
+            settings.gpu.adapter_name = Some(g.clone());
         }
         let mut menu = Menu::new(opts.data_dir.join("worlds"), &settings);
         menu.message = error.map(|e| format!("Settings were damaged and reset: {e}"));
@@ -199,6 +210,8 @@ impl App {
             first_frame_done: false,
             grabbed: false,
             textures_line: String::new(),
+            bench: None,
+            bench_world: None,
         }
     }
 
@@ -316,6 +329,7 @@ impl App {
                     pack_options: [0.0; 8],
                     started: Instant::now(),
                     notice: None,
+                    playing_since: None,
                 });
                 self.apply_shader_pack();
                 self.set_grab(true);
@@ -388,6 +402,32 @@ impl App {
         gpu.scene = post.as_ref().map(|_| scene_view(&gpu.device, &gpu.config));
         game.post = post;
         game.pack_options = options;
+    }
+
+    /// Writes the stage 1 exit numbers, deletes the route's world, exits.
+    fn finish_bench(&mut self, event_loop: &ActiveEventLoop) {
+        if let Some(b) = self.bench.take() {
+            let profile = format!(
+                "{:?} ({} chunks)",
+                self.settings.quality,
+                self.settings.quality.settings().render_distance
+            );
+            match b.finish(
+                &self.opts.data_dir.join("bench"),
+                &self.menu.gpu_line,
+                &profile,
+            ) {
+                Ok((path, summary)) => println!("{summary}saved {}", path.display()),
+                Err(e) => eprintln!("bench: {e}"),
+            }
+        }
+        if let Some(game) = self.game.take() {
+            let _ = game.session.close();
+        }
+        if let Some(dir) = self.bench_world.take() {
+            let _ = client::worlds::delete(&dir);
+        }
+        event_loop.exit();
     }
 
     /// Rebuilds block textures for the running world (resource packs changed).
@@ -498,11 +538,17 @@ impl App {
             if let Err(e) = game.session.update() {
                 failed = Some(e.to_string());
             }
+            if game.playing_since.is_none() && game.session.is_playing() {
+                game.playing_since = Some(Instant::now());
+            }
             if !game.paused {
                 game.acc = (game.acc + dt).min(TICK * 5);
                 while game.acc >= TICK {
                     // The flight toggle is a one-tick event.
-                    let input = game.keys.input();
+                    let input = match &mut self.bench {
+                        Some(b) => b.input(&mut game.session, game.playing_since),
+                        None => game.keys.input(),
+                    };
                     game.keys.toggle_fly = false;
                     game.session.fixed_tick(&input);
                     game.acc -= TICK;
@@ -697,6 +743,14 @@ impl App {
         window.pre_present_notify();
         gpu.queue.present(frame);
 
+        let bench_done = match (&mut self.bench, &self.game) {
+            (Some(b), Some(g)) => b.frame(dt, g.playing_since),
+            _ => false,
+        };
+        if bench_done {
+            self.finish_bench(event_loop);
+            return;
+        }
         if !self.first_frame_done {
             self.first_frame_done = true;
             let ms = self.opts.start.elapsed().as_secs_f64() * 1000.0;
@@ -942,6 +996,26 @@ impl ApplicationHandler for App {
             None,
         ));
         self.window = Some(window);
+        if let Some(seconds) = self.opts.bench {
+            let root = self.opts.data_dir.join("worlds");
+            let name = format!("stage1-exit-route-{}", client::worlds::now());
+            match client::worlds::create(&root, &name, crate::bench::SEED) {
+                Ok(d) => {
+                    println!(
+                        "stage 1 exit route: {seconds} s after a {} s warm-up",
+                        crate::bench::WARMUP.as_secs()
+                    );
+                    self.bench = Some(crate::bench::Bench::new(seconds));
+                    self.bench_world = Some(d.clone());
+                    self.open_world(d);
+                }
+                Err(e) => {
+                    eprintln!("bench: {e}");
+                    event_loop.exit();
+                }
+            }
+            return;
+        }
         if let Some(name) = self.opts.autoplay.clone() {
             let root = self.opts.data_dir.join("worlds");
             let existing = client::worlds::list(&root)
@@ -980,7 +1054,7 @@ impl ApplicationHandler for App {
                     }
                 }
             }
-            WindowEvent::Focused(false) => {
+            WindowEvent::Focused(false) if self.bench.is_none() => {
                 if let Some(g) = &mut self.game
                     && !g.paused
                 {

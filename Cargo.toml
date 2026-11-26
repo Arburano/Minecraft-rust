@@ -62,6 +62,8 @@ toml = "1"
 # T1-14: reading textures from the player's own installation (read-only zip, PNG decoding).
 zip = { version = "2", default-features = false, features = ["deflate"] }
 png = "0.18"
+# T1-15: process memory for the stage 1 exit measurement (small; libc / windows-sys, no unsafe in our code).
+memory-stats = "1"
 ed25519-dalek = "3"
 sha2 = "0.11"
 keyring = "4"

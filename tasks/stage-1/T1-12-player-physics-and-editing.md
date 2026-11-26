@@ -1,6 +1,6 @@
 # T1-12. Player physics, digging and placing blocks
 
-- **Status:** in progress (cloud part done; owner: laptop latency run, movement feel after T1-13)
+- **Status:** done (owner reviewed movement and flight, 2026-11-23)
 - **Depends on:** T1-01, T1-09, T1-10
 - **Owner:** agent (cloud)
 
@@ -24,7 +24,7 @@ A player can walk, jump, fall, collide with blocks, dig and place blocks; each e
 
 - [x] Edit-to-visible latency ≤ 1 frame at 60 FPS on the owner's laptop (measured: block geometry ready in 0.53–0.61 ms p50, underground total 1.24–1.50 ms; sky changes 11.8–13.3 ms deferred).
 - [x] Physics determinism tests pass (`sim::physics` tests, 600 scripted ticks bit-identical).
-- [ ] Movement feel reviewed by the owner (PRD §14: feel wins) — needs the playable client (T1-13).
+- [x] Movement feel reviewed by the owner (PRD §14: feel wins): "movement is fine", 2026-11-23, including flight with mouse-wheel speed.
 
 ## Laptop run (owner)
 

@@ -8,6 +8,7 @@
 //! single-player worlds with saving, settings, About screen.
 
 mod app;
+mod bench;
 mod menu;
 mod view;
 
@@ -43,6 +44,13 @@ struct Args {
     /// Start without resource and shader packs (if a pack broke the game).
     #[arg(long)]
     safe_mode: bool,
+    /// Stage 1 exit measurement (T1-15): fly the scripted route for SECONDS
+    /// after a warm-up, write frame times and memory to <data>/bench, exit.
+    #[arg(long, value_name = "SECONDS")]
+    bench_route: Option<u32>,
+    /// Prefer the GPU whose name contains this text (e.g. `vega`, `1660`).
+    #[arg(long, value_name = "NAME")]
+    gpu: Option<String>,
 }
 
 fn mods_dir(arg: Option<PathBuf>) -> PathBuf {
@@ -97,6 +105,8 @@ fn main() -> ExitCode {
         autoplay: args.autoplay.clone(),
         screenshot,
         safe_mode: args.safe_mode,
+        bench: args.bench_route,
+        gpu: args.gpu.clone(),
     };
     let event_loop = match winit::event_loop::EventLoop::new() {
         Ok(l) => l,

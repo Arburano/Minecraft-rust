@@ -125,3 +125,7 @@ Raw logs saved in `docs/research/bare-metal-2026-11-22-wave2/edit_latency-run{1.
   - `client` `flight_and_fly_speed_are_saved`.
 - **What went wrong:** the first version landed the player on the first flying tick, because leftover gravity velocity hit the ground right away. The new session test found it; fixed by zeroing the vertical speed when flight starts.
 
+
+## Closure (2026-11-23)
+
+The owner played the client on the laptop and confirmed that movement and flight are fine. The last acceptance criterion (feel review) is met, and the task is done. Nothing is left over; network prediction is stage 2 (T2-03).
