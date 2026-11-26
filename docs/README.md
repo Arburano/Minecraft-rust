@@ -17,6 +17,7 @@ Reading order for a new developer or agent:
 | Tick, phases, scheduler, budgets | [architecture/engine-core.md](architecture/engine-core.md) | `engine-core` |
 | Sections, palette, IDs, saving | [architecture/world-storage.md](architecture/world-storage.md) | `world` |
 | Meshing and rendering | [architecture/meshing-and-rendering.md](architecture/meshing-and-rendering.md) | `mesh`, `render` |
+| Render graph and shader packs v2 (proposed, ADR-0015) | [architecture/render-graph.md](architecture/render-graph.md) | `render` |
 | LOD | [architecture/lod.md](architecture/lod.md) | `lod` |
 | Lighting | [architecture/lighting.md](architecture/lighting.md) | `light` |
 | World generation | [architecture/worldgen.md](architecture/worldgen.md) | `worldgen` |

@@ -1,7 +1,7 @@
 # T2-09. Stage 2 exit measurement
 
 - **Status:** todo
-- **Depends on:** T2-01 … T2-08
+- **Depends on:** T2-01 … T2-08, T2-10
 - **Owner:** agent writes the harness, owner's machine runs it
 
 ## Goal

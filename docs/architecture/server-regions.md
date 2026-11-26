@@ -34,6 +34,13 @@ Sizes are tuned automatically from metrics; starting values come from Folia expe
 - The heaviest regions go to the fastest cores (pinning, P-cores on hybrid CPUs); enabled in stage 6.
 - There is no dedicated core "for mods": mods run in the tick of their region with a budget, otherwise every hook would become cross-thread synchronization.
 - The capacity of a single region is a separate target: the maximum number of players in one region at tick ≤ 25 ms. Beyond that — a queue or an instance. The number is determined by the stage 2 benchmark.
+- **Two levels of parallelism.** Regions are the macro level (ADR-0008). Inside a crowded region the systems still run in parallel by declared access (engine-core.md), and heavy systems (physics, AI decisions, fluids) iterate entities in parallel batches (`par_iter`) when the entity count makes it worth it. Entities that are not ticked (simulation LOD, T2-07) cost no CPU: they are filtered out by component, not checked one by one. This is what keeps a single dense region from being one thread ([review](../research/external-projects-review-2026-11-26.md), section 1).
+
+## Overload protection (T2-10)
+
+- **Generation backpressure:** the authoritative player position never enters a column that is not loaded on the server. A player faster than generation is slowed or held at the edge (with a notice), and generation for that player gets the highest priority. Dropping generation work silently and letting players fly into empty space is never acceptable, even if it keeps the tick rate.
+- **Cheap-entity limits:** falling blocks and item entities have per-region limits and merge rules (numbers in the `core` datapack), so lag machines cannot stall a region.
+- **Activation range:** the simulation LOD (simulation-and-ai.md) is our equivalent of an entity activation range; block mechanics inside the simulation distance are never slowed.
 
 ## Memory
 

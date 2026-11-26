@@ -27,3 +27,5 @@ Template — [0000-template.md](0000-template.md).
 | [0012](0012-no-std-guest-allocator.md) | Isolated canonical-ABI allocator for the no_std guest | Accepted |
 | [0013](0013-replaceable-movement-and-worldgen.md) | Replaceable movement and world generation (gameplay slots) | Accepted |
 | [0014](0014-resource-and-shader-packs.md) | Resource, texture and shader packs | Accepted |
+| [0015](0015-programmable-render-graph.md) | Programmable render graph for shader packs (hook version 2) | Proposed |
+| [0016](0016-geometry-agnostic-meshing.md) | Geometry-agnostic meshing and render buckets | Proposed |

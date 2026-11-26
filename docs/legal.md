@@ -18,6 +18,12 @@ This is not legal advice. It is a list of rules the team follows until a lawyer'
 - **Tectonic** (Apollo) is the reference for the extended world generator. Modrinth declares MIT, but the source repository has no LICENSE file, so the copyright notice MIT requires is unknown: ideas and parameters may be ported with credit in `THIRD_PARTY.md`; verbatim copies only after a LICENSE with a copyright line is published or confirmed in writing. Any vanilla Minecraft data inside it is Mojang's and never enters the repository.
 - **Terralith** (Stardust Labs) is **not used**: its license forbids copying parts into other projects and any use in AI projects.
 
+**Other engines and servers (2026-11-26, [review](research/external-projects-review-2026-11-26.md)).** Licenses below are as reported, not yet verified: open the LICENSE file before porting anything, and record every port in `THIRD_PARTY.md`.
+- **GPL / LGPL projects — ideas only, never code:** Folia, Paper, Purpur, Pumpkin (GPL-3.0), Horizon (LGPL-3.0 after a switch from MIT; its public repository was reportedly removed and it was reportedly in a dispute over code copied from Iris), Iris (LGPL-3.0). Reading them to understand an approach is fine; copying or translating their code is not. Our engine is not GPL, so even a translated function would be a problem.
+- **OptiFine** — proprietary: ideas only.
+- **Shader packs written for Iris/OptiFine** belong to their authors. They never enter the repository, CI or builds, like any other player pack (ADR-0014).
+- **Permissive projects (MIT / Apache-2.0):** mc.rs (`andreypfau/mcrs`), FerrumC — code may be reused with the copyright notice and an entry in `THIRD_PARTY.md`, after checking that the code itself is not derived from decompiled Minecraft (rule 1).
+
 ## Questions for the lawyer
 
 - Do the EULA and Usage Guidelines allow the owner of the game to download and locally convert Minecraft assets for a third-party engine?

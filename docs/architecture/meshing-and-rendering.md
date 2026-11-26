@@ -99,6 +99,8 @@ Platform findings from T0-14 that the stage 1 renderer must handle:
 
 Passes: opaque → transparent (sorted by batches from farthest) → water → entities → particles → UI. Optional: shadows, SSAO, clouds, fog. The Low profile turns optional passes off first; render distance is not below 8 chunks on any profile (PRD §14).
 
+Proposed: a programmable render graph that shader packs can extend (shadow, G-buffer with MRT, deferred, translucent, composite stages, vertex hooks with bounded displacement) — [ADR-0015](../adr/0015-programmable-render-graph.md), [render-graph.md](render-graph.md). Proposed: render buckets by geometry type and a `ChunkMesher` trait, keeping room for non-cubic geometry — [ADR-0016](../adr/0016-geometry-agnostic-meshing.md). Both wait for the owner's decision; until then the passes above and the quad-only batches are what is built.
+
 ## Budgets
 
 - 60 FPS on an iGPU / GTX 1050 at 12 chunks; GPU frame ≤ 8 ms for geometry (T0-06).
