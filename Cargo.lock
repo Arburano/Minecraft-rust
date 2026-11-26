@@ -855,11 +855,15 @@ dependencies = [
  "net",
  "png",
  "pollster",
+ "protocol",
+ "quinn",
  "render",
  "serde",
  "serde_json",
+ "server",
  "sim",
  "thiserror 2.0.21",
+ "tokio",
  "toml",
  "wgpu",
  "winit",
@@ -4383,13 +4387,23 @@ dependencies = [
 name = "server"
 version = "0.0.1"
 dependencies = [
+ "anyhow",
  "auth",
  "clap",
+ "crossbeam-channel",
  "engine-core",
- "modhost",
+ "glam 0.34.3",
  "net",
+ "protocol",
+ "quinn",
+ "rcgen",
+ "serde",
  "sim",
+ "thiserror 2.0.21",
+ "tokio",
+ "toml",
  "world",
+ "worldgen",
 ]
 
 [[package]]

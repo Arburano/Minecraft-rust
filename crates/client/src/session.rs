@@ -1,11 +1,14 @@
-//! A single-player game session: the world (generated or loaded from the
-//! save), the player, edits and saving. No window or GPU here, so the whole
-//! play loop runs in tests; the app feeds input and draws what this reports.
+//! A game session: the world, the player, edits and saving. Single-player
+//! generates and saves locally; on a server (T2-02) columns come from the
+//! network and the player's intents go to the server, which runs the same
+//! physics. No window or GPU here, so the whole play loop runs in tests; the
+//! app feeds input and draws what this reports.
 //!
 //! Timing: [`Session::update`] once per frame (loading, relighting, saving),
 //! [`Session::fixed_tick`] at 20 TPS (physics).
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet, VecDeque};
+use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -23,8 +26,12 @@ use world::storage::{ColumnRecord, StorageError, WorldStore};
 use world::{BlockStateId, Column, ColumnPos, Registry, RegistryBuilder, WorldBounds, WorldMap};
 use worldgen::{GenContext, Pipeline, WorldgenConfig};
 
+use protocol::{InputDatagram, Intent};
+use server::input::{apply_fly_steps, intent, physics_input};
+
 use crate::edit::{BatchSync, Editor, Placer, dig, pick, place};
 use crate::loading::{LoadConfig, Loader, Viewer};
+use crate::remote::{Remote, RemoteError, RemoteEvent};
 use crate::worlds::{WorldInfo, WorldsError, now};
 
 /// How a session is set up.
@@ -71,14 +78,45 @@ pub enum SessionError {
     /// `world.toml`.
     #[error(transparent)]
     World(#[from] WorldsError),
+    /// Joining a server failed.
+    #[error("{0}")]
+    Join(#[from] RemoteError),
+    /// The server ended the session.
+    #[error("{0}")]
+    Disconnected(String),
+}
+
+/// Intents repeated in each input datagram against loss.
+const INTENT_COPIES: usize = 3;
+
+/// A server session's state.
+struct Link {
+    remote: Remote,
+    /// Columns received and not yet taken by the loader (or unloaded by it
+    /// while the server still keeps them for us).
+    incoming: HashMap<ColumnPos, Column>,
+    /// Columns the server forgot while they were in the map: dropped when
+    /// the loader unloads them.
+    forgotten: HashSet<ColumnPos>,
+    tick: u32,
+    recent: VecDeque<Intent>,
+    fly_steps: i32,
+    ended: Option<String>,
+}
+
+/// Where the world comes from.
+enum Backend {
+    /// Single-player: generate and save locally.
+    Local { store: WorldStore, dir: PathBuf },
+    /// A server.
+    Remote(Box<Link>),
 }
 
 /// A running single-player world.
 pub struct Session {
     registry: Arc<Registry>,
-    dir: PathBuf,
     info: WorldInfo,
-    store: WorldStore,
+    backend: Backend,
     map: WorldMap,
     light: WorldLight,
     loader: Loader,
@@ -106,26 +144,93 @@ pub struct Session {
 impl Session {
     /// Opens the world in `dir` (created with [`crate::worlds::create`]).
     pub fn open(dir: &Path, config: SessionConfig) -> Result<Self, SessionError> {
-        let data_err = |e: &dyn std::fmt::Display| SessionError::Data(e.to_string());
-        let mut b = RegistryBuilder::new();
-        b.add_mod(
-            "core",
-            blocks_from_dir(&config.data.join("blocks")).map_err(|e| data_err(&e))?,
-        );
-        let registry = Arc::new(b.build().map_err(|e| data_err(&e))?);
+        let data = ModData::load(&config.data)?;
         let info = WorldInfo::load(dir)?;
-        let src = std::fs::read_to_string(config.data.join("worldgen/overworld.toml"))
-            .map_err(|e| data_err(&e))?;
-        let gen_config = WorldgenConfig::from_toml(&src, &registry).map_err(|e| data_err(&e))?;
-        let physics_src = std::fs::read_to_string(config.data.join("player/physics.toml"))
-            .map_err(|e| data_err(&e))?;
-        let physics = PhysicsConfig::from_toml(&physics_src).map_err(|e| data_err(&e))?;
-        let swim = physics.swim_ids(&registry).map_err(|e| data_err(&e))?;
-        let store = WorldStore::open(dir, &registry, config.bounds)?;
-        let ctx = Arc::new(GenContext::new(info.seed, gen_config, config.bounds));
+        let store = WorldStore::open(dir, &data.registry, config.bounds)?;
+        let bounds = config.bounds;
+        let radius = config.radius;
+        Self::build(
+            data,
+            info,
+            Backend::Local {
+                store,
+                dir: dir.to_owned(),
+            },
+            bounds,
+            radius,
+            true,
+            config,
+        )
+    }
+
+    /// Joins the server at `addr` as `name` (offline mode; development and
+    /// private tests only, `docs/legal.md` rule 7).
+    pub fn connect(
+        addr: SocketAddr,
+        name: &str,
+        config: SessionConfig,
+    ) -> Result<Self, SessionError> {
+        let data = ModData::load(&config.data)?;
+        let remote = Remote::connect(addr, name, Arc::clone(&data.registry))?;
+        let spawn = remote.spawn.clone();
+        let info = WorldInfo {
+            name: remote.welcome.server_name.clone(),
+            seed: 0,
+            generator: "server".into(),
+            created: 0,
+            last_played: now(),
+            player: crate::worlds::PlayerSave {
+                pos: Some(spawn.position),
+                yaw: f64::from(spawn.yaw),
+                pitch: f64::from(spawn.pitch),
+                flying: spawn.flying,
+                fly_speed: 1.0,
+            },
+        };
+        // The server streams 2 columns beyond what the client renders (light
+        // and meshing of the border need them); never render below 8.
+        let radius = config.radius.min(i32::from(spawn.view_distance) - 2).max(8);
+        let link = Link {
+            remote,
+            incoming: HashMap::new(),
+            forgotten: HashSet::new(),
+            tick: 0,
+            recent: VecDeque::new(),
+            fly_steps: 0,
+            ended: None,
+        };
+        Self::build(
+            data,
+            info,
+            Backend::Remote(Box::new(link)),
+            spawn.bounds(),
+            radius,
+            false,
+            config,
+        )
+    }
+
+    fn build(
+        data: ModData,
+        info: WorldInfo,
+        backend: Backend,
+        bounds: WorldBounds,
+        radius: i32,
+        generate: bool,
+        config: SessionConfig,
+    ) -> Result<Self, SessionError> {
+        let data_err = |e: &dyn std::fmt::Display| SessionError::Data(e.to_string());
+        let ModData {
+            registry,
+            gen_config,
+            physics,
+            swim,
+        } = data;
+        let ctx = Arc::new(GenContext::new(info.seed, gen_config, bounds));
         let mut loader = Loader::new(
             LoadConfig {
-                radius: config.radius,
+                radius,
+                generate,
                 ..LoadConfig::default()
             },
             Arc::clone(&registry),
@@ -134,7 +239,7 @@ impl Session {
         );
         loader.track_mesh_changes();
         loader.track_unloads();
-        let map = WorldMap::new(Arc::clone(&registry), config.bounds);
+        let map = WorldMap::new(Arc::clone(&registry), bounds);
         let mut light = WorldLight::new();
         light.track_changes();
         let pool =
@@ -160,7 +265,7 @@ impl Session {
         };
         Ok(Self {
             registry,
-            dir: dir.to_owned(),
+            backend,
             yaw: info.player.yaw,
             fly_speed: if info.player.fly_speed > 0.0 {
                 info.player.fly_speed
@@ -169,7 +274,6 @@ impl Session {
             },
             pitch: info.player.pitch,
             info,
-            store,
             map,
             light,
             loader,
@@ -233,6 +337,12 @@ impl Session {
         self.spawned && self.ready_around(self.body.pos)
     }
 
+    /// Whether this session plays on a server.
+    #[must_use]
+    pub fn is_remote(&self) -> bool {
+        matches!(self.backend, Backend::Remote(_))
+    }
+
     fn ready_around(&self, p: DVec3) -> bool {
         let c = ColumnPos {
             x: (p.x / 16.0).floor() as i32,
@@ -259,22 +369,53 @@ impl Session {
             pos: self.body.pos.to_array(),
             velocity: (self.body.vel * 20.0).to_array(),
         };
-        {
-            let (store, registry) = (&mut self.store, &self.registry);
-            let mut source = |c: ColumnPos| {
-                store
-                    .load_column(c, registry)
-                    .ok()
-                    .flatten()
-                    .map(|(col, _)| col)
-            };
-            self.loader.tick_with_source(
-                &viewer,
-                &mut self.map,
-                &mut self.light,
-                &self.pool,
-                Some(&mut source),
-            );
+        match &mut self.backend {
+            Backend::Local { store, .. } => {
+                let registry = &self.registry;
+                let mut source = |c: ColumnPos| {
+                    store
+                        .load_column(c, registry)
+                        .ok()
+                        .flatten()
+                        .map(|(col, _)| col)
+                };
+                self.loader.tick_with_source(
+                    &viewer,
+                    &mut self.map,
+                    &mut self.light,
+                    &self.pool,
+                    Some(&mut source),
+                );
+            }
+            Backend::Remote(link) => {
+                for e in link.remote.poll() {
+                    match e {
+                        RemoteEvent::Column(c) => {
+                            link.forgotten.remove(&c.pos());
+                            link.incoming.insert(c.pos(), c);
+                        }
+                        RemoteEvent::Forget(c) => {
+                            link.incoming.remove(&c);
+                            if self.map.column(c).is_some() {
+                                link.forgotten.insert(c);
+                            }
+                        }
+                        RemoteEvent::Ended(m) => link.ended = Some(m),
+                    }
+                }
+                if let Some(m) = &link.ended {
+                    return Err(SessionError::Disconnected(m.clone()));
+                }
+                let incoming = &mut link.incoming;
+                let mut source = |c: ColumnPos| incoming.remove(&c);
+                self.loader.tick_with_source(
+                    &viewer,
+                    &mut self.map,
+                    &mut self.light,
+                    &self.pool,
+                    Some(&mut source),
+                );
+            }
         }
         if !self.spawned
             && let Some(h) = self
@@ -293,7 +434,7 @@ impl Session {
             )
             .ok();
         self.track_saves()?;
-        if self.last_save.elapsed() >= self.config.autosave {
+        if self.last_save.elapsed() >= self.config.autosave && !self.is_remote() {
             self.save()?;
         }
         Ok(())
@@ -308,6 +449,18 @@ impl Session {
         }
         self.unloaded.clear();
         self.loader.take_unloaded(&mut self.unloaded);
+        if let Backend::Remote(link) = &mut self.backend {
+            // A column the server still keeps for us is kept for when the
+            // player comes back; the server never resends it otherwise.
+            for col in self.unloaded.drain(..) {
+                self.gone.push(col.pos());
+                if !link.forgotten.remove(&col.pos()) {
+                    link.incoming.insert(col.pos(), col);
+                }
+            }
+            self.unsaved.clear();
+            return Ok(());
+        }
         let mut records = Vec::new();
         for col in &self.unloaded {
             self.gone.push(col.pos());
@@ -321,8 +474,10 @@ impl Session {
                 });
             }
         }
-        if !records.is_empty() {
-            self.store.save_all(&records)?;
+        if !records.is_empty()
+            && let Backend::Local { store, .. } = &mut self.backend
+        {
+            store.save_all(&records)?;
         }
         Ok(())
     }
@@ -334,14 +489,41 @@ impl Session {
         if !self.is_playing() {
             return;
         }
+        let world = MapBlocks {
+            map: &self.map,
+            swim: &self.swim,
+        };
+        if let Backend::Remote(link) = &mut self.backend {
+            // Simulate exactly what the server will: the intent as it goes
+            // on the wire (quantized yaw, wheel steps applied at the tick).
+            let i = intent(link.tick, input, self.yaw, self.pitch, link.fly_steps);
+            link.fly_steps = 0;
+            self.fly_speed = apply_fly_steps(
+                self.fly_speed,
+                i.fly_speed_steps,
+                self.physics.fly_speed_range,
+            );
+            step(
+                &mut self.body,
+                &physics_input(&i, self.fly_speed),
+                &self.physics,
+                &world,
+            );
+            link.recent.push_back(i);
+            while link.recent.len() > INTENT_COPIES {
+                link.recent.pop_front();
+            }
+            link.remote.send_input(InputDatagram {
+                ack_snapshot: 0,
+                intents: link.recent.iter().copied().collect(),
+            });
+            link.tick = link.tick.wrapping_add(1);
+            return;
+        }
         let input = PlayerInput {
             yaw: self.yaw,
             fly_speed: self.fly_speed,
             ..*input
-        };
-        let world = MapBlocks {
-            map: &self.map,
-            swim: &self.swim,
         };
         step(&mut self.body, &input, &self.physics, &world);
     }
@@ -360,6 +542,9 @@ impl Session {
 
     /// Sets the fly speed multiplier (clamped to the profile's range).
     pub fn set_fly_speed(&mut self, speed: f64) {
+        if self.is_remote() {
+            return; // the server would not know; use the wheel
+        }
         let [lo, hi] = self.physics.fly_speed_range;
         self.fly_speed = speed.clamp(lo, hi);
     }
@@ -367,6 +552,11 @@ impl Session {
     /// Changes the fly speed by mouse-wheel notches (×1.25 per notch), within
     /// the movement profile's range.
     pub fn adjust_fly_speed(&mut self, notches: i32) {
+        if let Backend::Remote(link) = &mut self.backend {
+            // Applied at the next tick, on both sides.
+            link.fly_steps += notches;
+            return;
+        }
         let [lo, hi] = self.physics.fly_speed_range;
         self.fly_speed = (self.fly_speed * 1.25f64.powi(notches)).clamp(lo, hi);
     }
@@ -411,6 +601,9 @@ impl Session {
 
     /// Breaks the targeted block.
     pub fn dig(&mut self) -> bool {
+        if self.is_remote() {
+            return false; // edits over the network: T2-04
+        }
         let Some(hit) = self.target() else {
             return false;
         };
@@ -419,6 +612,9 @@ impl Session {
 
     /// Places `id` against the targeted face.
     pub fn place(&mut self, id: BlockStateId) -> bool {
+        if self.is_remote() {
+            return false; // edits over the network: T2-04
+        }
         let Some(hit) = self.target() else {
             return false;
         };
@@ -479,6 +675,9 @@ impl Session {
     /// Writes edited columns that are still loaded and `world.toml`.
     pub fn save(&mut self) -> Result<(), SessionError> {
         self.track_saves()?;
+        let Backend::Local { store, dir } = &mut self.backend else {
+            return Ok(()); // the server saves its world
+        };
         let records: Vec<ColumnRecord> = self
             .unsaved
             .iter()
@@ -492,7 +691,7 @@ impl Session {
             })
             .collect();
         if !records.is_empty() {
-            self.store.save_all(&records)?;
+            store.save_all(&records)?;
         }
         self.unsaved.clear();
         if self.spawned {
@@ -503,13 +702,50 @@ impl Session {
         self.info.player.fly_speed = self.fly_speed;
         self.info.player.pitch = self.pitch;
         self.info.last_played = now();
-        self.info.save(&self.dir)?;
+        self.info.save(dir)?;
         self.last_save = Instant::now();
         Ok(())
     }
 
-    /// Saves and closes.
+    /// Saves and closes (on a server: leaves it).
     pub fn close(mut self) -> Result<(), SessionError> {
-        self.save()
+        self.save()?;
+        if let Backend::Remote(link) = self.backend {
+            link.remote.leave();
+        }
+        Ok(())
+    }
+}
+
+/// The `core` mod's data a session needs.
+struct ModData {
+    registry: Arc<Registry>,
+    gen_config: WorldgenConfig,
+    physics: PhysicsConfig,
+    swim: Vec<BlockStateId>,
+}
+
+impl ModData {
+    fn load(dir: &Path) -> Result<Self, SessionError> {
+        let data_err = |e: &dyn std::fmt::Display| SessionError::Data(e.to_string());
+        let mut b = RegistryBuilder::new();
+        b.add_mod(
+            "core",
+            blocks_from_dir(&dir.join("blocks")).map_err(|e| data_err(&e))?,
+        );
+        let registry = Arc::new(b.build().map_err(|e| data_err(&e))?);
+        let src = std::fs::read_to_string(dir.join("worldgen/overworld.toml"))
+            .map_err(|e| data_err(&e))?;
+        let gen_config = WorldgenConfig::from_toml(&src, &registry).map_err(|e| data_err(&e))?;
+        let physics_src =
+            std::fs::read_to_string(dir.join("player/physics.toml")).map_err(|e| data_err(&e))?;
+        let physics = PhysicsConfig::from_toml(&physics_src).map_err(|e| data_err(&e))?;
+        let swim = physics.swim_ids(&registry).map_err(|e| data_err(&e))?;
+        Ok(Self {
+            registry,
+            gen_config,
+            physics,
+            swim,
+        })
     }
 }

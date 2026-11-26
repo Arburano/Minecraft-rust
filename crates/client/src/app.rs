@@ -45,6 +45,8 @@ pub struct Options {
     pub bench: Option<u32>,
     /// Prefer the GPU whose name contains this text, for this run only.
     pub gpu: Option<String>,
+    /// Join this server right away (T2-02; the multiplayer menu is T2-08).
+    pub connect: Option<std::net::SocketAddr>,
 }
 
 struct Gpu {
@@ -288,13 +290,32 @@ impl App {
         })
     }
 
-    fn open_world(&mut self, dir: PathBuf) {
-        let Some(gpu) = &self.gpu else { return };
+    fn session_config(&self) -> SessionConfig {
         let mut config = SessionConfig::new(self.opts.mods_dir.clone());
         config.radius = self.settings.quality.settings().render_distance as i32;
         config.threads = self.settings.threads();
         config.autosave = Duration::from_secs(u64::from(self.settings.autosave_seconds.max(5)));
-        match Session::open(&dir, config) {
+        config
+    }
+
+    fn open_world(&mut self, dir: PathBuf) {
+        let config = self.session_config();
+        self.start_session(Session::open(&dir, config));
+    }
+
+    /// Joins a server (offline mode: the name from the command line or settings).
+    fn join_server(&mut self, addr: std::net::SocketAddr) {
+        let Some(name) = self.settings.offline_name.clone() else {
+            self.menu.message = Some("Choose an offline name first".into());
+            return;
+        };
+        let config = self.session_config();
+        self.start_session(Session::connect(addr, &name, config));
+    }
+
+    fn start_session(&mut self, opened: Result<Session, client::session::SessionError>) {
+        let Some(gpu) = &self.gpu else { return };
+        match opened {
             Ok(session) => {
                 let (textures, line) =
                     block_textures(&self.settings, &self.opts, session.registry());
@@ -1014,6 +1035,10 @@ impl ApplicationHandler for App {
                     event_loop.exit();
                 }
             }
+            return;
+        }
+        if let Some(addr) = self.opts.connect {
+            self.join_server(addr);
             return;
         }
         if let Some(name) = self.opts.autoplay.clone() {

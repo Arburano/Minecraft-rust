@@ -1,0 +1,260 @@
+//! Dedicated server: world, player join and column streaming (T2-02).
+//!
+//! Spec:
+//! - `docs/architecture/networking-protocol.md` (handshake, channels)
+//! - `docs/architecture/server-regions.md` (one region for now; T2-06)
+//! - `docs/architecture/auth-and-assets.md` ("Offline mode"), `docs/legal.md` rule 7
+//!
+//! Threads: a small tokio runtime for QUIC (accept loop, one task per
+//! connection, one task per column stream), the world thread (20 TPS, owns
+//! the world map), the generation job pool and the storage thread.
+
+pub mod conn;
+pub mod game;
+pub mod input;
+pub mod players;
+pub mod storage;
+
+use std::net::SocketAddr;
+use std::path::PathBuf;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::thread::JoinHandle;
+use std::time::Duration;
+
+use auth::AdmissionPolicy;
+use quinn::rustls::pki_types::PrivateKeyDer;
+use serde::{Deserialize, Serialize};
+use sim::physics::PhysicsConfig;
+use world::registry::blocks_from_dir;
+use world::storage::WorldStore;
+use world::{RegistryBuilder, WorldBounds};
+use worldgen::{GenContext, WorldgenConfig};
+
+use crate::conn::ConnContext;
+use crate::game::{World, WorldSetup};
+use crate::storage::Storage;
+
+/// Default game port.
+pub const DEFAULT_PORT: u16 = 47_777;
+/// Default streamed column radius: render distance 12 plus the 2 columns the
+/// client needs around it to light and mesh the border (`loading.rs`).
+pub const DEFAULT_VIEW_DISTANCE: i32 = 14;
+
+/// Everything the server needs to start.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ServerConfig {
+    /// UDP address for QUIC.
+    pub listen: SocketAddr,
+    /// Who may join.
+    pub policy: AdmissionPolicy,
+    /// The world folder (created if missing).
+    pub world_dir: PathBuf,
+    /// The `core` mod's data folder (`mods/core/data`).
+    pub data_dir: PathBuf,
+    /// Seed for a new world; an existing world keeps its own.
+    pub seed: Option<u64>,
+    /// Streamed column radius (≥ 10: render distance ≥ 8, PRD §14).
+    pub view_distance: i32,
+    /// Generation worker threads.
+    pub threads: usize,
+    /// Display name.
+    pub server_name: String,
+    /// Message of the day.
+    pub motd: String,
+}
+
+impl ServerConfig {
+    /// Defaults for a world in `world_dir`.
+    #[must_use]
+    pub fn new(
+        listen: SocketAddr,
+        policy: AdmissionPolicy,
+        world_dir: PathBuf,
+        data_dir: PathBuf,
+    ) -> Self {
+        Self {
+            listen,
+            policy,
+            world_dir,
+            data_dir,
+            seed: None,
+            view_distance: DEFAULT_VIEW_DISTANCE,
+            threads: std::thread::available_parallelism()
+                .map_or(2, |n| n.get().saturating_sub(2).max(1)),
+            server_name: "Voxel Engine server".into(), // OPEN-QUESTION: 15
+            motd: String::new(),
+        }
+    }
+}
+
+/// Errors while starting the server.
+#[derive(Debug, thiserror::Error)]
+pub enum ServerError {
+    /// Mod data could not be read.
+    #[error("mod data: {0}")]
+    Data(String),
+    /// The world folder could not be used.
+    #[error("world: {0}")]
+    World(String),
+    /// Networking could not start.
+    #[error("network: {0}")]
+    Net(String),
+}
+
+/// `<world>/server.toml`: what the server remembers about its world.
+#[derive(Serialize, Deserialize)]
+struct WorldMeta {
+    seed: u64,
+}
+
+fn world_seed(config: &ServerConfig) -> Result<u64, ServerError> {
+    let path = config.world_dir.join("server.toml");
+    if let Ok(text) = std::fs::read_to_string(&path) {
+        let meta: WorldMeta = toml::from_str(&text)
+            .map_err(|e| ServerError::World(format!("{}: {e}", path.display())))?;
+        return Ok(meta.seed);
+    }
+    let seed = config.seed.unwrap_or_else(|| {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_nanos() as u64)
+    });
+    let text =
+        toml::to_string(&WorldMeta { seed }).map_err(|e| ServerError::World(e.to_string()))?;
+    std::fs::write(&path, text).map_err(|e| ServerError::World(e.to_string()))?;
+    Ok(seed)
+}
+
+/// A running server. Dropping it without [`Server::shutdown`] stops it too,
+/// but without waiting for the save.
+pub struct Server {
+    addr: SocketAddr,
+    stop: Arc<AtomicBool>,
+    world: Option<JoinHandle<()>>,
+    endpoint: quinn::Endpoint,
+    runtime: Option<tokio::runtime::Runtime>,
+}
+
+impl Server {
+    /// Loads mod data, opens the world and starts listening.
+    pub fn start(config: ServerConfig) -> Result<Self, ServerError> {
+        let data = |e: &dyn std::fmt::Display| ServerError::Data(e.to_string());
+        let mut b = RegistryBuilder::new();
+        b.add_mod(
+            "core",
+            blocks_from_dir(&config.data_dir.join("blocks")).map_err(|e| data(&e))?,
+        );
+        let registry = Arc::new(b.build().map_err(|e| data(&e))?);
+        let src = std::fs::read_to_string(config.data_dir.join("worldgen/overworld.toml"))
+            .map_err(|e| data(&e))?;
+        let gen_config = WorldgenConfig::from_toml(&src, &registry).map_err(|e| data(&e))?;
+        let physics_src = std::fs::read_to_string(config.data_dir.join("player/physics.toml"))
+            .map_err(|e| data(&e))?;
+        let physics = PhysicsConfig::from_toml(&physics_src).map_err(|e| data(&e))?;
+
+        std::fs::create_dir_all(&config.world_dir)
+            .map_err(|e| ServerError::World(e.to_string()))?;
+        let seed = world_seed(&config)?;
+        let bounds = WorldBounds::default();
+        let store = WorldStore::open(&config.world_dir, &registry, bounds)
+            .map_err(|e| ServerError::World(e.to_string()))?;
+        let storage = Storage::start(store, Arc::clone(&registry))
+            .map_err(|e| ServerError::World(e.to_string()))?;
+        let world = World::new(
+            WorldSetup {
+                registry: Arc::clone(&registry),
+                context: Arc::new(GenContext::new(seed, gen_config, bounds)),
+                physics,
+                dir: config.world_dir.clone(),
+                view_distance: config.view_distance.max(2),
+                threads: config.threads,
+            },
+            storage,
+        )
+        .map_err(ServerError::World)?;
+
+        // Offline mode serves LAN and loopback only (legal.md rule 7), and its
+        // clients accept any certificate, so a fresh self-signed one is enough.
+        // Real certificates come with online play (stage 3).
+        let certified = rcgen::generate_simple_self_signed(vec!["localhost".to_string()])
+            .map_err(|e| ServerError::Net(e.to_string()))?;
+        let cert = certified.cert.der().clone();
+        let key = PrivateKeyDer::Pkcs8(certified.signing_key.serialize_der().into());
+
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
+            .thread_name("net")
+            .enable_all()
+            .build()
+            .map_err(|e| ServerError::Net(e.to_string()))?;
+        let endpoint = {
+            let _guard = runtime.enter();
+            net::server_endpoint(config.listen, cert, key)
+                .map_err(|e| ServerError::Net(e.to_string()))?
+        };
+        let addr = endpoint
+            .local_addr()
+            .map_err(|e| ServerError::Net(e.to_string()))?;
+
+        let (world_tx, world_rx) = crossbeam_channel::unbounded();
+        let ctx = Arc::new(ConnContext {
+            world: world_tx,
+            policy: config.policy,
+            server_name: config.server_name.clone(),
+            motd: config.motd.clone(),
+            block_states: Arc::new(registry.id_table().names),
+        });
+        let accept = endpoint.clone();
+        runtime.spawn(async move {
+            while let Some(incoming) = accept.accept().await {
+                tokio::spawn(conn::serve(incoming, Arc::clone(&ctx)));
+            }
+        });
+        let stop = Arc::new(AtomicBool::new(false));
+        let world_stop = Arc::clone(&stop);
+        let world = std::thread::Builder::new()
+            .name("world".into())
+            .spawn(move || world.run(world_rx, world_stop))
+            .map_err(|e| ServerError::World(e.to_string()))?;
+        Ok(Self {
+            addr,
+            stop,
+            world: Some(world),
+            endpoint,
+            runtime: Some(runtime),
+        })
+    }
+
+    /// The address the server listens on (useful with port 0).
+    #[must_use]
+    pub fn local_addr(&self) -> SocketAddr {
+        self.addr
+    }
+
+    /// Kicks everyone, saves players and edited columns, and stops.
+    pub fn shutdown(mut self) {
+        self.stop_now();
+    }
+
+    fn stop_now(&mut self) {
+        self.stop.store(true, Ordering::Relaxed);
+        if let Some(w) = self.world.take() {
+            let _ = w.join();
+        }
+        if let Some(rt) = self.runtime.take() {
+            // Let the kicks reach the clients, then close.
+            rt.block_on(async {
+                tokio::time::sleep(Duration::from_millis(200)).await;
+                self.endpoint.close(0u32.into(), b"server stopped");
+            });
+            rt.shutdown_timeout(Duration::from_secs(1));
+        }
+    }
+}
+
+impl Drop for Server {
+    fn drop(&mut self) {
+        self.stop_now();
+    }
+}

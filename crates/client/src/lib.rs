@@ -6,6 +6,7 @@
 pub mod edit;
 pub mod loading;
 pub mod packs;
+pub mod remote;
 pub mod session;
 pub mod settings;
 pub mod textures;

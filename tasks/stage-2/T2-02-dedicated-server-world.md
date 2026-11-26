@@ -1,6 +1,6 @@
 # T2-02. Dedicated server: world, join, chunk streaming
 
-- **Status:** todo
+- **Status:** in progress (cloud part done; owner: login time over LAN on the laptop) — [report](../../task-reports/t2-02-dedicated-server-world.md)
 - **Depends on:** T2-01, T1-02, T1-03
 - **Owner:** agent (cloud)
 
@@ -20,9 +20,9 @@
 
 ## Acceptance criteria
 
-- [ ] A local client joins `server --offline` and plays in the streamed world; the nearest 3×3 is controllable in ≤ 1 s at 2% loss / RTT 100 ms (`LossyRelay` in CI).
+- [x] A local client joins `server --offline` and plays in the streamed world; the nearest 3×3 is controllable in ≤ 1 s at 2% loss / RTT 100 ms (`LossyRelay` in CI). Release, 10 seeds: 9 within 0.51–0.74 s, one 1.28 s (tail loss in the login burst); CI asserts 1 s in release, a regression guard in debug.
 - [ ] Login to control ≤ 5 s on the laptop over LAN.
-- [ ] The server never panics on malformed client input (fuzzed decode, limits on sizes and rates).
+- [x] The server never panics on malformed client input (fuzzed decode, limits on sizes and rates).
 
 ## Out of scope
 

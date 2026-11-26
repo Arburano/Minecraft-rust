@@ -51,6 +51,10 @@ struct Args {
     /// Prefer the GPU whose name contains this text (e.g. `vega`, `1660`).
     #[arg(long, value_name = "NAME")]
     gpu: Option<String>,
+    /// Join this server right away (`host:port`, e.g. `127.0.0.1:47777`);
+    /// needs `--offline-name` (the server must run with `--offline`).
+    #[arg(long, value_name = "ADDR")]
+    connect: Option<std::net::SocketAddr>,
 }
 
 fn mods_dir(arg: Option<PathBuf>) -> PathBuf {
@@ -86,6 +90,12 @@ fn main() -> ExitCode {
         eprintln!("error: {e}");
         return ExitCode::FAILURE;
     }
+    if args.connect.is_some() && args.offline_name.is_none() {
+        eprintln!(
+            "error: --connect needs --offline-name <NAME> until Microsoft login exists (T0-10)"
+        );
+        return ExitCode::FAILURE;
+    }
     let screenshot = args
         .screenshot
         .as_deref()
@@ -107,6 +117,7 @@ fn main() -> ExitCode {
         safe_mode: args.safe_mode,
         bench: args.bench_route,
         gpu: args.gpu.clone(),
+        connect: args.connect,
     };
     let event_loop = match winit::event_loop::EventLoop::new() {
         Ok(l) => l,

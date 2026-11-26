@@ -16,6 +16,11 @@ light = { path = "../light" }
 mesh = { path = "../mesh" }
 render = { path = "../render" }
 net = { path = "../net" }
+protocol = { path = "../protocol" }
+# The server library: shared intent conversion now, the embedded server later (T2-08).
+server = { path = "../server" }
+quinn = { workspace = true }
+tokio = { workspace = true }
 sim = { path = "../sim" }
 assets = { path = "../assets" }
 auth = { path = "../auth" }

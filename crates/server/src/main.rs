@@ -4,17 +4,16 @@
 //! - `docs/architecture/server-regions.md`
 //! - `docs/architecture/auth-and-assets.md` ("Offline mode"), `docs/legal.md` rule 7
 //!
-//! Status: command line and offline-mode admission policy (T1-08). Simulation
-//! and networking are wired in stage 2.
+//! Status: world, join and column streaming (T2-02); entities, edits and
+//! regions follow in T2-03, T2-04 and T2-06.
 
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::path::PathBuf;
 use std::process::ExitCode;
 
 use auth::AdmissionPolicy;
 use clap::Parser;
-
-/// Default game port.
-const DEFAULT_PORT: u16 = 47_777;
+use server::{DEFAULT_PORT, DEFAULT_VIEW_DISTANCE, Server, ServerConfig};
 
 #[derive(Parser, Debug)]
 #[command(about = "Dedicated game server")]
@@ -30,13 +29,27 @@ struct Args {
     /// UDP port (QUIC).
     #[arg(long, default_value_t = DEFAULT_PORT)]
     port: u16,
+    /// The world folder (created if missing).
+    #[arg(long, value_name = "DIR", default_value = "world")]
+    world: PathBuf,
+    /// The `core` mod's data folder (default: next to the executable, else the source tree).
+    #[arg(long, value_name = "DIR")]
+    mods_dir: Option<PathBuf>,
+    /// Seed of a new world (an existing world keeps its seed).
+    #[arg(long)]
+    seed: Option<u64>,
+    /// Streamed column radius; the client renders 2 less (≥ 10, so render distance ≥ 8).
+    #[arg(long, default_value_t = DEFAULT_VIEW_DISTANCE)]
+    view_distance: i32,
 }
 
-/// The validated server configuration.
-#[derive(Debug, PartialEq, Eq)]
-struct ServerConfig {
-    listen: SocketAddr,
-    policy: AdmissionPolicy,
+fn mods_dir(arg: Option<PathBuf>) -> PathBuf {
+    arg.or_else(|| {
+        let exe = std::env::current_exe().ok()?;
+        let p = exe.parent()?.join("mods/core/data");
+        p.is_dir().then_some(p)
+    })
+    .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../mods/core/data"))
 }
 
 /// Loopback or private-network address (RFC 1918, IPv6 unique local / link local).
@@ -64,12 +77,20 @@ fn configure(args: &Args) -> Result<ServerConfig, String> {
         (None, true) => IpAddr::V4(Ipv4Addr::LOCALHOST),
         (None, false) => IpAddr::V4(Ipv4Addr::UNSPECIFIED),
     };
-    Ok(ServerConfig {
-        listen: SocketAddr::new(ip, args.port),
-        policy: AdmissionPolicy {
+    if args.view_distance < 10 {
+        return Err("--view-distance must be at least 10 (render distance ≥ 8, PRD §14)".into());
+    }
+    let mut config = ServerConfig::new(
+        SocketAddr::new(ip, args.port),
+        AdmissionPolicy {
             allow_offline: args.offline,
         },
-    })
+        args.world.clone(),
+        mods_dir(args.mods_dir.clone()),
+    );
+    config.seed = args.seed;
+    config.view_distance = args.view_distance;
+    Ok(config)
 }
 
 fn main() -> ExitCode {
@@ -89,10 +110,22 @@ fn main() -> ExitCode {
             config.listen
         );
     }
+    let server = match Server::start(config) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("error: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
     println!(
-        "server: configured for {}; simulation and networking arrive in stage 2",
-        config.listen
+        "server: listening on {} (QUIC); press Enter or Ctrl+D to stop",
+        server.local_addr()
     );
+    // Stop on Enter or end of input; the world and players are saved.
+    let mut line = String::new();
+    let _ = std::io::stdin().read_line(&mut line);
+    server.shutdown();
+    println!("server: stopped");
     ExitCode::SUCCESS
 }
 
@@ -143,6 +176,17 @@ mod tests {
         assert!(
             parse(&["--bind", "8.8.8.8"]).is_ok(),
             "online may bind anywhere"
+        );
+    }
+
+    #[test]
+    fn view_distance_keeps_render_distance_at_least_8() {
+        assert!(parse(&["--view-distance", "9"]).is_err());
+        assert_eq!(
+            parse(&["--view-distance", "10"])
+                .expect("valid")
+                .view_distance,
+            10
         );
     }
 }
