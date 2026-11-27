@@ -9,6 +9,18 @@ publish = false
 
 [dependencies]
 world = { path = "../world" }
+bitcode = { workspace = true }
+zstd = { workspace = true }
+
+[dev-dependencies]
+proptest = { workspace = true }
+criterion = { workspace = true }
+# Dev-only: realistic columns from the T0-12 corpus for the size measurements.
+worldgen = { path = "../worldgen" }
+
+[[bench]]
+name = "codec"
+harness = false
 
 [lints]
 workspace = true
