@@ -52,6 +52,24 @@ Implementation (T2-03, `client::session`, `server::game`, `server::input`):
 - Spawning only within the radius where a player can see the mob (as in Minecraft: no closer than ~24 blocks, no farther than the simulation distance), by zone tables. Despawning of distant ones — as in Minecraft.
 - We do not do: spawning mobs "in the air with AI turned off" (PRD §14, No. 4).
 
+### Engine side, implemented (T2-07, `server::entities`)
+
+Mobs and their behaviors are gameplay (`mods/core`, stage 4). The engine part is implemented and tested with test entities (`Walker`: a player-sized body using the player physics, wandering to random goals within 10 blocks):
+
+- **Entities live in regions:** a `Walker` is an ECS entity of the region whose territory covers its column; it moves with the territories (between ticks) and is **stored, not ticked** ("dormant") outside every territory, i.e. beyond the simulation distance.
+- **Simulation LOD:** physics and path following run every tick for every live entity; **decisions** (goal, path request, giving up after 40 ticks without progress) run every 1st / 2nd / 4th / 8th tick at ≤ 48 / 96 / 144 / farther blocks from the nearest player (`decision_interval`). Following a path between decisions is what keeps far entities moving smoothly.
+- **Asynchronous pathfinding:** a decision copies the solidity of the 25 × 13 × 25 blocks around the entity (unloaded = solid) into a `Grid`; the node runs A* on the job pool (`Visible` priority within 48 blocks of a player, `Prefetch` farther), 4 horizontal moves with one-block steps up (with head room) and down, ≤ 4,000 expansions, ending at the reachable cell nearest the goal. The path is applied in a later tick. Budget per region: ≤ 4 new requests per tick, ≤ 32 waiting.
+- **Replication:** entities are replicated like players (entity kind 1) and drawn as green boxes by the client. `server --offline --test-walkers N` spawns N of them around the world spawn for a look.
+
+Measured (cloud VM 4 vCPU Xeon 2.1 GHz, release, `cargo run -p server --release --example entity_load -- 500 30 <distance>`, one region, view 12, simulation 10):
+
+| 500 entities, player at | Tick p50 / p95 / p99 | Decisions per tick | Path requests per tick | Path latency |
+| --- | --- | --- | --- | --- |
+| the center | 1.61 / 2.36 / **3.09 ms** | 300 | 3.98 (budget 4) | 1 tick (p99 1) |
+| 120 blocks away | 0.88 / 1.95 / 2.53 ms | 108 | 1.08 | 1 tick |
+
+Test (`crates/server/tests/entities.rs`): 500 entities, the player moves from their center to 170 blocks away; every LOD band is crossed, the largest horizontal step of any entity in one tick is 0.22 blocks (walking speed — no freeze or jump), at least 250 walk more than 3 blocks, the per-tick budget holds, and entities that leave the territory become dormant (none lost).
+
 ## Simulation LOD
 
 | Distance from player | Entities | Block mechanics |

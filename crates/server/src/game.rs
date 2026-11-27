@@ -43,6 +43,7 @@ use world::{Column, ColumnPos, Registry, WorldBounds};
 use worldgen::{GenContext, Pipeline};
 
 use crate::columns::{decode, encode, record};
+use crate::entities::{Walker, astar};
 use crate::partition::{Member, RegionId, partition};
 use crate::players;
 use crate::region::{EditRequest, Player, PlayerSnapshot, Region, Shared, chebyshev};
@@ -182,6 +183,8 @@ enum Job {
     Generated(ColumnPos, Option<(Column, Arc<[u8]>)>),
     /// A cached column decoded to become live again.
     Decoded(ColumnPos, Option<Column>),
+    /// A path for an entity (T2-07).
+    Path(NetId, Option<Vec<BlockPos>>),
 }
 
 /// Tick timing of the last tick (metrics, the T2-06 benchmark).
@@ -243,6 +246,34 @@ pub struct World {
     to_fill: Vec<ColumnPos>,
     /// Cached columns being decoded on the job pool.
     decoding: HashSet<ColumnPos>,
+    /// Which region each simulated entity is in.
+    walker_owner: HashMap<NetId, RegionId>,
+    /// Entities outside every territory: stored, not simulated.
+    dormant: BTreeMap<NetId, Walker>,
+    entity_stats: EntityStats,
+}
+
+/// Entity simulation counters since the last [`World::entity_stats`].
+#[derive(Clone, Debug, Default)]
+pub struct EntityStats {
+    /// Simulated entities now.
+    pub live: usize,
+    /// Stored entities outside every territory.
+    pub dormant: usize,
+    /// Path requests waiting for their job now.
+    pub in_flight: usize,
+    /// Physics steps of entities.
+    pub simulated: u64,
+    /// AI decisions.
+    pub decisions: u64,
+    /// Path requests made.
+    pub requested: u64,
+    /// Path jobs finished.
+    pub paths_done: u64,
+    /// The most new requests one region made in one tick.
+    pub max_requests_per_region: usize,
+    /// Ticks from request to path, per finished request.
+    pub latency_ticks: Vec<u64>,
 }
 
 impl World {
@@ -298,6 +329,9 @@ impl World {
             last_members: Vec::new(),
             to_fill: Vec::new(),
             decoding: HashSet::new(),
+            walker_owner: HashMap::new(),
+            dormant: BTreeMap::new(),
+            entity_stats: EntityStats::default(),
         })
     }
 
@@ -338,6 +372,7 @@ impl World {
         // Restructure between ticks.
         let t = Instant::now();
         self.restructure();
+        self.relocate_walkers();
         let restructure = t.elapsed();
         // Simulate.
         let simulate = Instant::now();
@@ -353,6 +388,7 @@ impl World {
                 spawn: WORLD_SPAWN,
                 offsets: &self.offsets,
                 players: &self.snapshot_players,
+                tick: self.ticks,
             };
             let regions = &mut self.regions;
             self.pool
@@ -534,6 +570,7 @@ impl World {
         {
             match job {
                 Job::Generated(pos, c) => arrived.push((pos, c)),
+                Job::Path(id, path) => self.apply_path(id, path),
                 Job::Decoded(pos, c) => {
                     self.decoding.remove(&pos);
                     if let Some(col) = c
@@ -834,13 +871,142 @@ impl World {
         left
     }
 
+    /// A finished path job: the entity follows it from this tick on (it may
+    /// have moved to another region meanwhile, or gone dormant).
+    fn apply_path(&mut self, id: NetId, path: Option<Vec<BlockPos>>) {
+        self.entity_stats.paths_done += 1;
+        let tick = self.ticks;
+        let Some(&rid) = self.walker_owner.get(&id) else {
+            if let Some(w) = self.dormant.get_mut(&id) {
+                w.waiting = false;
+            }
+            return;
+        };
+        if let Some(r) = self.region_mut(rid)
+            && let Some(mut w) = r.walker_mut(id)
+        {
+            let latency = tick.saturating_sub(w.requested_at);
+            w.waiting = false;
+            w.path = path.unwrap_or_default();
+            w.next = 0;
+            self.entity_stats.latency_ticks.push(latency);
+        }
+    }
+
+    /// Entities follow the territories: into the region covering their
+    /// column, or dormant (stored, not simulated) outside every territory.
+    fn relocate_walkers(&mut self) {
+        let mut moves: Vec<(RegionId, NetId, Option<RegionId>)> = Vec::new();
+        for r in &self.regions {
+            for w in r.walkers() {
+                let c = ColumnPos::of_block(w.cell());
+                let to = self.coverage.get(&c).map(|e| e.0);
+                if to != Some(r.id) {
+                    moves.push((r.id, w.net_id, to));
+                }
+            }
+        }
+        for (from, id, to) in moves {
+            let Some(w) = self.region_mut(from).and_then(|r| r.take_walker(id)) else {
+                continue;
+            };
+            match to.and_then(|to| self.region_mut(to).map(|r| (to, r))) {
+                Some((to, r)) => {
+                    r.insert_walker(w);
+                    self.walker_owner.insert(id, to);
+                }
+                None => {
+                    self.walker_owner.remove(&id);
+                    self.dormant.insert(id, w);
+                }
+            }
+        }
+        if self.dormant.is_empty() {
+            return;
+        }
+        let wake: Vec<(NetId, RegionId)> = self
+            .dormant
+            .iter()
+            .filter_map(|(&id, w)| {
+                let c = ColumnPos::of_block(w.cell());
+                self.coverage.get(&c).map(|e| (id, e.0))
+            })
+            .collect();
+        for (id, to) in wake {
+            if let Some(w) = self.dormant.remove(&id)
+                && let Some(r) = self.region_mut(to)
+            {
+                r.insert_walker(w);
+                self.walker_owner.insert(id, to);
+            }
+        }
+    }
+
+    /// Spawns test entities around `center` (on the ground once their
+    /// column is live). Returns their IDs.
+    pub fn spawn_walkers(&mut self, center: DVec3, count: usize, radius: f64) -> Vec<NetId> {
+        let mut ids = Vec::with_capacity(count);
+        for i in 0..count {
+            let id = NetId(self.next_net_id);
+            self.next_net_id += 1;
+            // A deterministic spread (golden angle spiral).
+            let a = i as f64 * 2.399_963;
+            let d = radius * ((i as f64 + 0.5) / count.max(1) as f64).sqrt();
+            let pos = DVec3::new(center.x + d * a.cos(), center.y, center.z + d * a.sin());
+            self.dormant.insert(id, Walker::new(id, pos, false));
+            ids.push(id);
+        }
+        self.relocate_walkers();
+        ids
+    }
+
+    /// Where an entity is, if it exists.
+    #[must_use]
+    pub fn walker_pos(&self, id: NetId) -> Option<DVec3> {
+        if let Some(w) = self.dormant.get(&id) {
+            return Some(w.body.pos);
+        }
+        let rid = self.walker_owner.get(&id)?;
+        self.regions
+            .iter()
+            .find(|r| r.id == *rid)?
+            .walkers()
+            .find(|w| w.net_id == id)
+            .map(|w| w.body.pos)
+    }
+
+    /// Entity simulation counters (the T2-07 measurement); `take` drains
+    /// the latency samples.
+    pub fn entity_stats(&mut self) -> EntityStats {
+        let s = std::mem::take(&mut self.entity_stats);
+        EntityStats {
+            live: self.regions.iter().map(|r| r.walkers.len()).sum(),
+            dormant: self.dormant.len(),
+            in_flight: self
+                .regions
+                .iter()
+                .flat_map(Region::walkers)
+                .filter(|w| w.waiting)
+                .count(),
+            ..s
+        }
+    }
+
     fn exchange(&mut self) {
         // Block changes for players of other regions, and fresh cache bytes
         // of edited columns.
         let mut all_changes: Vec<(RegionId, ColumnPos, BlockChange)> = Vec::new();
         let mut edited: BTreeMap<ColumnPos, RegionId> = BTreeMap::new();
         let mut needs: Vec<ColumnPos> = Vec::new();
+        let mut paths: Vec<crate::entities::PathRequest> = Vec::new();
         for r in &mut self.regions {
+            self.entity_stats.max_requests_per_region = self
+                .entity_stats
+                .max_requests_per_region
+                .max(r.out.path_requests.len());
+            self.entity_stats.decisions += r.out.decisions;
+            self.entity_stats.simulated += r.out.simulated;
+            paths.append(&mut r.out.path_requests);
             self.corrections += r.out.corrections;
             self.edit_count += r.out.changes.len() as u64;
             for &(c, b) in &r.out.changes {
@@ -879,13 +1045,29 @@ impl World {
         needs.dedup();
         // Leftovers are asked for again next tick.
         let _ = self.request(needs);
-        // The player snapshot for the next tick (other regions read it).
+        // Path jobs: near entities first (`Visible`), the rest `Prefetch`.
+        self.entity_stats.requested += paths.len() as u64;
+        for req in paths {
+            let class = if req.near {
+                Priority::Visible
+            } else {
+                Priority::Prefetch
+            };
+            self.jobs.submit(class, CancelToken::new(), move |_| {
+                Job::Path(req.net_id, astar(&req.grid, req.start, req.goal))
+            });
+        }
+        // The snapshot for the next tick (other regions read it).
         self.snapshot_players.clear();
         for r in &self.regions {
             for id in r.player_ids() {
                 if let Some(p) = r.player(id).filter(|p| p.spawned) {
                     self.snapshot_players.push(PlayerSnapshot::of(p, r.id));
                 }
+            }
+            for w in r.walkers() {
+                self.snapshot_players
+                    .push(PlayerSnapshot::of_walker(w, r.id));
             }
         }
         // Drop cached columns nobody can see (every second).

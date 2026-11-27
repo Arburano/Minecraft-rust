@@ -24,6 +24,10 @@ use world::map::DirtyKind;
 use world::registry::Collision;
 use world::{BlockStateId, ColumnPos, Registry, WorldMap};
 
+use crate::entities::{
+    Grid, MAX_PATH_REQUESTS_PER_TICK, MAX_PATHS_IN_FLIGHT, NEAR_BLOCKS, PathRequest, WALKER_KIND,
+    Walker, decision_interval,
+};
 use crate::game::{Edit, MAX_STREAMS, ToConn, UNLOAD_MARGIN};
 use crate::input::{apply_fly_steps, correction, flags, physics_input, state_hash, wire_yaw};
 use crate::partition::RegionId;
@@ -116,9 +120,12 @@ pub struct Shared<'a> {
     pub spawn: [f64; 2],
     /// Column offsets within the view radius, nearest first.
     pub offsets: &'a [(i32, i32)],
-    /// Every player at the end of the previous tick (players of other
-    /// regions are replicated from this snapshot: one tick late, no lock).
+    /// Every player and entity at the end of the previous tick (those of
+    /// other regions are replicated from this snapshot: one tick late, no
+    /// lock).
     pub players: &'a [PlayerSnapshot],
+    /// The node's tick counter.
+    pub tick: u64,
 }
 
 /// A player as replicated, with its region.
@@ -135,6 +142,27 @@ pub struct PlayerSnapshot {
 }
 
 impl PlayerSnapshot {
+    /// The snapshot of a walker.
+    #[must_use]
+    pub fn of_walker(w: &Walker, region: RegionId) -> Self {
+        let yaw = Angle8::from_radians(w.yaw as f32);
+        Self {
+            net_id: w.net_id,
+            pos: w.body.pos,
+            state: EntityState {
+                kind: WALKER_KIND,
+                pos: quantize(w.body.pos.to_array()),
+                look: Look {
+                    yaw,
+                    pitch: Angle8(0),
+                    head_yaw: yaw,
+                },
+                flags: flags(&w.body),
+            },
+            region,
+        }
+    }
+
     /// The snapshot of a spawned player.
     #[must_use]
     pub fn of(p: &Player, region: RegionId) -> Self {
@@ -166,6 +194,12 @@ pub struct RegionOutput {
     pub changes: Vec<(ColumnPos, BlockChange)>,
     /// Corrections issued.
     pub corrections: u64,
+    /// New path requests (at most `MAX_PATH_REQUESTS_PER_TICK`).
+    pub path_requests: Vec<PathRequest>,
+    /// AI decisions taken.
+    pub decisions: u64,
+    /// Entities simulated (physics) this tick.
+    pub simulated: u64,
     /// Time the tick took.
     pub time: std::time::Duration,
 }
@@ -180,6 +214,8 @@ pub struct Region {
     pub(crate) edits: Vec<EditRequest>,
     pub(crate) unsaved: HashSet<ColumnPos>,
     pub(crate) out: RegionOutput,
+    /// Simulated entities by network ID.
+    pub(crate) walkers: BTreeMap<NetId, Entity>,
     dirty: Vec<world::coords::SectionPos>,
 }
 
@@ -195,8 +231,38 @@ impl Region {
             edits: Vec::new(),
             unsaved: HashSet::new(),
             out: RegionOutput::default(),
+            walkers: BTreeMap::new(),
             dirty: Vec::new(),
         }
+    }
+
+    /// Adds a simulated entity.
+    pub fn insert_walker(&mut self, w: Walker) {
+        let id = w.net_id;
+        let e = self.ecs.spawn(w).id();
+        self.walkers.insert(id, e);
+    }
+
+    /// Removes a simulated entity.
+    pub fn take_walker(&mut self, id: NetId) -> Option<Walker> {
+        let e = self.walkers.remove(&id)?;
+        let mut entity = self.ecs.get_entity_mut(e).ok()?;
+        let w = entity.take::<Walker>();
+        entity.despawn();
+        w
+    }
+
+    /// A simulated entity, to change.
+    pub fn walker_mut(&mut self, id: NetId) -> Option<bevy_ecs::world::Mut<'_, Walker>> {
+        let e = *self.walkers.get(&id)?;
+        self.ecs.get_mut::<Walker>(e)
+    }
+
+    /// Simulated entities (sorted by ID).
+    pub fn walkers(&self) -> impl Iterator<Item = &Walker> {
+        self.walkers
+            .values()
+            .filter_map(|&e| self.ecs.get::<Walker>(e))
     }
 
     /// The region's ID.
@@ -266,6 +332,7 @@ impl Region {
         let ids: Vec<Entity> = self.index.values().copied().collect();
         self.spawn_waiting(&ids, sh);
         self.move_players(&ids, sh);
+        self.tick_walkers(&ids, sh);
         let edited = self.apply_edits(sh);
         self.stream(&ids, sh, &edited);
         self.replicate(&ids, sh);
@@ -278,6 +345,83 @@ impl Region {
         self.map.take_dirty(DirtyKind::Mesh, &mut self.dirty);
         self.map.take_dirty(DirtyKind::Light, &mut self.dirty);
         self.out.time = start.elapsed();
+    }
+
+    /// Entities: physics and path following every tick, decisions at the
+    /// LOD interval, path requests within the per-tick budget.
+    fn tick_walkers(&mut self, players: &[Entity], sh: &Shared<'_>) {
+        if self.walkers.is_empty() {
+            return;
+        }
+        let mut eyes: Vec<DVec3> = players
+            .iter()
+            .filter_map(|&e| self.ecs.get::<Player>(e))
+            .filter(|p| p.spawned)
+            .map(|p| p.body.pos)
+            .collect();
+        eyes.extend(
+            sh.players
+                .iter()
+                .filter(|s| s.state.kind == 0 && s.region != self.id)
+                .map(|s| s.pos),
+        );
+        let mut in_flight = self.walkers().filter(|w| w.waiting).count();
+        let world = MapBlocks {
+            map: &self.map,
+            swim: sh.swim,
+        };
+        let ids: Vec<Entity> = self.walkers.values().copied().collect();
+        for e in ids {
+            let Some(mut w) = self.ecs.get_mut::<Walker>(e) else {
+                continue;
+            };
+            let w = &mut *w;
+            if !w.placed {
+                let c = w.cell();
+                match self.map.height(c.x, c.z) {
+                    Some(h) => {
+                        w.body.pos.y = f64::from(h);
+                        w.placed = true;
+                    }
+                    None => continue, // its column is not live yet
+                }
+            }
+            // Decisions at the LOD interval.
+            if sh.tick >= w.next_decision && !w.waiting {
+                let nearest = eyes
+                    .iter()
+                    .map(|p| p.distance(w.body.pos))
+                    .fold(f64::INFINITY, f64::min);
+                w.next_decision = sh.tick + decision_interval(nearest);
+                self.out.decisions += 1;
+                let stuck = w.stuck > 40;
+                if (w.idle() || stuck)
+                    && w.body.on_ground
+                    && self.out.path_requests.len() < MAX_PATH_REQUESTS_PER_TICK
+                    && in_flight < MAX_PATHS_IN_FLIGHT
+                {
+                    let start = w.cell();
+                    let goal = w.pick_goal();
+                    self.out.path_requests.push(PathRequest {
+                        net_id: w.net_id,
+                        start,
+                        goal,
+                        grid: Grid::snapshot(&self.map, sh.registry, start),
+                        near: nearest <= NEAR_BLOCKS,
+                    });
+                    w.waiting = true;
+                    w.requested_at = sh.tick;
+                    w.path.clear();
+                    w.next = 0;
+                    w.stuck = 0;
+                    in_flight += 1;
+                }
+            }
+            // Every tick: follow the path and move.
+            let input = w.steer();
+            step(&mut w.body, &input, sh.physics, &world);
+            self.out.simulated += 1;
+        }
     }
 
     fn spawn_waiting(&mut self, ids: &[Entity], sh: &Shared<'_>) {
@@ -548,6 +692,10 @@ impl Region {
                 (s.net_id, s.pos, s.state)
             })
             .collect();
+        everyone.extend(self.walkers().map(|w| {
+            let s = PlayerSnapshot::of_walker(w, self.id);
+            (s.net_id, s.pos, s.state)
+        }));
         let own: HashSet<NetId> = everyone.iter().map(|(id, _, _)| *id).collect();
         everyone.extend(
             sh.players

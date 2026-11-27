@@ -11,6 +11,7 @@
 
 pub mod columns;
 pub mod conn;
+pub mod entities;
 pub mod game;
 pub mod input;
 pub mod partition;
@@ -70,6 +71,8 @@ pub struct ServerConfig {
     /// Simulated column radius around each player (6–8, `server-regions.md`);
     /// the rest of the view radius is only streamed.
     pub sim_distance: i32,
+    /// Test entities spawned around the world spawn at start (T2-07).
+    pub test_walkers: usize,
     /// Display name.
     pub server_name: String,
     /// Message of the day.
@@ -97,6 +100,7 @@ impl ServerConfig {
             region_threads: std::thread::available_parallelism()
                 .map_or(2, |n| (n.get() * 4 / 5).max(1)),
             sim_distance: DEFAULT_SIM_DISTANCE,
+            test_walkers: 0,
             server_name: "Voxel Engine server".into(), // OPEN-QUESTION: 15
             motd: String::new(),
         }
@@ -176,7 +180,7 @@ impl Server {
             .map_err(|e| ServerError::World(e.to_string()))?;
         let storage = Storage::start(store, Arc::clone(&registry))
             .map_err(|e| ServerError::World(e.to_string()))?;
-        let world = World::new(
+        let mut world = World::new(
             WorldSetup {
                 registry: Arc::clone(&registry),
                 context: Arc::new(GenContext::new(seed, gen_config, bounds)),
@@ -190,6 +194,9 @@ impl Server {
             storage,
         )
         .map_err(ServerError::World)?;
+        if config.test_walkers > 0 {
+            world.spawn_walkers(glam::DVec3::new(8.5, 0.0, 8.5), config.test_walkers, 30.0);
+        }
 
         // Offline mode serves LAN and loopback only (legal.md rule 7), and its
         // clients accept any certificate, so a fresh self-signed one is enough.

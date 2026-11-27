@@ -41,6 +41,10 @@ struct Args {
     /// Streamed column radius; the client renders 2 less (≥ 10, so render distance ≥ 8).
     #[arg(long, default_value_t = DEFAULT_VIEW_DISTANCE)]
     view_distance: i32,
+    /// Spawn this many test entities around the world spawn (T2-07; they
+    /// wander with the engine's pathfinding; real mobs are stage 4).
+    #[arg(long, default_value_t = 0)]
+    test_walkers: usize,
 }
 
 fn mods_dir(arg: Option<PathBuf>) -> PathBuf {
@@ -90,6 +94,7 @@ fn configure(args: &Args) -> Result<ServerConfig, String> {
     );
     config.seed = args.seed;
     config.view_distance = args.view_distance;
+    config.test_walkers = args.test_walkers;
     Ok(config)
 }
 

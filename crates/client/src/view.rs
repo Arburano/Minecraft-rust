@@ -175,13 +175,17 @@ impl WorldView {
         // Other players on a server, as boxes until models exist.
         self.box_list.clear();
         for o in session.others() {
-            let h = (o.id.0.wrapping_mul(0x9e37_79b9_7f4a_7c15) >> 40) as u32;
-            let hue = |shift: u32| 0.25 + f32::from(((h >> shift) & 0xff) as u8) / 255.0 * 0.6;
-            self.box_list.extend(player_boxes(
-                o.pos.as_vec3(),
-                o.yaw,
-                [hue(0), hue(8), hue(16)],
-            ));
+            let color = if o.kind == 0 {
+                // Players: a stable color from the ID.
+                let h = (o.id.0.wrapping_mul(0x9e37_79b9_7f4a_7c15) >> 40) as u32;
+                let hue = |shift: u32| 0.25 + f32::from(((h >> shift) & 0xff) as u8) / 255.0 * 0.6;
+                [hue(0), hue(8), hue(16)]
+            } else {
+                // Test entities (T2-07): green.
+                [0.2, 0.75, 0.25]
+            };
+            self.box_list
+                .extend(player_boxes(o.pos.as_vec3(), o.yaw, color));
         }
         self.boxes.prepare(
             queue,
