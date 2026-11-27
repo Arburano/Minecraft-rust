@@ -5,8 +5,8 @@
 //! every surviving packet by `one_way_delay`. This emulates loss at the
 //! transport level (the task's alternative to `tc netem`, which needs root).
 //!
-//! This is test tooling, not engine code: per-packet allocation and a task
-//! per delayed packet are acceptable here.
+//! This is test tooling, not engine code: per-packet allocation is
+//! acceptable here. Packets keep their order (one delay line).
 
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -73,9 +73,22 @@ async fn relay_loop(
     let mut rng_to_server = seed;
     let mut rng_to_client = seed ^ 0xDEAD_BEEF_CAFE_F00D;
     let mut buf = vec![0u8; 65_536];
+    // One delivery queue for both directions: packets leave in the order they
+    // arrived, each `delay` after its arrival. (A timer task per packet would
+    // reorder packets that arrive within the same timer tick, which a plain
+    // delay line — like `tc netem delay` without jitter — never does.)
+    let (tx, mut rx) =
+        tokio::sync::mpsc::unbounded_channel::<(tokio::time::Instant, SocketAddr, Vec<u8>)>();
+    let sender = Arc::clone(&socket);
+    let delivery = tokio::spawn(async move {
+        while let Some((at, dest, packet)) = rx.recv().await {
+            tokio::time::sleep_until(at).await;
+            let _ = sender.send_to(&packet, dest).await;
+        }
+    });
     loop {
         let Ok((len, from)) = socket.recv_from(&mut buf).await else {
-            return;
+            break;
         };
         let (dest, rng) = if from == server_addr {
             match client_addr {
@@ -90,13 +103,12 @@ async fn relay_loop(
         if drop_it {
             continue;
         }
-        let packet = buf[..len].to_vec();
-        let socket = Arc::clone(&socket);
-        tokio::spawn(async move {
-            tokio::time::sleep(delay).await;
-            let _ = socket.send_to(&packet, dest).await;
-        });
+        let at = tokio::time::Instant::now() + delay;
+        if tx.send((at, dest, buf[..len].to_vec())).is_err() {
+            break;
+        }
     }
+    delivery.abort();
 }
 
 #[cfg(test)]
