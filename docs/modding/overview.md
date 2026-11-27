@@ -35,6 +35,7 @@ Third-party native `.dll`/`.so` are not supported: there is no stable ABI and no
 
 ## Documents
 
+- [builds.md](builds.md) — builds (sets of mods), the base-game modules and the rules for cutting them (ADR-0017).
 - [mod-manifest.md](mod-manifest.md) — `mod.toml`.
 - [datapacks.md](datapacks.md) — data format.
 - [wasm-api.md](wasm-api.md) — the WIT contract and API evolution rules.

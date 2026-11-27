@@ -45,7 +45,7 @@ Where things stand today:
   - two more crates or mods to keep in sync with the engine version;
   - prediction and reconciliation (stage 2) must treat ability state as part of the player state.
 - **Tasks after approval:**
-  - (a) split `mods/core` into `core` (blocks, items), `core-movement` and `core-worldgen`, and add `provides` and slot checks to the manifest;
+  - (a) split `mods/core` into `core` (blocks, items), `core-movement` and `core-worldgen`, and add `provides` and slot checks to the manifest (the split is done by ADR-0017 under the names `movement` and one mod per dimension, `overworld`; `provides` and slot checks remain);
   - (b) a movement profile format with abilities, and the first primitives, refactoring `sim::physics` to run a profile;
   - (c) the `builtin-overworld` feature;
   - (d) storing slot choices in the world metadata;

@@ -1,7 +1,6 @@
 //! T1-12: block edits keep meshes, light and render batches equal to a fresh
 //! build of the edited world.
 
-use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -14,8 +13,7 @@ use mesh::reference::covered_faces_sorted;
 use mesh::{MeshChunkBuilder, SectionNeighborhood};
 use sim::physics::{PhysicsConfig, PlayerBody};
 use world::coords::{BlockPos, MeshChunkPos, SectionPos};
-use world::registry::blocks_from_dir;
-use world::{BlockStateId, ColumnPos, Registry, RegistryBuilder, Section, WorldBounds, WorldMap};
+use world::{BlockStateId, ColumnPos, Registry, Section, WorldBounds, WorldMap};
 use worldgen::{GenContext, Pipeline, WorldgenConfig};
 
 const BOUNDS: WorldBounds = WorldBounds {
@@ -33,14 +31,10 @@ struct World {
 }
 
 fn loaded_world() -> World {
-    let data = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../mods/core/data");
-    let mut b = RegistryBuilder::new();
-    b.add_mod(
-        "core",
-        blocks_from_dir(&data.join("blocks")).expect("blocks"),
-    );
+    let mods = world::modset::source_build(world::modset::DEFAULT_BUILD).expect("build");
+    let b = mods.registry_builder().expect("blocks");
     let reg = Arc::new(b.build().expect("registry"));
-    let src = std::fs::read_to_string(data.join("worldgen/overworld.toml")).expect("config");
+    let src = mods.read("worldgen/overworld.toml").expect("config");
     let ctx = Arc::new(GenContext::new(
         11,
         WorldgenConfig::from_toml(&src, &reg).expect("config"),

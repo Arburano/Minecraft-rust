@@ -11,12 +11,14 @@
 pub mod column;
 pub mod coords;
 pub mod map;
+pub mod modset;
 pub mod registry;
 pub mod section;
 pub mod storage;
 
 pub use column::{Column, ColumnPos, ColumnState, WorldBounds};
 pub use map::{DirtyKind, WorldError, WorldMap};
+pub use modset::{ModSet, ModSetError};
 pub use registry::{
     BlockDef, BlockProps, Collision, IdTable, Registry, RegistryBuilder, RegistryError,
 };

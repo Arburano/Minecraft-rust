@@ -32,7 +32,10 @@ struct Args {
     /// The world folder (created if missing).
     #[arg(long, value_name = "DIR", default_value = "world")]
     world: PathBuf,
-    /// The `core` mod's data folder (default: next to the executable, else the source tree).
+    /// The build to run: an id from `builds/` or a build file (ADR-0017).
+    #[arg(long, value_name = "ID|FILE", default_value = world::modset::DEFAULT_BUILD)]
+    build: String,
+    /// The folder of mod folders (default: `mods/` next to the executable, else the source tree).
     #[arg(long, value_name = "DIR")]
     mods_dir: Option<PathBuf>,
     /// Seed of a new world (an existing world keeps its seed).
@@ -53,15 +56,6 @@ struct Args {
     /// (joining and column streaming).
     #[arg(long, default_value_t = 30)]
     stats_warmup: u64,
-}
-
-fn mods_dir(arg: Option<PathBuf>) -> PathBuf {
-    arg.or_else(|| {
-        let exe = std::env::current_exe().ok()?;
-        let p = exe.parent()?.join("mods/core/data");
-        p.is_dir().then_some(p)
-    })
-    .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../mods/core/data"))
 }
 
 /// Loopback or private-network address (RFC 1918, IPv6 unique local / link local).
@@ -98,7 +92,8 @@ fn configure(args: &Args) -> Result<ServerConfig, String> {
             allow_offline: args.offline,
         },
         args.world.clone(),
-        mods_dir(args.mods_dir.clone()),
+        world::modset::locate(&args.build, args.mods_dir.as_deref())
+            .map_err(|e| format!("build {}: {e}", args.build))?,
     );
     config.seed = args.seed;
     config.view_distance = args.view_distance;

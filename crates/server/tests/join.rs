@@ -27,7 +27,7 @@ fn temp_world(tag: &str) -> PathBuf {
 
 fn start(tag: &str, view: i32) -> (Server, PathBuf) {
     let dir = temp_world(tag);
-    let data = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../mods/core/data");
+    let data = world::modset::source_build(world::modset::DEFAULT_BUILD).expect("build");
     let mut config = ServerConfig::new(
         "127.0.0.1:0".parse().expect("addr"),
         AdmissionPolicy {

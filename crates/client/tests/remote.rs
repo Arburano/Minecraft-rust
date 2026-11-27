@@ -13,8 +13,8 @@ use client::session::{Session, SessionConfig};
 use server::{Server, ServerConfig};
 use sim::physics::PlayerInput;
 
-fn data() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../mods/core/data")
+fn data() -> world::ModSet {
+    world::modset::source_build(world::modset::DEFAULT_BUILD).expect("build")
 }
 
 fn start(tag: &str) -> (Server, PathBuf) {

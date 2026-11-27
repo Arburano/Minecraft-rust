@@ -29,7 +29,10 @@ struct Args {
     /// Settings, worlds and caches (default: the per-user data folder).
     #[arg(long, value_name = "DIR")]
     data_dir: Option<PathBuf>,
-    /// The `core` mod's data folder (default: next to the executable, else the source tree).
+    /// The build to play: an id from `builds/` or a build file (ADR-0017).
+    #[arg(long, value_name = "ID|FILE", default_value = world::modset::DEFAULT_BUILD)]
+    build: String,
+    /// The folder of mod folders (default: `mods/` next to the executable, else the source tree).
     #[arg(long, value_name = "DIR")]
     mods_dir: Option<PathBuf>,
     /// Print the time from process start to the first menu frame, then exit.
@@ -55,15 +58,6 @@ struct Args {
     /// needs `--offline-name` (the server must run with `--offline`).
     #[arg(long, value_name = "ADDR")]
     connect: Option<std::net::SocketAddr>,
-}
-
-fn mods_dir(arg: Option<PathBuf>) -> PathBuf {
-    arg.or_else(|| {
-        let exe = std::env::current_exe().ok()?;
-        let p = exe.parent()?.join("mods/core/data");
-        p.is_dir().then_some(p)
-    })
-    .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../mods/core/data"))
 }
 
 /// The identity to play with. Until Microsoft login exists (T0-10), offline
@@ -103,12 +97,19 @@ fn main() -> ExitCode {
             Some((p, n)) if n.parse::<u32>().is_ok() => (PathBuf::from(p), n.parse().unwrap_or(1)),
             _ => (PathBuf::from(s), 1),
         });
+    let mods = match world::modset::locate(&args.build, args.mods_dir.as_deref()) {
+        Ok(m) => m,
+        Err(e) => {
+            eprintln!("error: build {}: {e}", args.build);
+            return ExitCode::FAILURE;
+        }
+    };
     let opts = app::Options {
         data_dir: args
             .data_dir
             .clone()
             .unwrap_or_else(client::settings::default_data_dir),
-        mods_dir: mods_dir(args.mods_dir.clone()),
+        mods,
         offline_name: args.offline_name.clone(),
         measure_startup: args.measure_startup,
         start,

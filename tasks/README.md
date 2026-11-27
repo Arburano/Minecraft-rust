@@ -78,6 +78,7 @@ Core and single-player world ([roadmap](../docs/process/roadmap.md), PRD §9). E
 | [T1-21](stage-1/T1-21-render-reference-scene.md) | Render reference scene and screenshot tests | T1-11, T1-19 | agent (cloud) + laptop | todo |
 | [T1-22](stage-1/T1-22-render-graph-hook-v2.md) | Programmable render graph and shader-pack hook version 2 (ADR-0015) | ADR-0015 (accepted 2026-11-27), T1-19, T1-21 | agent (cloud) + laptop | todo |
 | [T1-23](stage-1/T1-23-mesher-trait-and-render-buckets.md) | Mesher trait and render buckets (ADR-0016) | ADR-0016 (accepted 2026-11-27), T1-11 | agent (cloud) | todo |
+| [T1-24](stage-1/T1-24-modular-base-game.md) | Modular base game: split `core` into modules and add builds (ADR-0017) | T1-13, T2-08 | agent (cloud) | done |
 
 ### Stage 1: order and parallel work
 
@@ -97,6 +98,7 @@ Wave 1 tasks touch different crates (`world`, `mesh`, `render`, `engine-core`, `
 - World map `get_block`/`set_block` are 2.8× / 2.4× the section access (VM, T1-01); the owner kept the 2× target (2026-11-22). Optimize when profiling shows map access in a hot path (physics, edits), e.g. a per-caller column cache or batched access APIs; re-measure on the laptop.
 - Replaceable movement and world generation ("gameplay slots") — [ADR-0013](../docs/adr/0013-replaceable-movement-and-worldgen.md), accepted by the owner 2026-11-22 → [T1-18](stage-1/T1-18-gameplay-slots.md).
 - External projects review (2026-11-26, [research](../docs/research/external-projects-review-2026-11-26.md)): "shader packs change everything, as Iris does" → [ADR-0015](../docs/adr/0015-programmable-render-graph.md) (accepted 2026-11-27) and T1-22; readiness for a non-cubic world → [ADR-0016](../docs/adr/0016-geometry-agnostic-meshing.md) (accepted 2026-11-27) and T1-23; visual checks → T1-21 (prerequisite for both); generation backpressure and lag-machine limits → T2-10.
+- Modular base game and builds (owner request 2026-11-27) → [ADR-0017](../docs/adr/0017-modular-base-game-and-builds.md) and T1-24 (done): `core`, `movement`, `overworld`, planned `nether`, `end`, `mobs`; later modules (moving structures with collision, space, roles and permissions) are documented in [builds](../docs/modding/builds.md).
 - T1-16 leftovers (the owner accepted both options, 2026-11-22): an ADR for persistent per-region light grids (≤ 100 µs per edit), and a cheaper pass for sky changes reaching below the snapshot (≈ 10 ms on the VM). Chained slabs are preferred because they are exact and have no visible delay; spreading over frames is the fallback.
 
 ## Stage 2: network and server

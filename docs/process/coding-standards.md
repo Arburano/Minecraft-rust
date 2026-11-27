@@ -28,5 +28,5 @@
 ## Architectural boundaries
 
 - The direction of dependencies between crates is as in [`../architecture/overview.md`](../architecture/overview.md). A violation — through an ADR.
-- Engine code does not know specific blocks (`stone`, `zombie`). Everything specific is in `mods/core`.
+- Engine code does not know specific blocks (`stone`, `zombie`). Everything specific is in the base-game mods (`mods/`, ADR-0017).
 - Mechanics are not copied from decompiled Mojang code ([`../legal.md`](../legal.md)).

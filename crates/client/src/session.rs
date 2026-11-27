@@ -21,9 +21,8 @@ use sim::physics::{MapBlocks, PhysicsConfig, PlayerBody, PlayerInput, interpolat
 use sim::raycast::RayHit;
 use world::coords::{BlockPos, SectionPos};
 use world::map::DirtyKind;
-use world::registry::blocks_from_dir;
 use world::storage::StorageError;
-use world::{BlockStateId, Column, ColumnPos, Registry, RegistryBuilder, WorldBounds, WorldMap};
+use world::{BlockStateId, Column, ColumnPos, ModSet, Registry, WorldBounds, WorldMap};
 use worldgen::{GenContext, Pipeline, WorldgenConfig};
 
 use auth::AdmissionPolicy;
@@ -43,8 +42,8 @@ use crate::worlds::{WorldInfo, WorldsError, now};
 /// How a session is set up.
 #[derive(Clone, Debug)]
 pub struct SessionConfig {
-    /// The `core` mod's data folder (`mods/core/data`).
-    pub data: PathBuf,
+    /// The mods of the build (ADR-0017); the embedded server runs the same.
+    pub mods: ModSet,
     /// Full-data render distance in chunks.
     pub radius: i32,
     /// Worker threads.
@@ -66,11 +65,11 @@ pub struct SessionConfig {
 }
 
 impl SessionConfig {
-    /// Defaults for `data`.
+    /// Defaults for a build's mods.
     #[must_use]
-    pub fn new(data: PathBuf) -> Self {
+    pub fn new(mods: ModSet) -> Self {
         Self {
-            data,
+            mods,
             radius: 12,
             threads: 3,
             bounds: WorldBounds::default(),
@@ -226,7 +225,7 @@ impl Session {
                 allow_offline: true,
             },
             dir.to_owned(),
-            config.data.clone(),
+            config.mods.clone(),
         );
         sc.seed = Some(info.seed);
         sc.view_distance = view;
@@ -251,7 +250,7 @@ impl Session {
         name: &str,
         config: SessionConfig,
     ) -> Result<Self, SessionError> {
-        let data = ModData::load(&config.data)?;
+        let data = ModData::load(&config.mods)?;
         let focus = config
             .headless
             .then(|| Arc::new(Focus::new(HEADLESS_RADIUS)));
@@ -1187,19 +1186,15 @@ struct ModData {
 }
 
 impl ModData {
-    fn load(dir: &Path) -> Result<Self, SessionError> {
+    fn load(mods: &ModSet) -> Result<Self, SessionError> {
         let data_err = |e: &dyn std::fmt::Display| SessionError::Data(e.to_string());
-        let mut b = RegistryBuilder::new();
-        b.add_mod(
-            "core",
-            blocks_from_dir(&dir.join("blocks")).map_err(|e| data_err(&e))?,
-        );
+        let b = mods.registry_builder().map_err(|e| data_err(&e))?;
         let registry = Arc::new(b.build().map_err(|e| data_err(&e))?);
-        let src = std::fs::read_to_string(dir.join("worldgen/overworld.toml"))
+        let src = mods
+            .read("worldgen/overworld.toml")
             .map_err(|e| data_err(&e))?;
         let gen_config = WorldgenConfig::from_toml(&src, &registry).map_err(|e| data_err(&e))?;
-        let physics_src =
-            std::fs::read_to_string(dir.join("player/physics.toml")).map_err(|e| data_err(&e))?;
+        let physics_src = mods.read("player/physics.toml").map_err(|e| data_err(&e))?;
         let physics = PhysicsConfig::from_toml(&physics_src).map_err(|e| data_err(&e))?;
         let swim = physics.swim_ids(&registry).map_err(|e| data_err(&e))?;
         Ok(Self {

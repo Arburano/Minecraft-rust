@@ -14,8 +14,8 @@ use sim::physics::PlayerInput;
 use world::coords::{BlockPos, SectionPos};
 use world::{BlockStateId, ColumnPos};
 
-fn data() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../mods/core/data")
+fn data() -> world::ModSet {
+    world::modset::source_build(world::modset::DEFAULT_BUILD).expect("build")
 }
 
 fn start(dir: &Path) -> Server {

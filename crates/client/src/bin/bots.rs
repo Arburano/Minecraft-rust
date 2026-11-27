@@ -44,7 +44,10 @@ struct Args {
     /// Bots turn back beyond this distance from where they joined (blocks).
     #[arg(long, default_value_t = 48.0)]
     roam: f64,
-    /// The `core` mod's data folder.
+    /// The build to run (an id from `builds/` or a build file, ADR-0017).
+    #[arg(long, value_name = "ID|FILE", default_value = world::modset::DEFAULT_BUILD)]
+    build: String,
+    /// The folder of mod folders (default: `mods/` next to the executable, else the source tree).
     #[arg(long, value_name = "DIR")]
     mods_dir: Option<PathBuf>,
     /// Groups of bots with homes `--group-spacing` blocks apart (e.g. 10
@@ -62,10 +65,13 @@ struct Args {
 
 fn main() -> ExitCode {
     let args = Args::parse();
-    let data = args
-        .mods_dir
-        .clone()
-        .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../mods/core/data"));
+    let data = match world::modset::locate(&args.build, args.mods_dir.as_deref()) {
+        Ok(m) => m,
+        Err(e) => {
+            eprintln!("error: build {}: {e}", args.build);
+            return ExitCode::FAILURE;
+        }
+    };
     let mix: Vec<u32> = args
         .mix
         .split(',')

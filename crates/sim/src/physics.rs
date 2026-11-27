@@ -2,7 +2,7 @@
 //! per fixed 20 TPS tick with axis-wise sweeping against block collision
 //! boxes (Y, then X, then Z), step-up, jumping, ground/air friction and a
 //! swimming placeholder. All tunable numbers come from the `core` datapack
-//! (`mods/core/data/player/physics.toml`), not from the engine.
+//! (`player/physics.toml` of the `movement` mod, `mods/movement/data`), not from the engine.
 //!
 //! The same code runs on the client (prediction) and later on the server
 //! (authority); it is deterministic: the same inputs from the same state give

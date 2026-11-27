@@ -32,9 +32,8 @@ use auth::AdmissionPolicy;
 use quinn::rustls::pki_types::PrivateKeyDer;
 use serde::{Deserialize, Serialize};
 use sim::physics::PhysicsConfig;
-use world::registry::blocks_from_dir;
 use world::storage::WorldStore;
-use world::{RegistryBuilder, WorldBounds};
+use world::{ModSet, WorldBounds};
 use worldgen::{GenContext, WorldgenConfig};
 
 use crate::conn::ConnContext;
@@ -58,8 +57,10 @@ pub struct ServerConfig {
     pub policy: AdmissionPolicy,
     /// The world folder (created if missing).
     pub world_dir: PathBuf,
-    /// The `core` mod's data folder (`mods/core/data`).
-    pub data_dir: PathBuf,
+    /// The mods of the build the server runs (ADR-0017): blocks from every
+    /// mod, generation, player physics and entity limits from the mods that
+    /// provide them.
+    pub mods: ModSet,
     /// Seed for a new world; an existing world keeps its own.
     pub seed: Option<u64>,
     /// Streamed column radius (≥ 10: render distance ≥ 8, PRD §14).
@@ -92,13 +93,13 @@ impl ServerConfig {
         listen: SocketAddr,
         policy: AdmissionPolicy,
         world_dir: PathBuf,
-        data_dir: PathBuf,
+        mods: ModSet,
     ) -> Self {
         Self {
             listen,
             policy,
             world_dir,
-            data_dir,
+            mods,
             seed: None,
             view_distance: DEFAULT_VIEW_DISTANCE,
             threads: std::thread::available_parallelism()
@@ -203,17 +204,13 @@ impl Server {
     /// Loads mod data, opens the world and starts listening.
     pub fn start(config: ServerConfig) -> Result<Self, ServerError> {
         let data = |e: &dyn std::fmt::Display| ServerError::Data(e.to_string());
-        let mut b = RegistryBuilder::new();
-        b.add_mod(
-            "core",
-            blocks_from_dir(&config.data_dir.join("blocks")).map_err(|e| data(&e))?,
-        );
+        let mods = &config.mods;
+        let b = mods.registry_builder().map_err(|e| data(&e))?;
         let registry = Arc::new(b.build().map_err(|e| data(&e))?);
-        let src = std::fs::read_to_string(config.data_dir.join("worldgen/overworld.toml"))
-            .map_err(|e| data(&e))?;
+        // The only dimension so far; more come with the `nether`/`end` mods.
+        let src = mods.read("worldgen/overworld.toml").map_err(|e| data(&e))?;
         let gen_config = WorldgenConfig::from_toml(&src, &registry).map_err(|e| data(&e))?;
-        let physics_src = std::fs::read_to_string(config.data_dir.join("player/physics.toml"))
-            .map_err(|e| data(&e))?;
+        let physics_src = mods.read("player/physics.toml").map_err(|e| data(&e))?;
         let physics = PhysicsConfig::from_toml(&physics_src).map_err(|e| data(&e))?;
 
         std::fs::create_dir_all(&config.world_dir)
@@ -234,7 +231,7 @@ impl Server {
                 sim_distance: config.sim_distance,
                 threads: config.threads,
                 region_threads: config.region_threads,
-                entity_limits: crate::entities::EntityLimits::load(&config.data_dir)
+                entity_limits: crate::entities::EntityLimits::from_mods(&config.mods)
                     .map_err(ServerError::Data)?,
             },
             storage,

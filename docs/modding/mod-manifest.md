@@ -36,6 +36,6 @@ schema = "u16"               # schema description for the handshake hash
 
 - `id` does not coincide with another mod; all IDs in a datapack have the prefix `id:` (except explicit overrides with `override = true`, only for dependencies).
 - `api` is compatible with the engine (current or previous major via an adapter).
-- The dependency graph has no cycles; load order is topological, ties are broken by `id`.
+- The dependency graph has no cycles; load order is topological, ties are broken by `id`. Implemented for datapacks by `world::modset` (T1-24): a build's mods and their dependencies are resolved from the mods folder; requirements are `^a.b.c` (default), `=a.b.c` or `*`; `optional = true` dependencies are checked only when the build has that mod ([builds.md](builds.md)).
 - A WASM component imports only the interfaces allowed by `[permissions]`; otherwise — a linking error with an explanation.
 - `side = client` cannot have `[wasm].server`, and vice versa.

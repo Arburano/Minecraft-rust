@@ -43,8 +43,8 @@ pub const WALKER_KIND: u16 = 1;
 /// The datapack name of test walkers (`entities/limits.toml`).
 pub const WALKER_NAME: &str = "test:walker";
 
-/// Per-region limits of simulated entities by kind (`mods/core/data/
-/// entities/limits.toml`, T2-10). Entities over the limit are kept stored
+/// Per-region limits of simulated entities by kind (`data/entities/limits.toml`
+/// of the build's mods, T2-10). Entities over the limit are kept stored
 /// (dormant), not simulated, until there is room.
 #[derive(Clone, Debug, Default, PartialEq, Eq, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -55,6 +55,15 @@ pub struct EntityLimits {
     /// By kind name.
     #[serde(default)]
     pub kind: std::collections::BTreeMap<String, KindLimit>,
+}
+
+/// One mod's `limits.toml`, before merging.
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PartialLimits {
+    default: Option<KindLimit>,
+    #[serde(default)]
+    kind: std::collections::BTreeMap<String, KindLimit>,
 }
 
 /// The limit of one kind.
@@ -74,13 +83,24 @@ impl Default for KindLimit {
 }
 
 impl EntityLimits {
-    /// Reads `entities/limits.toml` under a mod's data folder; a missing file
-    /// gives the defaults.
-    pub fn load(data: &std::path::Path) -> Result<Self, String> {
-        match std::fs::read_to_string(data.join("entities/limits.toml")) {
-            Ok(text) => toml::from_str(&text).map_err(|e| format!("entities/limits.toml: {e}")),
-            Err(_) => Ok(Self::default()),
+    /// Merges `entities/limits.toml` of every mod of a build in load order:
+    /// each mod adds its kinds (a mobs mod adds its creatures to the core
+    /// defaults); a later mod's `[default]` or kind entry replaces an earlier one.
+    pub fn from_mods(mods: &world::ModSet) -> Result<Self, String> {
+        let mut out = Self::default();
+        for m in mods.mods() {
+            let path = m.data_dir().join("entities/limits.toml");
+            let Ok(text) = std::fs::read_to_string(&path) else {
+                continue;
+            };
+            let part: PartialLimits =
+                toml::from_str(&text).map_err(|e| format!("{}: {e}", path.display()))?;
+            if let Some(d) = part.default {
+                out.default = d;
+            }
+            out.kind.extend(part.kind);
         }
+        Ok(out)
     }
 
     /// The limit of a kind.
@@ -437,11 +457,10 @@ mod tests {
         assert_eq!(l.of(WALKER_NAME), 3);
         assert_eq!(l.of("core:item"), 10);
         assert_eq!(EntityLimits::default().of("x"), 2000);
-        let core = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../mods/core/data");
-        assert_eq!(
-            EntityLimits::load(&core).expect("core").of(WALKER_NAME),
-            1000
-        );
+        let classic = world::modset::source_build(world::modset::DEFAULT_BUILD).expect("build");
+        let limits = EntityLimits::from_mods(&classic).expect("limits");
+        assert_eq!(limits.of(WALKER_NAME), 1000);
+        assert_eq!(limits.of("core:item"), 2000);
     }
 
     #[test]

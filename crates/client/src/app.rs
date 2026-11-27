@@ -27,8 +27,8 @@ const TICK: Duration = Duration::from_millis(50);
 pub struct Options {
     /// Settings, worlds and caches.
     pub data_dir: PathBuf,
-    /// The `core` mod's data.
-    pub mods_dir: PathBuf,
+    /// The mods of the build being played (ADR-0017).
+    pub mods: world::ModSet,
     /// Offline name from the command line (overrides the saved one).
     pub offline_name: Option<String>,
     /// Print the time to the first menu frame and exit.
@@ -291,7 +291,7 @@ impl App {
     }
 
     fn session_config(&self) -> SessionConfig {
-        let mut config = SessionConfig::new(self.opts.mods_dir.clone());
+        let mut config = SessionConfig::new(self.opts.mods.clone());
         config.radius = self.settings.quality.settings().render_distance as i32;
         config.threads = self.settings.threads();
         config.autosave = Duration::from_secs(u64::from(self.settings.autosave_seconds.max(5)));
@@ -841,7 +841,7 @@ fn block_textures(
     opts: &Options,
     registry: &world::Registry,
 ) -> (client::textures::BlockTextures, String) {
-    let faces = client::textures::read_block_faces(&opts.mods_dir.join("blocks"));
+    let faces = client::textures::read_mod_faces(&opts.mods);
     let mut notes = Vec::new();
     // Resource packs in the player's order.
     let mut packs: Vec<(String, client::packs::PackFiles)> = Vec::new();

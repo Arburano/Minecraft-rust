@@ -4,8 +4,7 @@
 
 use std::process::ExitCode;
 
-use world::registry::blocks_from_dir;
-use world::{BlockStateId, ColumnPos, RegistryBuilder, WorldBounds};
+use world::{BlockStateId, ColumnPos, WorldBounds};
 use worldgen::{GenContext, Pipeline, WorldgenConfig};
 
 fn color(name: &str) -> [u8; 3] {
@@ -30,16 +29,16 @@ fn main() -> ExitCode {
     };
     let seed: u64 = args.next().and_then(|s| s.parse().ok()).unwrap_or(7);
     let r: i32 = args.next().and_then(|s| s.parse().ok()).unwrap_or(16);
-    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../mods/core/data");
-    let mut b = RegistryBuilder::new();
-    let Ok(blocks) = blocks_from_dir(&dir.join("blocks")) else {
+    let Ok(mods) = world::modset::source_build(world::modset::DEFAULT_BUILD) else {
         return ExitCode::FAILURE;
     };
-    b.add_mod("core", blocks);
+    let Ok(b) = mods.registry_builder() else {
+        return ExitCode::FAILURE;
+    };
     let Ok(reg) = b.build() else {
         return ExitCode::FAILURE;
     };
-    let Ok(src) = std::fs::read_to_string(dir.join("worldgen/overworld.toml")) else {
+    let Ok(src) = mods.read("worldgen/overworld.toml") else {
         return ExitCode::FAILURE;
     };
     let Ok(cfg) = WorldgenConfig::from_toml(&src, &reg) else {

@@ -19,35 +19,29 @@ use server::partition::RegionId;
 use server::storage::Storage;
 use sim::physics::PhysicsConfig;
 use tokio::sync::mpsc::{UnboundedReceiver, unbounded_channel};
-use world::registry::blocks_from_dir;
 use world::storage::WorldStore;
-use world::{ColumnPos, RegistryBuilder, WorldBounds};
+use world::{ColumnPos, WorldBounds};
 use worldgen::{GenContext, WorldgenConfig};
 
-fn data() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../mods/core/data")
+fn data() -> world::ModSet {
+    world::modset::source_build(world::modset::DEFAULT_BUILD).expect("build")
 }
 
 fn world(tag: &str, view: i32, sim: i32, region_threads: usize) -> (World, PathBuf) {
     let dir = std::env::temp_dir().join(format!("server-regions-{tag}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).expect("dir");
-    let mut b = RegistryBuilder::new();
-    b.add_mod(
-        "core",
-        blocks_from_dir(&data().join("blocks")).expect("blocks"),
-    );
+    let mods = data();
+    let b = mods.registry_builder().expect("blocks");
     let registry = Arc::new(b.build().expect("registry"));
-    let gen_src = std::fs::read_to_string(data().join("worldgen/overworld.toml")).expect("gen");
+    let gen_src = mods.read("worldgen/overworld.toml").expect("gen");
     let ctx = Arc::new(GenContext::new(
         7,
         WorldgenConfig::from_toml(&gen_src, &registry).expect("gen"),
         WorldBounds::default(),
     ));
-    let physics = PhysicsConfig::from_toml(
-        &std::fs::read_to_string(data().join("player/physics.toml")).expect("physics"),
-    )
-    .expect("physics");
+    let physics = PhysicsConfig::from_toml(&mods.read("player/physics.toml").expect("physics"))
+        .expect("physics");
     let store = WorldStore::open(&dir, &registry, WorldBounds::default()).expect("store");
     let storage = Storage::start(store, Arc::clone(&registry)).expect("storage");
     let w = World::new(

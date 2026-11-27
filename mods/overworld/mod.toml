@@ -1,0 +1,18 @@
+# The overworld dimension (ADR-0017). Owns only what is specific to this world:
+# its generation (data/worldgen/overworld.toml) and, later, its biomes, weather
+# and structures. Shared blocks come from `core`.
+[mod]
+id = "overworld"
+version = "0.1.0"
+api = "^0.1"
+side = "both"
+authors = ["project team"]
+description = "The overworld dimension: terrain, caves, biomes, ores, trees"
+
+[dependencies]
+core = "^0.1"
+
+[permissions]
+
+[budget]
+tick_ms = 0.5

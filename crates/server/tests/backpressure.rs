@@ -5,7 +5,7 @@
 //!   at the edge of the loaded terrain; none is ever inside an unloaded
 //!   column or below the world, and the tick stays bounded.
 //! - 10,000 entities in one region: only the per-region limit
-//!   (`mods/core/data/entities/limits.toml`) is simulated, the rest stay
+//!   (`mods/core/data/entities/limits.toml`, merged over the build) is simulated, the rest stay
 //!   stored, none is lost.
 
 use std::path::PathBuf;
@@ -19,35 +19,29 @@ use server::metrics::Percentiles;
 use server::storage::Storage;
 use sim::physics::PhysicsConfig;
 use tokio::sync::mpsc::unbounded_channel;
-use world::registry::blocks_from_dir;
+use world::WorldBounds;
 use world::storage::WorldStore;
-use world::{RegistryBuilder, WorldBounds};
 use worldgen::{GenContext, WorldgenConfig};
 
-fn data() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../mods/core/data")
+fn data() -> world::ModSet {
+    world::modset::source_build(world::modset::DEFAULT_BUILD).expect("build")
 }
 
 fn world(tag: &str, view: i32, sim: i32, region_threads: usize) -> (World, PathBuf) {
     let dir = std::env::temp_dir().join(format!("server-regions-{tag}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).expect("dir");
-    let mut b = RegistryBuilder::new();
-    b.add_mod(
-        "core",
-        blocks_from_dir(&data().join("blocks")).expect("blocks"),
-    );
+    let mods = data();
+    let b = mods.registry_builder().expect("blocks");
     let registry = Arc::new(b.build().expect("registry"));
-    let gen_src = std::fs::read_to_string(data().join("worldgen/overworld.toml")).expect("gen");
+    let gen_src = mods.read("worldgen/overworld.toml").expect("gen");
     let ctx = Arc::new(GenContext::new(
         7,
         WorldgenConfig::from_toml(&gen_src, &registry).expect("gen"),
         WorldBounds::default(),
     ));
-    let physics = PhysicsConfig::from_toml(
-        &std::fs::read_to_string(data().join("player/physics.toml")).expect("physics"),
-    )
-    .expect("physics");
+    let physics = PhysicsConfig::from_toml(&mods.read("player/physics.toml").expect("physics"))
+        .expect("physics");
     let store = WorldStore::open(&dir, &registry, WorldBounds::default()).expect("store");
     let storage = Storage::start(store, Arc::clone(&registry)).expect("storage");
     let w = World::new(
@@ -60,7 +54,7 @@ fn world(tag: &str, view: i32, sim: i32, region_threads: usize) -> (World, PathB
             sim_distance: sim,
             threads: 2,
             region_threads,
-            entity_limits: server::entities::EntityLimits::load(&data()).expect("limits"),
+            entity_limits: server::entities::EntityLimits::from_mods(&data()).expect("limits"),
         },
         storage,
     )
@@ -156,7 +150,7 @@ fn ten_thousand_entities_keep_to_the_region_limit() {
     w.insert_player_for_test("watcher", DVec3::new(8.5, 120.0, 8.5), tx);
     let ids = w.spawn_walkers(DVec3::new(8.5, 0.0, 8.5), 10_000, 30.0);
     let (_tx, inbox) = crossbeam_channel::unbounded();
-    let limit = server::entities::EntityLimits::load(&data())
+    let limit = server::entities::EntityLimits::from_mods(&data())
         .expect("limits")
         .of(server::entities::WALKER_NAME);
     let mut times = Vec::new();

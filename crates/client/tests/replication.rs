@@ -15,11 +15,9 @@ use glam::DVec3;
 use protocol::{Angle16, Buttons, InputDatagram, Intent};
 use server::{Server, ServerConfig};
 use sim::physics::PlayerInput;
-use world::RegistryBuilder;
-use world::registry::blocks_from_dir;
 
-fn data() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../mods/core/data")
+fn data() -> world::ModSet {
+    world::modset::source_build(world::modset::DEFAULT_BUILD).expect("build")
 }
 
 fn start(tag: &str, view: i32) -> (Server, PathBuf) {
@@ -235,11 +233,8 @@ fn two_players_see_each_other() {
 fn traffic_with_twenty_moving_players_nearby() {
     let (server, dir) = start("traffic", 6);
     let addr = server.local_addr();
-    let mut b = RegistryBuilder::new();
-    b.add_mod(
-        "core",
-        blocks_from_dir(&data().join("blocks")).expect("blocks"),
-    );
+    let mods = data();
+    let b = mods.registry_builder().expect("blocks");
     let registry = Arc::new(b.build().expect("registry"));
     let bots: Vec<Remote> = (0..20)
         .map(|i| Remote::connect(addr, &format!("bot_{i:02}"), Arc::clone(&registry)).expect("bot"))

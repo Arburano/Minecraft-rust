@@ -1,6 +1,6 @@
 # Architecture overview
 
-The engine is a "voxel OS": the core (world, rendering, networking, scheduling, mod host) knows nothing about specific blocks or mobs. All gameplay is the `core` mod on the public API. Client and server share one codebase; single-player runs an embedded server in the same process.
+The engine is a "voxel OS": the core (world, rendering, networking, scheduling, mod host) knows nothing about specific blocks or mobs. All gameplay is mods on the public API: the base game is split into modules (`core`, `movement`, one per world, `mobs`, …) and a build lists the modules a game runs with (ADR-0017, `modding/builds.md`). Client and server share one codebase; single-player runs an embedded server in the same process.
 
 ## Crates
 
@@ -82,7 +82,8 @@ Server: network (several threads), chunk IO, generation, region tick pool (≈ 8
 ```text
 crates/      engine code (workspace)
 wit/         mod contract (WIT)
-mods/core/   base gameplay as a mod
+mods/        base gameplay as modules (core, movement, overworld, …)
+builds/      builds: lists of mods (ADR-0017)
 docs/        PRD, specifications, ADRs, process, research
 tasks/       task backlog by stage
 research/    benchmarks that justified decisions (separate workspace)

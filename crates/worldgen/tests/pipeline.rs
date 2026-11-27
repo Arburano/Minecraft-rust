@@ -1,30 +1,26 @@
 //! T1-03: the overworld pipeline is deterministic, consistent across column
 //! borders and configured only by mod data.
 
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use engine_core::jobs::JobPool;
-use world::registry::blocks_from_dir;
-use world::{BlockStateId, ColumnPos, Registry, RegistryBuilder, WorldBounds};
+use world::{BlockStateId, ColumnPos, Registry, WorldBounds};
 use worldgen::{ConfigError, GenContext, Pipeline, ProtoColumn, Stage, WorldgenConfig};
 
-fn core_dir() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../mods/core/data")
+fn build() -> world::ModSet {
+    world::modset::source_build(world::modset::DEFAULT_BUILD).expect("build")
 }
 
 fn registry() -> Registry {
-    let mut b = RegistryBuilder::new();
-    b.add_mod(
-        "core",
-        blocks_from_dir(&core_dir().join("blocks")).expect("core blocks"),
-    );
+    let mods = build();
+    let b = mods.registry_builder().expect("blocks");
     b.build().expect("registry")
 }
 
 fn context(reg: &Registry, seed: u64) -> GenContext {
-    let src =
-        std::fs::read_to_string(core_dir().join("worldgen/overworld.toml")).expect("config file");
+    let src = build()
+        .read("worldgen/overworld.toml")
+        .expect("config file");
     let config = WorldgenConfig::from_toml(&src, reg).expect("valid config");
     GenContext::new(seed, config, WorldBounds::default())
 }
@@ -193,7 +189,7 @@ fn stages_can_be_replaced_and_inserted() {
 #[test]
 fn config_names_blocks_through_the_registry() {
     let reg = registry();
-    let src = std::fs::read_to_string(core_dir().join("worldgen/overworld.toml")).expect("config");
+    let src = build().read("worldgen/overworld.toml").expect("config");
     let broken = src.replace("core:coal_ore", "core:unobtainium");
     assert_eq!(
         WorldgenConfig::from_toml(&broken, &reg).err(),

@@ -30,8 +30,7 @@ use render::terrain::profiles::QualityProfile;
 use render::terrain::renderer::{
     CameraParams, DEPTH_FORMAT, TerrainPath, TerrainRenderer, TerrainTextures,
 };
-use world::registry::blocks_from_dir;
-use world::{BlockStateId, ColumnPos, RegistryBuilder, WorldBounds, WorldMap};
+use world::{BlockStateId, ColumnPos, WorldBounds, WorldMap};
 use worldgen::{GenContext, Pipeline, WorldgenConfig};
 
 const WIDTH: u32 = 1280;
@@ -44,14 +43,10 @@ fn main() {
     let forced_path = args.next();
 
     // World.
-    let data = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../mods/core/data");
-    let mut b = RegistryBuilder::new();
-    b.add_mod(
-        "core",
-        blocks_from_dir(&data.join("blocks")).expect("blocks"),
-    );
+    let mods = world::modset::source_build(world::modset::DEFAULT_BUILD).expect("build");
+    let b = mods.registry_builder().expect("blocks");
     let reg = Arc::new(b.build().expect("registry"));
-    let src = std::fs::read_to_string(data.join("worldgen/overworld.toml")).expect("config");
+    let src = mods.read("worldgen/overworld.toml").expect("config");
     let bounds = WorldBounds::default();
     let ctx = Arc::new(GenContext::new(
         7,

@@ -11,7 +11,6 @@
 //! Prints tick time percentiles (whole tick and the slowest region) after a
 //! warm-up in which the columns around everybody are generated.
 
-use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -21,9 +20,8 @@ use server::game::{TICK_RATE, ToConn, ToWorld, World, WorldSetup};
 use server::storage::Storage;
 use sim::physics::PhysicsConfig;
 use tokio::sync::mpsc::{UnboundedReceiver, unbounded_channel};
-use world::registry::blocks_from_dir;
+use world::WorldBounds;
 use world::storage::WorldStore;
-use world::{RegistryBuilder, WorldBounds};
 use worldgen::{GenContext, WorldgenConfig};
 
 fn percentile(v: &mut [Duration], p: f64) -> Duration {
@@ -40,27 +38,20 @@ fn main() {
     let cores = std::thread::available_parallelism().map_or(2, |n| n.get());
     let region_threads = arg(4, (cores * 4 / 5).max(1));
     let (view, sim) = (10, 6);
-
-    let data = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../mods/core/data");
     let dir = std::env::temp_dir().join(format!("region-load-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).expect("dir");
-    let mut b = RegistryBuilder::new();
-    b.add_mod(
-        "core",
-        blocks_from_dir(&data.join("blocks")).expect("blocks"),
-    );
+    let mods = world::modset::source_build(world::modset::DEFAULT_BUILD).expect("build");
+    let b = mods.registry_builder().expect("blocks");
     let registry = Arc::new(b.build().expect("registry"));
-    let gen_src = std::fs::read_to_string(data.join("worldgen/overworld.toml")).expect("gen");
+    let gen_src = mods.read("worldgen/overworld.toml").expect("gen");
     let ctx = Arc::new(GenContext::new(
         7,
         WorldgenConfig::from_toml(&gen_src, &registry).expect("gen"),
         WorldBounds::default(),
     ));
-    let physics = PhysicsConfig::from_toml(
-        &std::fs::read_to_string(data.join("player/physics.toml")).expect("physics"),
-    )
-    .expect("physics");
+    let physics = PhysicsConfig::from_toml(&mods.read("player/physics.toml").expect("physics"))
+        .expect("physics");
     let store = WorldStore::open(&dir, &registry, WorldBounds::default()).expect("store");
     let storage = Storage::start(store, Arc::clone(&registry)).expect("storage");
     let mut w = World::new(

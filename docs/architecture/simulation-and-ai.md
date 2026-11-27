@@ -10,7 +10,7 @@ Crate: `sim`. Experience priorities — PRD §14: smoothness, Minecraft feel, sm
 
 Implementation (T1-12, `sim::physics`, `sim::raycast`):
 
-- `PhysicsConfig` is read from `mods/core/data/player/physics.toml` (unknown keys are rejected): box 0.6 × 1.8, eye 1.62, step 0.6, gravity 0.08 and vertical drag 0.98 per tick, jump 0.42, ground/air friction 0.546/0.91, walk/air acceleration 0.1/0.02, sprint ×1.3, fluid drag/acceleration/gravity/swim-up, reach 4.5, and the swim blocks (`core:water`). This gives walk ≈ 4.3 blocks/s and a jump of ≈ 1.25 blocks.
+- `PhysicsConfig` is read from `player/physics.toml` of the build (the `movement` module, `mods/movement/data/player/physics.toml`, ADR-0017) (unknown keys are rejected): box 0.6 × 1.8, eye 1.62, step 0.6, gravity 0.08 and vertical drag 0.98 per tick, jump 0.42, ground/air friction 0.546/0.91, walk/air acceleration 0.1/0.02, sprint ×1.3, fluid drag/acceleration/gravity/swim-up, reach 4.5, and the swim blocks (`core:water`). This gives walk ≈ 4.3 blocks/s and a jump of ≈ 1.25 blocks.
 - `step(body, input, cfg, world)` per 20 TPS tick: acceleration along the view yaw, jump or swim-up, then the move with collisions, then gravity and friction. Collisions sweep the box axis by axis (Y, X, Z) against full cells; step-up tries "up by the step height, across, down" when the horizontal move is blocked on the ground and keeps it if it goes farther. Unloaded cells collide (no falling into unloaded columns). `Collision::Model` counts as a full cube until model shapes exist. `interpolate` gives the render position between two ticks.
 - Plain `f64` with a fixed evaluation order: the same inputs from the same state give bit-identical positions (tested over 600 scripted ticks).
 - **Flight** (owner request 2026-11-22, the creative-mode feel):
@@ -54,7 +54,7 @@ Implementation (T2-03, `client::session`, `server::game`, `server::input`):
 
 ### Engine side, implemented (T2-07, `server::entities`)
 
-Mobs and their behaviors are gameplay (`mods/core`, stage 4). The engine part is implemented and tested with test entities (`Walker`: a player-sized body using the player physics, wandering to random goals within 10 blocks):
+Mobs and their behaviors are gameplay (the `mobs` module, `mods/mobs`, stage 4). The engine part is implemented and tested with test entities (`Walker`: a player-sized body using the player physics, wandering to random goals within 10 blocks):
 
 - **Entities live in regions:** a `Walker` is an ECS entity of the region whose territory covers its column; it moves with the territories (between ticks) and is **stored, not ticked** ("dormant") outside every territory, i.e. beyond the simulation distance.
 - **Simulation LOD:** physics and path following run every tick for every live entity; **decisions** (goal, path request, giving up after 40 ticks without progress) run every 1st / 2nd / 4th / 8th tick at ≤ 48 / 96 / 144 / farther blocks from the nearest player (`decision_interval`). Following a path between decisions is what keeps far entities moving smoothly.

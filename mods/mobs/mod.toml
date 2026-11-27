@@ -1,0 +1,21 @@
+# Creatures (ADR-0017). Planned module, no content yet: mobs arrive with stage 4
+# (docs/architecture/simulation-and-ai.md). Will own: entity kinds, their AI
+# goals, spawning rules, per-kind limits (data/entities/limits.toml adds kinds
+# to the core defaults) and drops. Dimension-specific creatures may later be
+# split into `mobs_nether` / `mobs_end` so a build without those worlds does not
+# carry them.
+[mod]
+id = "mobs"
+version = "0.1.0"
+api = "^0.1"
+side = "both"
+authors = ["project team"]
+description = "Creatures: animals, monsters, their AI and drops (planned: stage 4; no content yet)"
+
+[dependencies]
+core = "^0.1"
+
+[permissions]
+
+[budget]
+tick_ms = 1.5

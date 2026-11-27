@@ -51,6 +51,16 @@ const FACE_NAMES: [[&str; 2]; 6] = [
     ["north", "side"],
 ];
 
+/// [`read_block_faces`] of every mod of a build (ADR-0017).
+#[must_use]
+pub fn read_mod_faces(mods: &world::ModSet) -> HashMap<String, BlockFaces> {
+    let mut out = HashMap::new();
+    for (_, dir) in mods.block_dirs() {
+        out.extend(read_block_faces(&dir));
+    }
+    out
+}
+
 /// Reads the `textures` and `tint` tables of every block file in `blocks_dir`.
 #[must_use]
 pub fn read_block_faces(blocks_dir: &Path) -> HashMap<String, BlockFaces> {
@@ -218,8 +228,6 @@ pub fn build(
 mod tests {
     use super::*;
     use std::path::PathBuf;
-    use world::RegistryBuilder;
-    use world::registry::blocks_from_dir;
 
     fn data() -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../mods/core/data/blocks")
@@ -248,10 +256,10 @@ mod tests {
 
     #[test]
     fn without_an_installation_everything_falls_back() {
-        let mut b = RegistryBuilder::new();
-        b.add_mod("core", blocks_from_dir(&data()).expect("blocks"));
+        let mods = world::modset::source_build(world::modset::DEFAULT_BUILD).expect("build");
+        let b = mods.registry_builder().expect("blocks");
         let reg = b.build().expect("registry");
-        let t = build(&reg, &read_block_faces(&data()), &mut []);
+        let t = build(&reg, &read_mod_faces(&mods), &mut []);
         assert_eq!(t.per_source.len(), 0);
         assert_eq!(t.size, 16);
         assert_eq!(t.layer_table.len(), reg.len() * 6);

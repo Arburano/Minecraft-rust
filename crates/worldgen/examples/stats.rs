@@ -1,21 +1,13 @@
 //! Prints biome shares, sea share and tree count for an area (diagnostics).
-use world::registry::blocks_from_dir;
-use world::{ColumnPos, RegistryBuilder, WorldBounds};
+use world::{ColumnPos, WorldBounds};
 use worldgen::{GenContext, Pipeline, WorldgenConfig};
 
 fn main() {
-    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../mods/core/data");
-    let mut b = RegistryBuilder::new();
-    b.add_mod(
-        "core",
-        blocks_from_dir(&dir.join("blocks")).expect("blocks"),
-    );
+    let mods = world::modset::source_build(world::modset::DEFAULT_BUILD).expect("build");
+    let b = mods.registry_builder().expect("blocks");
     let reg = b.build().expect("registry");
-    let cfg = WorldgenConfig::from_toml(
-        &std::fs::read_to_string(dir.join("worldgen/overworld.toml")).expect("cfg"),
-        &reg,
-    )
-    .expect("cfg");
+    let cfg = WorldgenConfig::from_toml(&mods.read("worldgen/overworld.toml").expect("cfg"), &reg)
+        .expect("cfg");
     let seed: u64 = std::env::args()
         .nth(1)
         .and_then(|s| s.parse().ok())

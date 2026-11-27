@@ -4,7 +4,7 @@ Instructions for AI agents (Claude Code, Codex, Cursor, etc.) and humans working
 
 ## What this project is
 
-A custom voxel engine in Rust in the style of Minecraft: ECS, multithreading by default, native mods on WebAssembly, a server with regions and shards. It is **not** a port of Minecraft and **not** a client for vanilla servers (ADR-0001). All gameplay is the `mods/core` mod on the public API.
+A custom voxel engine in Rust in the style of Minecraft: ECS, multithreading by default, native mods on WebAssembly, a server with regions and shards. It is **not** a port of Minecraft and **not** a client for vanilla servers (ADR-0001). All gameplay is mods on the public API: the base game is split into modules (`mods/core`, `mods/movement`, `mods/overworld`, …) combined into builds (`builds/`, ADR-0017).
 
 Decision priority (PRD §14): when an optimization conflicts with game feel, feel wins. Smoothness without stutters, the Minecraft feel, smart mobs, full render distance of no less than 8 chunks.
 
@@ -35,7 +35,8 @@ Benchmarks from the pre-code stage live in a separate workspace `research/bench`
 ```text
 crates/        engine crates (see the table in docs/architecture/overview.md)
 wit/           engine:api mod contract (WIT)
-mods/core/     base gameplay as a mod
+mods/          base gameplay as modules: core, movement, overworld, … (ADR-0017)
+builds/        builds: which mods a game runs with
 docs/          PRD, specifications, ADRs, process, research
 tasks/         task backlog by stage
 task-reports/  report after each completed task (what was done, what went wrong, issues)
@@ -45,7 +46,7 @@ research/      benchmarks that justified decisions
 ## Rules that must not be broken
 
 1. **Legal** ([`docs/legal.md`](docs/legal.md)): no code decompiled from Minecraft; no Mojang assets in the repository, tests, CI or builds. The game and all CI tests run on fallback assets; opt-in local tests may read the developer's own licensed installation. Offline mode (no Microsoft login) is for development and private tests only; nothing is launched publicly before the lawyer's answer (T0-10). Do not write "Minecraft" in crate names, types and UI.
-2. **Architectural boundaries**: the direction of dependencies between crates is as in overview.md. The engine does not know specific blocks and mobs — they are in `mods/core`. Region code does not read another region (ADR-0008). Mods only through the WIT contract (ADR-0006).
+2. **Architectural boundaries**: the direction of dependencies between crates is as in overview.md. The engine does not know specific blocks and mobs — they are in the base-game mods (`mods/`); each module keeps one responsibility (`docs/modding/builds.md`). Region code does not read another region (ADR-0008). Mods only through the WIT contract (ADR-0006).
 3. **Performance**: no allocations in the hot loop; no `Mutex`/`RwLock` around the world; optimizations come with a before/after benchmark; numbers live in [`docs/process/performance-budgets.md`](docs/process/performance-budgets.md).
 4. **Quality**: `unsafe` is forbidden (exception — a module with `// SAFETY:` and an ADR); no `unwrap()` in libraries; public API is documented; new logic comes with tests, an optimized implementation comes with a reference one for comparison.
 5. **Dependencies**: versions only in `[workspace.dependencies]`; a new heavy dependency comes with a justification in the PR.

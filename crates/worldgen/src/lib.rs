@@ -5,7 +5,7 @@
 //!
 //! Status: the deterministic test corpus (task T0-12, [`test_corpus`]) and the
 //! overworld pipeline (task T1-03, [`Pipeline`]) configured by mod data
-//! (`mods/core/data/worldgen/overworld.toml`). Mod-registered stages through the
+//! (`mods/overworld/data/worldgen/overworld.toml`). Mod-registered stages through the
 //! WIT API come in stage 3.
 
 pub mod config;

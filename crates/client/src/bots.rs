@@ -9,7 +9,6 @@
 
 use std::fmt::Write as _;
 use std::net::SocketAddr;
-use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use glam::DVec3;
@@ -58,8 +57,8 @@ pub struct BotConfig {
     /// Bots turn back towards their start beyond this distance (blocks),
     /// so they stay near each other.
     pub roam: f64,
-    /// The `core` mod's data folder.
-    pub data: PathBuf,
+    /// The build's mods (the same as the server's).
+    pub mods: world::ModSet,
     /// Name prefix (names are `<prefix><number>`).
     pub prefix: String,
     /// Groups of bots, each with its own home on a square grid around the
@@ -74,7 +73,7 @@ pub struct BotConfig {
 impl BotConfig {
     /// Defaults for `count` bots against `addr`.
     #[must_use]
-    pub fn new(addr: SocketAddr, count: usize, data: PathBuf) -> Self {
+    pub fn new(addr: SocketAddr, count: usize, mods: world::ModSet) -> Self {
         Self {
             addr,
             count,
@@ -83,7 +82,7 @@ impl BotConfig {
             warmup: Duration::from_secs(20),
             measure: Duration::from_secs(60),
             roam: 48.0,
-            data,
+            mods,
             prefix: "bot".into(),
             groups: 1,
             group_spacing: 400.0,
@@ -426,7 +425,7 @@ pub fn run(config: &BotConfig, mut progress: impl FnMut(usize, &str)) -> Report 
         if bots.len() + report.join_errors.len() < config.count && now >= next_join {
             let i = bots.len() + report.join_errors.len();
             let name = format!("{}{i:04}", config.prefix);
-            let mut sc = SessionConfig::new(config.data.clone());
+            let mut sc = SessionConfig::new(config.mods.clone());
             sc.headless = true;
             sc.runtime = Some(runtime.handle().clone());
             sc.threads = 1;

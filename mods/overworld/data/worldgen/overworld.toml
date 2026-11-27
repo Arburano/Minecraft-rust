@@ -1,5 +1,6 @@
 # Overworld generation parameters for the built-in pipeline stages
-# (docs/architecture/worldgen.md). Block names refer to mods/core/data/blocks.
+# (docs/architecture/worldgen.md). Block names refer to the core mod's blocks
+# (mods/core/data/blocks); this mod owns only the overworld's shape.
 sea_level = 62
 
 [terrain]

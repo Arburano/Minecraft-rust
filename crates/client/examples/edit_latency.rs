@@ -6,7 +6,6 @@
 //!
 //! `cargo run --release -p client --example edit_latency -- [edits per kind]`
 
-use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -15,8 +14,7 @@ use client::loading::{LoadConfig, Loader, Viewer};
 use engine_core::jobs::JobPool;
 use light::WorldLight;
 use world::coords::BlockPos;
-use world::registry::blocks_from_dir;
-use world::{BlockStateId, ColumnPos, RegistryBuilder, WorldBounds, WorldMap};
+use world::{BlockStateId, ColumnPos, WorldBounds, WorldMap};
 use worldgen::{GenContext, Pipeline, WorldgenConfig};
 
 fn main() {
@@ -24,14 +22,10 @@ fn main() {
         .nth(1)
         .and_then(|s| s.parse().ok())
         .unwrap_or(100);
-    let data = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../mods/core/data");
-    let mut b = RegistryBuilder::new();
-    b.add_mod(
-        "core",
-        blocks_from_dir(&data.join("blocks")).expect("blocks"),
-    );
+    let mods = world::modset::source_build(world::modset::DEFAULT_BUILD).expect("build");
+    let b = mods.registry_builder().expect("blocks");
     let reg = Arc::new(b.build().expect("registry"));
-    let src = std::fs::read_to_string(data.join("worldgen/overworld.toml")).expect("config");
+    let src = mods.read("worldgen/overworld.toml").expect("config");
     let bounds = WorldBounds::default();
     let ctx = Arc::new(GenContext::new(
         7,

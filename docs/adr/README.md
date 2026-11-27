@@ -29,3 +29,4 @@ Template — [0000-template.md](0000-template.md).
 | [0014](0014-resource-and-shader-packs.md) | Resource, texture and shader packs | Accepted (decision 2 superseded by 0015) |
 | [0015](0015-programmable-render-graph.md) | Programmable render graph for shader packs (hook version 2) | Accepted |
 | [0016](0016-geometry-agnostic-meshing.md) | Geometry-agnostic meshing and render buckets | Accepted |
+| [0017](0017-modular-base-game-and-builds.md) | Modular base game and builds | Accepted |

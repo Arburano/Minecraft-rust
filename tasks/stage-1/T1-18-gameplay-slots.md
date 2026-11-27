@@ -10,10 +10,7 @@ The data side of [ADR-0013](../../docs/adr/0013-replaceable-movement-and-worldge
 
 ## Deliverables
 
-- Split `mods/core` into:
-  - `core`: blocks and other shared content;
-  - `core-movement`: the movement profile;
-  - `core-worldgen`: the overworld generator config.
+- ~~Split `mods/core`~~ — done by T1-24 ([ADR-0017](../../docs/adr/0017-modular-base-game-and-builds.md)) under the names `core` (shared blocks), `movement` (the movement profile) and one mod per dimension (`overworld`: the overworld generator config). What remains here is `provides`, the slot checks and the profile format.
 - `mod.toml` gains `provides`. Loading checks that each slot (`movement`, `worldgen:<dimension>`) has exactly one provider, with clear errors.
 - Movement profile format `movement/profile.toml`: the base numbers (today's `player/physics.toml`) plus a list of abilities built from engine primitives. The first primitives are impulse, set velocity, hold against a surface, change box size and gravity scale; each ability has a trigger, conditions, a cooldown and an animation state name. `sim::physics` runs a profile. The default profile reproduces today's movement exactly: the T1-12 determinism and feel tests stay green.
 - At least one example ability in a test-only profile, for example a dash or a wall climb, with tests.
@@ -22,7 +19,7 @@ The data side of [ADR-0013](../../docs/adr/0013-replaceable-movement-and-worldge
 
 ## Acceptance criteria
 
-- [ ] A test pack without `core-movement` / `core-worldgen` loads only its own providers, and the loader reports a missing or duplicate provider clearly.
+- [ ] A test build without `movement` / `overworld` loads only its own providers, and the loader reports a missing or duplicate provider clearly.
 - [ ] The default profile gives bit-identical T1-12 physics traces.
 - [ ] Docs: `docs/modding/` (slots, profile format), `simulation-and-ai.md`, `worldgen.md`.
 

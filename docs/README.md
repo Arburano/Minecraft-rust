@@ -28,6 +28,7 @@ Reading order for a new developer or agent:
 | In-game launcher menu and updater | [architecture/client-menu-and-updater.md](architecture/client-menu-and-updater.md) | `client`, `updater` |
 | Login and assets | [architecture/auth-and-assets.md](architecture/auth-and-assets.md) | `auth`, `assets` |
 | Mods: overview | [modding/overview.md](modding/overview.md) | `modhost`, `mod-sdk` |
+| Builds and base-game modules | [modding/builds.md](modding/builds.md) | `world::modset`, `server`, `client` |
 | Mod manifest | [modding/mod-manifest.md](modding/mod-manifest.md) | `modhost` |
 | Datapacks | [modding/datapacks.md](modding/datapacks.md) | `modhost`, `world` |
 | WASM API | [modding/wasm-api.md](modding/wasm-api.md), [`../wit/engine-api.wit`](../wit/engine-api.wit) | `modhost`, `mod-sdk` |

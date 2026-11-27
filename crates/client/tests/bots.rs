@@ -2,7 +2,6 @@
 //! in-process server, play for a while and leave without errors; the
 //! harness produces its summary.
 
-use std::path::PathBuf;
 use std::time::Duration;
 
 use auth::AdmissionPolicy;
@@ -12,7 +11,7 @@ use server::{Server, ServerConfig};
 
 #[test]
 fn fifty_bots_play_without_errors() {
-    let data = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../mods/core/data");
+    let data = world::modset::source_build(world::modset::DEFAULT_BUILD).expect("build");
     let dir = std::env::temp_dir().join(format!("client-bots-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     let mut sc = ServerConfig::new(

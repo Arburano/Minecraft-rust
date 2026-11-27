@@ -1,6 +1,5 @@
 //! T1-13 acceptance: create → play → quit → load returns the same world.
 
-use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use client::session::{Session, SessionConfig};
@@ -10,7 +9,7 @@ use world::coords::BlockPos;
 use world::{BlockStateId, ColumnPos, WorldBounds};
 
 fn config() -> SessionConfig {
-    let data = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../mods/core/data");
+    let data = world::modset::source_build(world::modset::DEFAULT_BUILD).expect("build");
     SessionConfig {
         radius: 2,
         threads: 4,
@@ -218,8 +217,8 @@ fn unloaded_columns_are_reported_for_the_renderer() {
 /// file) opens through the embedded server where it was left.
 #[test]
 fn stage_1_saves_open_on_the_embedded_server() {
+    use world::Section;
     use world::storage::{ColumnRecord, WorldStore};
-    use world::{RegistryBuilder, Section, registry::blocks_from_dir};
 
     let root = std::env::temp_dir().join(format!("client-migrate-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&root);
@@ -227,12 +226,8 @@ fn stage_1_saves_open_on_the_embedded_server() {
     let bounds = config().bounds;
     // A column at (3, 3) that is solid glass up to y = 40: not what the
     // generator makes, so seeing it proves the save was read.
-    let data = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../mods/core/data");
-    let mut b = RegistryBuilder::new();
-    b.add_mod(
-        "core",
-        blocks_from_dir(&data.join("blocks")).expect("blocks"),
-    );
+    let mods = world::modset::source_build(world::modset::DEFAULT_BUILD).expect("build");
+    let b = mods.registry_builder().expect("blocks");
     let reg = b.build().expect("registry");
     let glass = reg.state_id("core:glass").expect("glass");
     {

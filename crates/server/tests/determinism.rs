@@ -8,14 +8,12 @@
 //! Run it in both: `cargo test -p server --test determinism` and
 //! `cargo test -p server --release --test determinism`.
 
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use protocol::Buttons;
 use server::input::{apply_fly_steps, intent, physics_input, state_hash};
 use sim::physics::{MapBlocks, PhysicsConfig, PlayerBody, PlayerInput, step};
-use world::registry::blocks_from_dir;
-use world::{ColumnPos, RegistryBuilder, WorldBounds, WorldMap};
+use world::{ColumnPos, WorldBounds, WorldMap};
 use worldgen::{GenContext, Pipeline, WorldgenConfig};
 
 /// FNV-1a of all 600 per-tick state hashes. Changing physics, the intent
@@ -56,23 +54,17 @@ fn route(t: u32) -> (PlayerInput, f64, i32) {
 
 #[test]
 fn scripted_route_matches_the_golden_hash() {
-    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../mods/core/data");
-    let mut b = RegistryBuilder::new();
-    b.add_mod(
-        "core",
-        blocks_from_dir(&dir.join("blocks")).expect("blocks"),
-    );
+    let mods = world::modset::source_build(world::modset::DEFAULT_BUILD).expect("build");
+    let b = mods.registry_builder().expect("blocks");
     let registry = Arc::new(b.build().expect("registry"));
-    let gen_src = std::fs::read_to_string(dir.join("worldgen/overworld.toml")).expect("gen");
+    let gen_src = mods.read("worldgen/overworld.toml").expect("gen");
     let ctx = GenContext::new(
         7,
         WorldgenConfig::from_toml(&gen_src, &registry).expect("gen"),
         WorldBounds::default(),
     );
-    let physics = PhysicsConfig::from_toml(
-        &std::fs::read_to_string(dir.join("player/physics.toml")).expect("physics"),
-    )
-    .expect("physics");
+    let physics = PhysicsConfig::from_toml(&mods.read("player/physics.toml").expect("physics"))
+        .expect("physics");
     let swim = physics.swim_ids(&registry).expect("swim");
     let mut map = WorldMap::new(Arc::clone(&registry), WorldBounds::default());
     let pipeline = Pipeline::overworld();
