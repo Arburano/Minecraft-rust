@@ -1,6 +1,6 @@
 # T2-01. Protocol crate: messages, versioning, handshake
 
-- **Status:** todo
+- **Status:** in-progress
 - **Depends on:** T0-11 (QUIC spike), T1-08 (offline identity)
 - **Owner:** agent (cloud)
 

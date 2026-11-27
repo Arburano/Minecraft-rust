@@ -101,7 +101,7 @@ The owner decided on 2026-11-23 to start stage 2 while the T1-15 laptop runs are
 
 | Task | Name | Depends on | Owner | Status |
 | --- | --- | --- | --- | --- |
-| [T2-01](stage-2/T2-01-protocol-messages.md) | Protocol crate: messages, versioning, handshake | T0-11, T1-08 | agent (cloud) | todo |
+| [T2-01](stage-2/T2-01-protocol-messages.md) | Protocol crate: messages, versioning, handshake | T0-11, T1-08 | agent (cloud) | in-progress |
 | [T2-02](stage-2/T2-02-dedicated-server-world.md) | Dedicated server: world, join, chunk streaming | T2-01, T1-02, T1-03 | agent (cloud) | todo |
 | [T2-03](stage-2/T2-03-movement-prediction-replication.md) | Player movement: prediction, reconciliation, entity replication | T2-02, T1-12 | agent + owner's feel review | todo |
 | [T2-04](stage-2/T2-04-network-block-edits.md) | Block edits over the network | T2-02, T2-03 | agent (cloud) | todo |
