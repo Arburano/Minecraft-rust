@@ -19,7 +19,7 @@ use light::{SectionLight, WorldLight};
 use mesh::PackedBatch;
 use sim::physics::{MapBlocks, PhysicsConfig, PlayerBody, PlayerInput, interpolate, step};
 use sim::raycast::RayHit;
-use world::coords::SectionPos;
+use world::coords::{BlockPos, SectionPos};
 use world::map::DirtyKind;
 use world::registry::blocks_from_dir;
 use world::storage::{ColumnRecord, StorageError, WorldStore};
@@ -96,6 +96,8 @@ const PREDICTION_HISTORY: usize = 128;
 const SNAP_DISTANCE: f64 = 2.0;
 /// Time constant of the correction smoothing.
 const SMOOTHING: Duration = Duration::from_millis(100);
+/// Block changes buffered for a column that has not arrived yet.
+const LATE_CHANGES_PER_COLUMN: usize = 4096;
 
 /// One predicted tick: the intent sent and the state after it.
 struct Predicted {
@@ -117,6 +119,10 @@ pub struct NetStats {
     pub others: usize,
     /// UDP payload bytes received and sent so far.
     pub bytes: (u64, u64),
+    /// Own edits the server refused (rolled back).
+    pub rejected_edits: u64,
+    /// Own edits still waiting for the server's answer.
+    pub pending_edits: usize,
 }
 
 /// A server session's state.
@@ -139,6 +145,14 @@ struct Link {
     last_frame: Instant,
     others: Others,
     stats: NetStats,
+    next_seq: u32,
+    /// Our edits waiting for the server's answer.
+    pending: HashMap<u32, BlockPos>,
+    /// For cells with pending edits: the server's state and how many of our
+    /// edits there are unanswered.
+    shadow: HashMap<BlockPos, (BlockStateId, u32)>,
+    /// Changes for columns that have not arrived yet.
+    late: HashMap<ColumnPos, Vec<(BlockPos, BlockStateId)>>,
 }
 
 /// Where the world comes from.
@@ -241,6 +255,10 @@ impl Session {
             last_frame: Instant::now(),
             others: Others::default(),
             stats: NetStats::default(),
+            next_seq: 1,
+            pending: HashMap::new(),
+            shadow: HashMap::new(),
+            late: HashMap::new(),
         };
         Self::build(
             data,
@@ -444,11 +462,84 @@ impl Session {
                                 corrections.push(c);
                             }
                         }
-                        RemoteEvent::Column(c) => {
+                        RemoteEvent::Column(mut c) => {
+                            // Changes that arrived before their column.
+                            for (pos, id) in link.late.remove(&c.pos()).unwrap_or_default() {
+                                c.set(
+                                    pos.x.rem_euclid(16) as usize,
+                                    pos.y,
+                                    pos.z.rem_euclid(16) as usize,
+                                    id,
+                                    &self.registry,
+                                );
+                            }
                             link.forgotten.remove(&c.pos());
                             link.incoming.insert(c.pos(), c);
                         }
+                        RemoteEvent::Blocks(changes) => {
+                            for (pos, id) in changes {
+                                if let Some(truth) = link.shadow.get_mut(&pos) {
+                                    // Our own edit is pending here: remember the
+                                    // server's state for when it resolves.
+                                    truth.0 = id;
+                                    continue;
+                                }
+                                let c = ColumnPos::of_block(pos);
+                                if self.map.column(c).is_some() {
+                                    if self.map.get_block(pos) != Some(id) {
+                                        let _ = self.editor.set_block(
+                                            &mut self.map,
+                                            &mut self.loader,
+                                            pos,
+                                            id,
+                                        );
+                                    }
+                                } else if let Some(col) = link.incoming.get_mut(&c) {
+                                    col.set(
+                                        pos.x.rem_euclid(16) as usize,
+                                        pos.y,
+                                        pos.z.rem_euclid(16) as usize,
+                                        id,
+                                        &self.registry,
+                                    );
+                                } else {
+                                    let list = link.late.entry(c).or_default();
+                                    if list.len() < LATE_CHANGES_PER_COLUMN {
+                                        list.push((pos, id));
+                                    }
+                                }
+                            }
+                        }
+                        RemoteEvent::EditAck { seq, accepted } => {
+                            let Some(pos) = link.pending.remove(&seq) else {
+                                continue;
+                            };
+                            if !accepted {
+                                link.stats.rejected_edits += 1;
+                            }
+                            let resolved = match link.shadow.get_mut(&pos) {
+                                Some(t) => {
+                                    t.1 = t.1.saturating_sub(1);
+                                    (t.1 == 0).then_some(t.0)
+                                }
+                                None => None,
+                            };
+                            if let Some(truth) = resolved {
+                                link.shadow.remove(&pos);
+                                // The server's state wins: this keeps an accepted
+                                // edit and rolls back a refused one.
+                                if self.map.get_block(pos).is_some_and(|b| b != truth) {
+                                    let _ = self.editor.set_block(
+                                        &mut self.map,
+                                        &mut self.loader,
+                                        pos,
+                                        truth,
+                                    );
+                                }
+                            }
+                        }
                         RemoteEvent::Forget(c) => {
+                            link.late.remove(&c);
                             link.incoming.remove(&c);
                             if self.map.column(c).is_some() {
                                 link.forgotten.insert(c);
@@ -661,6 +752,7 @@ impl Session {
         match &self.backend {
             Backend::Remote(link) => Some(NetStats {
                 bytes: link.remote.bytes(),
+                pending_edits: link.pending.len(),
                 ..link.stats
             }),
             Backend::Local { .. } => None,
@@ -712,29 +804,95 @@ impl Session {
 
     /// Breaks the targeted block.
     pub fn dig(&mut self) -> bool {
-        if self.is_remote() {
-            return false; // edits over the network: T2-04
-        }
         let Some(hit) = self.target() else {
             return false;
         };
-        dig(&mut self.editor, &mut self.map, &mut self.loader, &hit).is_ok()
+        let old = self.map.get_block(hit.block);
+        let done = dig(&mut self.editor, &mut self.map, &mut self.loader, &hit).is_ok();
+        if done && let Some(old) = old {
+            self.predicted(hit.block, old, None);
+        }
+        done
+    }
+
+    /// Sends a predicted edit to the server (single-player: nothing to do).
+    /// `state` is `None` for digging.
+    fn predicted(&mut self, pos: BlockPos, old: BlockStateId, state: Option<BlockStateId>) {
+        let Backend::Remote(link) = &mut self.backend else {
+            return;
+        };
+        let event = match state {
+            None => Some(protocol::ClientEvent::Dig {
+                seq: link.next_seq,
+                pos: pos.into(),
+            }),
+            Some(id) => link
+                .remote
+                .server_state(id)
+                .map(|state| protocol::ClientEvent::Place {
+                    seq: link.next_seq,
+                    pos: pos.into(),
+                    state,
+                }),
+        };
+        let Some(event) = event else {
+            // The server does not know this block: undo at once.
+            let _ = self
+                .editor
+                .set_block(&mut self.map, &mut self.loader, pos, old);
+            return;
+        };
+        link.pending.insert(link.next_seq, pos);
+        link.shadow.entry(pos).or_insert((old, 0)).1 += 1;
+        link.next_seq = link.next_seq.wrapping_add(1).max(1);
+        link.remote.send_event(event);
+    }
+
+    /// Edits one cell as if the player had picked it (no reach or pick
+    /// check on this side: tests use it to make the server refuse an edit).
+    #[doc(hidden)]
+    pub fn edit_for_test(&mut self, pos: BlockPos, state: Option<BlockStateId>) -> bool {
+        let Some(old) = self.map.get_block(pos) else {
+            return false;
+        };
+        let id = state.unwrap_or(BlockStateId::AIR);
+        if self
+            .editor
+            .set_block(&mut self.map, &mut self.loader, pos, id)
+            .is_err()
+        {
+            return false;
+        }
+        self.predicted(pos, old, state);
+        true
+    }
+
+    /// Light of the world (tests compare it with a fresh lighting).
+    #[doc(hidden)]
+    #[must_use]
+    pub fn light_for_test(&self) -> &WorldLight {
+        &self.light
+    }
+
+    /// Edits whose relighting is still queued.
+    #[must_use]
+    pub fn pending_light(&self) -> usize {
+        self.editor.pending_light()
     }
 
     /// Places `id` against the targeted face.
     pub fn place(&mut self, id: BlockStateId) -> bool {
-        if self.is_remote() {
-            return false; // edits over the network: T2-04
-        }
         let Some(hit) = self.target() else {
             return false;
         };
+        let at = hit.place_pos();
+        let old = self.map.get_block(at);
         let placer = Placer {
             body: &self.body,
             cfg: &self.physics,
             swim: &self.swim,
         };
-        matches!(
+        let done = matches!(
             place(
                 &mut self.editor,
                 &mut self.map,
@@ -744,7 +902,11 @@ impl Session {
                 placer
             ),
             Ok(Some(_))
-        )
+        );
+        if done && let Some(old) = old {
+            self.predicted(at, old, Some(id));
+        }
+        done
     }
 
     /// Hands the renderer what changed since the last call, in this order:

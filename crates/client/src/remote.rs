@@ -13,11 +13,12 @@ use std::time::Duration;
 
 use net::messages::{StreamError, read_header, read_message, write_header, write_message};
 use protocol::{
-    ChunkStream, ClientControl, EntityDatagram, Hello, InputDatagram, Message, ServerControl,
-    ServerEvent, Spawn, Welcome,
+    ChunkStream, ClientControl, ClientEvent, EntityDatagram, Hello, InputDatagram, Message,
+    ServerControl, ServerEvent, Spawn, Welcome,
 };
 use quinn::Connection;
 use tokio::sync::mpsc::{UnboundedSender, unbounded_channel};
+use world::coords::BlockPos;
 use world::registry::IdTable;
 use world::{BlockStateId, Column, ColumnPos, Registry};
 
@@ -58,12 +59,22 @@ pub enum RemoteEvent {
     Forget(ColumnPos),
     /// This tick's server datagram (reconciliation and entity deltas).
     Datagram(EntityDatagram),
+    /// Authoritative block changes, already in this client's block IDs.
+    Blocks(Vec<(BlockPos, BlockStateId)>),
+    /// The server's answer to one of our edits.
+    EditAck {
+        /// Our sequence number.
+        seq: u32,
+        /// Whether it was applied.
+        accepted: bool,
+    },
     /// The session ended; the text is for the player.
     Ended(String),
 }
 
 enum Command {
     Input(InputDatagram),
+    Event(ClientEvent),
     Leave,
 }
 
@@ -73,6 +84,8 @@ pub struct Remote {
     events: Receiver<RemoteEvent>,
     commands: UnboundedSender<Command>,
     conn: Connection,
+    /// This client's state ID → the server's (`None`: the server lacks it).
+    to_server: Vec<Option<u16>>,
     /// The server's greeting.
     pub welcome: Welcome,
     /// Where the player starts.
@@ -107,6 +120,21 @@ impl Remote {
         } = login;
         let (events_tx, events) = channel();
         let (commands, commands_rx) = unbounded_channel();
+        let table: Vec<BlockStateId> = remap.clone().unwrap_or_else(|| {
+            (0..registry.len())
+                .map(|i| BlockStateId(i as u16))
+                .collect()
+        });
+        let mut to_server = vec![None; registry.len()];
+        for (server, client) in table.iter().enumerate() {
+            if let Some(slot) = to_server.get_mut(usize::from(client.0))
+                && slot.is_none()
+                && *client != registry.missing()
+            {
+                *slot = u16::try_from(server).ok();
+            }
+        }
+        let from_server = Arc::new(table);
         runtime.spawn(receive_columns(
             conn.clone(),
             events_tx.clone(),
@@ -114,7 +142,12 @@ impl Remote {
             Arc::new(remap),
             spawn.bounds(),
         ));
-        runtime.spawn(receive_events(conn.clone(), events_tx.clone()));
+        runtime.spawn(receive_events(
+            conn.clone(),
+            events_tx.clone(),
+            from_server,
+            registry.missing(),
+        ));
         runtime.spawn(receive_datagrams(conn.clone(), events_tx.clone()));
         runtime.spawn(receive_control(ctrl_recv, events_tx.clone()));
         runtime.spawn(send_commands(
@@ -128,6 +161,7 @@ impl Remote {
             events,
             commands,
             conn,
+            to_server,
             welcome,
             spawn,
         })
@@ -144,6 +178,17 @@ impl Remote {
     pub fn bytes(&self) -> (u64, u64) {
         let s = self.conn.stats();
         (s.udp_rx.bytes, s.udp_tx.bytes)
+    }
+
+    /// Sends a reliable event (an edit, chat).
+    pub fn send_event(&self, e: ClientEvent) {
+        let _ = self.commands.send(Command::Event(e));
+    }
+
+    /// The server's number of one of this client's block states.
+    #[must_use]
+    pub fn server_state(&self, id: BlockStateId) -> Option<u16> {
+        self.to_server.get(usize::from(id.0)).copied().flatten()
     }
 
     /// Sends an input datagram (dropped silently if the connection is gone:
@@ -275,13 +320,35 @@ async fn receive_columns(
     }
 }
 
-async fn receive_events(conn: Connection, events: Sender<RemoteEvent>) {
+async fn receive_events(
+    conn: Connection,
+    events: Sender<RemoteEvent>,
+    table: Arc<Vec<BlockStateId>>,
+    missing: BlockStateId,
+) {
     while let Ok((_, mut recv)) = conn.accept_bi().await {
-        let events = events.clone();
+        let (events, table) = (events.clone(), Arc::clone(&table));
         tokio::spawn(async move {
             while let Ok(Some(e)) = read_message::<ServerEvent>(&mut recv).await {
-                if let ServerEvent::ForgetColumn(c) = e {
-                    let _ = events.send(RemoteEvent::Forget(c.into()));
+                let out = match e {
+                    ServerEvent::ForgetColumn(c) => RemoteEvent::Forget(c.into()),
+                    ServerEvent::BlockChanges(changes) => RemoteEvent::Blocks(
+                        changes
+                            .iter()
+                            .map(|c| {
+                                let id =
+                                    table.get(usize::from(c.state)).copied().unwrap_or(missing);
+                                (c.pos.into(), id)
+                            })
+                            .collect(),
+                    ),
+                    ServerEvent::BlockAck { seq, accepted } => {
+                        RemoteEvent::EditAck { seq, accepted }
+                    }
+                    ServerEvent::Chat { .. } => continue,
+                };
+                if events.send(out).is_err() {
+                    return;
                 }
             }
         });
@@ -322,12 +389,26 @@ async fn send_commands(
     mut commands: tokio::sync::mpsc::UnboundedReceiver<Command>,
     events: Sender<RemoteEvent>,
 ) {
+    let mut stream: Option<quinn::SendStream> = None;
     loop {
         tokio::select! {
             c = commands.recv() => match c {
                 Some(Command::Input(d)) => {
                     if let Ok(bytes) = d.encode() {
                         let _ = conn.send_datagram(bytes.into());
+                    }
+                }
+                Some(Command::Event(e)) => {
+                    if stream.is_none() {
+                        stream = conn.open_bi().await.ok().map(|(s, _)| s);
+                    }
+                    let ok = match stream.as_mut() {
+                        Some(s) => write_message(s, &e).await.is_ok(),
+                        None => false,
+                    };
+                    if !ok {
+                        let _ = events.send(RemoteEvent::Ended("connection lost".into()));
+                        return;
                     }
                 }
                 Some(Command::Leave) | None => {

@@ -17,12 +17,14 @@ use crossbeam_channel::Receiver;
 use engine_core::jobs::{CancelToken, JobPool, Priority};
 use glam::DVec3;
 use protocol::{
-    Angle8, BlockXyz, ChunkStream, ColumnPayload, Correction, Intent, KickReason, Look, Message,
-    NetId, Spawn,
+    Angle8, BlockChange, BlockXyz, ChunkStream, ColumnPayload, Correction, Intent, KickReason,
+    Look, MAX_BLOCK_CHANGES, Message, NetId, ServerEvent, Spawn,
 };
 use sim::physics::{MapBlocks, PhysicsConfig, PlayerBody, step};
 use tokio::sync::mpsc::UnboundedSender;
+use world::coords::BlockPos;
 use world::map::DirtyKind;
+use world::registry::Collision;
 use world::storage::ColumnRecord;
 use world::{Column, ColumnPos, Registry, WorldMap};
 use worldgen::{GenContext, Pipeline};
@@ -90,12 +92,38 @@ pub enum ToWorld {
         /// Whether the stream was sent completely.
         ok: bool,
     },
+    /// A block edit (predicted on the client).
+    Edit {
+        /// The player.
+        id: String,
+        /// The client's sequence number, echoed in the ack.
+        seq: u32,
+        /// The cell.
+        pos: BlockPos,
+        /// What to do.
+        edit: Edit,
+        /// `false` if the connection's rate limit refused it.
+        allowed: bool,
+    },
     /// The connection ended.
     Leave {
         /// The player.
         id: String,
     },
 }
+
+/// A block edit request.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Edit {
+    /// Break the block (set air).
+    Dig,
+    /// Place this state (server numbering).
+    Place(u16),
+}
+
+/// How far beyond the movement profile's reach an edit may be: the server's
+/// view of the player lags the client's by up to a round trip.
+const REACH_TOLERANCE: f64 = 1.5;
 
 /// A message from the world thread to one connection.
 pub enum ToConn {
@@ -110,8 +138,8 @@ pub enum ToConn {
         /// QUIC stream priority (higher is sent first).
         priority: i32,
     },
-    /// Tell the client to drop a column.
-    Forget(ColumnPos),
+    /// An event on the events stream (column unloads, block changes, acks).
+    Event(ServerEvent),
     /// An encoded `EntityDatagram` (sent as a QUIC datagram).
     Datagram(Vec<u8>),
     /// End the session.
@@ -218,6 +246,8 @@ pub struct World {
     next_net_id: u64,
     snapshot: u32,
     corrections: u64,
+    edits: Vec<(String, u32, BlockPos, Edit, bool)>,
+    edit_count: u64,
 }
 
 impl World {
@@ -248,6 +278,8 @@ impl World {
             next_net_id: 1,
             snapshot: 0,
             corrections: 0,
+            edits: Vec::new(),
+            edit_count: 0,
         })
     }
 
@@ -283,6 +315,7 @@ impl World {
         }
         self.apply_columns();
         self.move_players();
+        self.apply_edits();
         self.request_columns();
         self.stream();
         self.replicate();
@@ -366,6 +399,13 @@ impl World {
                     }
                 }
             }
+            ToWorld::Edit {
+                id,
+                seq,
+                pos,
+                edit,
+                allowed,
+            } => self.edits.push((id, seq, pos, edit, allowed)),
             ToWorld::Leave { id } => {
                 if let Some(p) = self.players.remove(&id)
                     && p.spawned
@@ -538,7 +578,9 @@ impl World {
                 .collect();
             for c in far {
                 p.sent.remove(&c);
-                let _ = p.out.send(ToConn::Forget(c));
+                let _ = p
+                    .out
+                    .send(ToConn::Event(ServerEvent::ForgetColumn(c.into())));
             }
             if p.in_flight >= MAX_STREAMS {
                 continue;
@@ -580,6 +622,111 @@ impl World {
                 }
             }
         }
+    }
+
+    /// Validates and applies this tick's edits in arrival order, then sends
+    /// every player the changes in columns they have, followed by the acks of
+    /// their own edits (the events stream is ordered, so a client sees the
+    /// authoritative state before it resolves its prediction).
+    fn apply_edits(&mut self) {
+        if self.edits.is_empty() {
+            return;
+        }
+        let edits = std::mem::take(&mut self.edits);
+        let mut changes: Vec<(ColumnPos, BlockChange)> = Vec::new();
+        let mut acks: HashMap<String, Vec<ServerEvent>> = HashMap::new();
+        for (id, seq, pos, edit, allowed) in edits {
+            let accepted = allowed && self.check_edit(&id, pos, edit);
+            if accepted {
+                let state = match edit {
+                    Edit::Dig => world::BlockStateId::AIR,
+                    Edit::Place(s) => world::BlockStateId(s),
+                };
+                if self.map.set_block(pos, state).is_ok() {
+                    let c = ColumnPos::of_block(pos);
+                    self.encoded.remove(&c);
+                    changes.push((
+                        c,
+                        BlockChange {
+                            pos: pos.into(),
+                            state: state.0,
+                        },
+                    ));
+                }
+            }
+            acks.entry(id)
+                .or_default()
+                .push(ServerEvent::BlockAck { seq, accepted });
+        }
+        for (id, p) in &self.players {
+            let mine: Vec<BlockChange> = changes
+                .iter()
+                .filter(|(c, _)| p.sent.contains(c))
+                .map(|(_, b)| *b)
+                .collect();
+            for chunk in mine.chunks(MAX_BLOCK_CHANGES) {
+                let _ = p
+                    .out
+                    .send(ToConn::Event(ServerEvent::BlockChanges(chunk.to_vec())));
+            }
+            for a in acks.remove(id).unwrap_or_default() {
+                let _ = p.out.send(ToConn::Event(a));
+            }
+        }
+        self.edit_count += changes.len() as u64;
+    }
+
+    /// Whether `id` may make this edit: spawned, within reach, the cell
+    /// loaded, digging something, placing a real block into air or a fluid
+    /// and not into another player.
+    fn check_edit(&self, id: &str, pos: BlockPos, edit: Edit) -> bool {
+        let Some(p) = self.players.get(id).filter(|p| p.spawned) else {
+            return false;
+        };
+        let Some(current) = self.map.get_block(pos) else {
+            return false; // not loaded or outside the world height
+        };
+        let eye = p.body.eye(&self.physics);
+        let center = DVec3::new(
+            f64::from(pos.x) + 0.5,
+            f64::from(pos.y) + 0.5,
+            f64::from(pos.z) + 0.5,
+        );
+        if eye.distance(center) > self.physics.reach + REACH_TOLERANCE {
+            return false;
+        }
+        match edit {
+            Edit::Dig => current != world::BlockStateId::AIR,
+            Edit::Place(s) => {
+                let state = world::BlockStateId(s);
+                if state == world::BlockStateId::AIR
+                    || !self.registry.contains(state)
+                    || (current != world::BlockStateId::AIR && !self.swim.contains(&current))
+                {
+                    return false;
+                }
+                if self.registry.props(state).collision == Collision::None {
+                    return true;
+                }
+                // The editor checked itself on its side; here no other player
+                // may end up inside the block.
+                let min = DVec3::new(f64::from(pos.x), f64::from(pos.y), f64::from(pos.z));
+                let max = min + DVec3::ONE;
+                self.players
+                    .iter()
+                    .filter(|(other, q)| other.as_str() != id && q.spawned)
+                    .all(|(_, q)| {
+                        let b = q.body.aabb(&self.physics);
+                        !(0..3).all(|a| b.max[a] > min[a] && b.min[a] < max[a])
+                    })
+            }
+        }
+    }
+
+    /// Accepted block edits so far (metrics and tests).
+    #[must_use]
+    pub fn edits(&self) -> u64 {
+        self.edit_count
     }
 
     /// Sends every spawned player this tick's datagram: their

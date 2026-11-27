@@ -1,6 +1,6 @@
 # T2-04. Block edits over the network
 
-- **Status:** todo
+- **Status:** done ([report](../../task-reports/t2-04-network-block-edits.md))
 - **Depends on:** T2-02, T2-03
 - **Owner:** agent (cloud)
 
@@ -10,9 +10,9 @@ Dig and place are predicted on the client and validated by the server (reach, oc
 
 ## Acceptance criteria
 
-- [ ] Two clients see each other's edits within one tick plus RTT; a rejected edit reverts on the editing client.
-- [ ] Light after network edits equals a fresh lighting on every client (reuse the T1-09/T1-16 equality checks).
-- [ ] Edits survive a server restart.
+- [x] Two clients see each other's edits within one tick plus RTT; a rejected edit reverts on the editing client. (RTT 100 ms: worst 152 ms of 5.)
+- [x] Light after network edits equals a fresh lighting on every client (reuse the T1-09/T1-16 equality checks).
+- [x] Edits survive a server restart.
 
 ## Out of scope
 

@@ -13,13 +13,13 @@ use auth::{AdmissionPolicy, Identity};
 use crossbeam_channel::Sender;
 use net::messages::{read_header, read_message, write_header, write_message};
 use protocol::{
-    ClientControl, InputDatagram, KickReason, Message, RegistrySync, ServerControl, ServerEvent,
+    ClientControl, ClientEvent, InputDatagram, KickReason, Message, RegistrySync, ServerControl,
     Welcome,
 };
 use quinn::{Connection, SendStream, VarInt};
 use tokio::sync::mpsc;
 
-use crate::game::{TICK_RATE, ToConn, ToWorld};
+use crate::game::{Edit, TICK_RATE, ToConn, ToWorld};
 
 /// Time allowed for the whole handshake.
 const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(10);
@@ -29,6 +29,11 @@ const DATAGRAMS_PER_SECOND: f64 = 60.0;
 const DATAGRAM_BURST: f64 = 120.0;
 /// Malformed datagrams tolerated before the client is disconnected.
 const MAX_BAD_DATAGRAMS: u32 = 50;
+/// Block edits per second a client may make; more are refused (and rolled
+/// back on the client), never queued.
+const EDITS_PER_SECOND: f64 = 20.0;
+/// Burst allowance for edits (fast building).
+const EDIT_BURST: f64 = 40.0;
 
 /// QUIC close codes.
 mod code {
@@ -178,6 +183,12 @@ async fn play(
             }
         }
     });
+    // The client's events stream (edits, chat): the first stream it opens.
+    let edits = tokio::spawn(read_client_events(
+        conn.clone(),
+        ctx.world.clone(),
+        id.clone(),
+    ));
 
     let mut tokens = DATAGRAM_BURST;
     let mut last = Instant::now();
@@ -202,8 +213,7 @@ async fn play(
                     // Unreliable by design: the next tick's datagram supersedes it.
                     let _ = conn.send_datagram(bytes.into());
                 }
-                Some(ToConn::Forget(c)) => {
-                    let msg = ServerEvent::ForgetColumn(c.into());
+                Some(ToConn::Event(msg)) => {
                     if events.is_none() {
                         events = conn.open_bi().await.ok().map(|(s, _)| s);
                     }
@@ -266,8 +276,53 @@ async fn play(
         }
     };
     reader.abort();
+    edits.abort();
     let _ = ctx.world.send(ToWorld::Leave { id });
     close(&conn, reason.0, &reason.1);
+}
+
+/// Reads the client's events stream and forwards edits to the world, marking
+/// those over the rate limit so the world refuses them. A malformed event
+/// closes the connection.
+async fn read_client_events(conn: Connection, world: Sender<ToWorld>, id: String) {
+    let Ok((_, mut recv)) = conn.accept_bi().await else {
+        return;
+    };
+    let mut tokens = EDIT_BURST;
+    let mut last = Instant::now();
+    loop {
+        match read_message::<ClientEvent>(&mut recv).await {
+            Ok(Some(e)) => {
+                let edit = match e {
+                    ClientEvent::Dig { seq, pos } => Some((seq, pos, Edit::Dig)),
+                    ClientEvent::Place { seq, pos, state } => Some((seq, pos, Edit::Place(state))),
+                    ClientEvent::Chat { .. } => None, // chat arrives with stage 4 UI
+                };
+                if let Some((seq, pos, edit)) = edit {
+                    let now = Instant::now();
+                    tokens = (tokens + now.duration_since(last).as_secs_f64() * EDITS_PER_SECOND)
+                        .min(EDIT_BURST);
+                    last = now;
+                    let allowed = tokens >= 1.0;
+                    if allowed {
+                        tokens -= 1.0;
+                    }
+                    let _ = world.send(ToWorld::Edit {
+                        id: id.clone(),
+                        seq,
+                        pos: pos.into(),
+                        edit,
+                        allowed,
+                    });
+                }
+            }
+            Ok(None) => return,
+            Err(e) => {
+                close(&conn, code::PROTOCOL, &e.to_string());
+                return;
+            }
+        }
+    }
 }
 
 /// Finishes a stream and waits (briefly) until the peer has it, so that a
