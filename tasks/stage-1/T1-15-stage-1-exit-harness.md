@@ -40,8 +40,8 @@ Plug in the charger, close other programs, and don't touch the window during the
 
 ## Acceptance criteria
 
-- [ ] 3 runs on the Vega 10 with all exit numbers reported; misses go to the owner (AGENTS.md).
-- [ ] Client RAM row moves from Hypothesis to Measured.
+- [x] 3 runs on the Vega 10 with all exit numbers reported; misses go to the owner (AGENTS.md). See [stage-1-exit-2026-11-27/summary.md](../../docs/research/stage-1-exit-2026-11-27/summary.md).
+- [x] Client RAM row moves from Hypothesis to Measured.
 - [ ] Stage 1 exit decision recorded by the owner.
 
 ## Out of scope
