@@ -47,7 +47,7 @@ The engine is a "voxel OS": the core (world, rendering, networking, scheduling, 
 | `assets` | lib | — | Mojang asset download, conversion, fallback assets, cache |
 | `auth` | lib | — | Microsoft token chain, session JWT client, secret storage |
 | `client` | bin | many | window, in-game launcher menu, render loop, embedded server |
-| `server` | bin | many | dedicated server |
+| `server` | lib + bin | many | dedicated server (the library is also what the client embeds for single-player, T2-08) |
 | `updater` | bin | — | binary update and game launch |
 | `engine-cli` | bin | — | tools for mods and development |
 

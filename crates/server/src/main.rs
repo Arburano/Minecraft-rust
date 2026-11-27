@@ -4,17 +4,17 @@
 //! - `docs/architecture/server-regions.md`
 //! - `docs/architecture/auth-and-assets.md` ("Offline mode"), `docs/legal.md` rule 7
 //!
-//! Status: command line and offline-mode admission policy (T1-08). Simulation
-//! and networking are wired in stage 2.
+//! Status (T2-02): offline admission (T1-08), world generation and saving,
+//! player join and column streaming. Entities, edits and regions follow in
+//! T2-03, T2-04 and T2-06.
 
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::path::PathBuf;
 use std::process::ExitCode;
 
 use auth::AdmissionPolicy;
 use clap::Parser;
-
-/// Default game port.
-const DEFAULT_PORT: u16 = 47_777;
+use server::{DEFAULT_PORT, DEFAULT_VIEW_DISTANCE, ServerOptions};
 
 #[derive(Parser, Debug)]
 #[command(about = "Dedicated game server")]
@@ -30,6 +30,33 @@ struct Args {
     /// UDP port (QUIC).
     #[arg(long, default_value_t = DEFAULT_PORT)]
     port: u16,
+    /// World directory (created if missing).
+    #[arg(long, value_name = "DIR", default_value = "server-world")]
+    world: PathBuf,
+    /// The `core` mod's data folder (default: next to the executable, else the source tree).
+    #[arg(long, value_name = "DIR")]
+    mods_dir: Option<PathBuf>,
+    /// Seed of a new world (an existing world keeps its seed).
+    #[arg(long)]
+    seed: Option<u64>,
+    /// Stream radius in columns.
+    #[arg(long, default_value_t = DEFAULT_VIEW_DISTANCE)]
+    view_distance: u8,
+    /// Players at most.
+    #[arg(long, default_value_t = 32)]
+    max_players: usize,
+    /// Server name shown to players.
+    #[arg(long, default_value = "Server")]
+    name: String,
+}
+
+fn mods_dir(arg: Option<PathBuf>) -> PathBuf {
+    arg.or_else(|| {
+        let exe = std::env::current_exe().ok()?;
+        let p = exe.parent()?.join("mods/core/data");
+        p.is_dir().then_some(p)
+    })
+    .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../mods/core/data"))
 }
 
 /// The validated server configuration.
@@ -89,11 +116,28 @@ fn main() -> ExitCode {
             config.listen
         );
     }
-    println!(
-        "server: configured for {}; simulation and networking arrive in stage 2",
-        config.listen
-    );
-    ExitCode::SUCCESS
+    let mut opts = ServerOptions::new(args.world.clone(), mods_dir(args.mods_dir.clone()));
+    opts.listen = config.listen;
+    opts.policy = config.policy;
+    opts.seed = args.seed;
+    opts.view_distance = args.view_distance;
+    opts.max_players = args.max_players;
+    opts.name = args.name.clone();
+    match server::start(opts) {
+        Ok(handle) => {
+            println!(
+                "server: listening on {} (world {})",
+                handle.local_addr(),
+                args.world.display()
+            );
+            handle.wait();
+            ExitCode::SUCCESS
+        }
+        Err(e) => {
+            eprintln!("error: {e}");
+            ExitCode::FAILURE
+        }
+    }
 }
 
 #[cfg(test)]

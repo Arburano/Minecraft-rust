@@ -45,6 +45,8 @@ pub struct Options {
     pub bench: Option<u32>,
     /// Prefer the GPU whose name contains this text, for this run only.
     pub gpu: Option<String>,
+    /// Join this server right away (offline name required; T2-02).
+    pub connect: Option<std::net::SocketAddr>,
 }
 
 struct Gpu {
@@ -289,13 +291,42 @@ impl App {
     }
 
     fn open_world(&mut self, dir: PathBuf) {
-        let Some(gpu) = &self.gpu else { return };
+        if self.gpu.is_none() {
+            return;
+        }
         let mut config = SessionConfig::new(self.opts.mods_dir.clone());
         config.radius = self.settings.quality.settings().render_distance as i32;
         config.threads = self.settings.threads();
         config.autosave = Duration::from_secs(u64::from(self.settings.autosave_seconds.max(5)));
         match Session::open(&dir, config) {
-            Ok(session) => {
+            Ok(session) => self.start_game(session),
+            Err(e) => self.menu.message = Some(format!("Could not open the world: {e}")),
+        }
+    }
+
+    /// Joins a server (offline mode; the multiplayer menu is T2-08).
+    fn connect_server(&mut self, addr: std::net::SocketAddr) {
+        let Some(identity) = self.menu.identity() else {
+            self.menu.message = Some("Choose an offline name first".into());
+            return;
+        };
+        let mut config = SessionConfig::new(self.opts.mods_dir.clone());
+        config.threads = self.settings.threads();
+        let params = client::session::ConnectParams {
+            addr,
+            identity,
+            timeout: Duration::from_secs(10),
+        };
+        match Session::connect(&params, config) {
+            Ok(session) => self.start_game(session),
+            Err(e) => self.menu.message = Some(format!("Could not join {addr}: {e}")),
+        }
+    }
+
+    fn start_game(&mut self, session: Session) {
+        let Some(gpu) = &self.gpu else { return };
+        {
+            {
                 let (textures, line) =
                     block_textures(&self.settings, &self.opts, session.registry());
                 self.textures_line = line;
@@ -334,7 +365,6 @@ impl App {
                 self.apply_shader_pack();
                 self.set_grab(true);
             }
-            Err(e) => self.menu.message = Some(format!("Could not open the world: {e}")),
         }
     }
 
@@ -540,6 +570,18 @@ impl App {
             }
             if game.playing_since.is_none() && game.session.is_playing() {
                 game.playing_since = Some(Instant::now());
+                if let Some(t) = game.session.time_to_control() {
+                    // The "login ≤ 5 s" metric (networking-protocol.md).
+                    println!(
+                        "joined: connected in {:.0} ms, in control after {:.0} ms",
+                        game.session
+                            .connect_time()
+                            .unwrap_or_default()
+                            .as_secs_f64()
+                            * 1000.0,
+                        t.as_secs_f64() * 1000.0
+                    );
+                }
             }
             if !game.paused {
                 game.acc = (game.acc + dt).min(TICK * 5);
@@ -1014,6 +1056,10 @@ impl ApplicationHandler for App {
                     event_loop.exit();
                 }
             }
+            return;
+        }
+        if let Some(addr) = self.opts.connect {
+            self.connect_server(addr);
             return;
         }
         if let Some(name) = self.opts.autoplay.clone() {

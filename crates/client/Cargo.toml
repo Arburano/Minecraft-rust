@@ -16,6 +16,7 @@ light = { path = "../light" }
 mesh = { path = "../mesh" }
 render = { path = "../render" }
 net = { path = "../net" }
+protocol = { path = "../protocol" }
 sim = { path = "../sim" }
 assets = { path = "../assets" }
 auth = { path = "../auth" }
@@ -35,6 +36,9 @@ memory-stats = { workspace = true }
 
 [dev-dependencies]
 png = { workspace = true }
+# Multiplayer tests run a real server in the test process.
+server = { path = "../server" }
+tokio = { workspace = true }
 
 [features]
 # Tracy profiler zones: `cargo run -p client --features profiling`.

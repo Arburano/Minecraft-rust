@@ -5,7 +5,8 @@
 //! - `docs/architecture/auth-and-assets.md` ("Offline mode")
 //!
 //! Status (T1-13): window, main menu (the in-game launcher, ADR-0010),
-//! single-player worlds with saving, settings, About screen.
+//! single-player worlds with saving, settings, About screen. T2-02:
+//! `--connect ADDR` joins an offline server (the menu entry is T2-08).
 
 mod app;
 mod bench;
@@ -51,6 +52,10 @@ struct Args {
     /// Prefer the GPU whose name contains this text (e.g. `vega`, `1660`).
     #[arg(long, value_name = "NAME")]
     gpu: Option<String>,
+    /// Join this server right away, e.g. `127.0.0.1:47777` (needs
+    /// `--offline-name`; offline servers only until T0-10).
+    #[arg(long, value_name = "ADDR")]
+    connect: Option<std::net::SocketAddr>,
 }
 
 fn mods_dir(arg: Option<PathBuf>) -> PathBuf {
@@ -107,6 +112,7 @@ fn main() -> ExitCode {
         safe_mode: args.safe_mode,
         bench: args.bench_route,
         gpu: args.gpu.clone(),
+        connect: args.connect,
     };
     let event_loop = match winit::event_loop::EventLoop::new() {
         Ok(l) => l,

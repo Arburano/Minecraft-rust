@@ -12,9 +12,20 @@ auth = { path = "../auth" }
 clap = { workspace = true }
 engine-core = { path = "../engine-core" }
 world = { path = "../world" }
+worldgen = { path = "../worldgen" }
+protocol = { path = "../protocol" }
 net = { path = "../net" }
 sim = { path = "../sim" }
 modhost = { path = "../modhost" }
+bytes = { workspace = true }
+glam = { workspace = true }
+quinn = { workspace = true }
+tokio = { workspace = true }
+# Self-signed certificate of an offline (development / LAN) server; open question 16.
+rcgen = { workspace = true }
+serde = { workspace = true }
+toml = { workspace = true }
+thiserror = { workspace = true }
 
 [features]
 # Tracy profiler zones: `cargo run -p server --features profiling`.

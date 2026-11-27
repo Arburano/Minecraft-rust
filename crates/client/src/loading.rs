@@ -166,6 +166,9 @@ pub struct Loader {
     unloaded: Option<Vec<Column>>,
     finished: VecDeque<JobOutput>,
     stats: LoadStats,
+    /// Columns come only from the source (a server); missing ones are
+    /// waited for, never generated.
+    remote: bool,
 }
 
 impl Loader {
@@ -190,7 +193,21 @@ impl Loader {
             unloaded: None,
             finished: VecDeque::new(),
             stats: LoadStats::default(),
+            remote: false,
         }
+    }
+
+    /// Takes columns only from the source passed to
+    /// [`Self::tick_with_source`] (multiplayer: the server streams them);
+    /// a column the source does not have yet is skipped, not generated.
+    pub fn set_remote(&mut self, remote: bool) {
+        self.remote = remote;
+    }
+
+    /// Columns within this Chebyshev radius become ready.
+    #[must_use]
+    pub fn radius(&self) -> i32 {
+        self.config.radius
     }
 
     /// Counters.
@@ -591,6 +608,9 @@ impl Loader {
                 self.finished.push_back(JobOutput::Generated(column));
                 self.stats.submitted += 1;
                 self.stats.max_submit = self.stats.max_submit.max(t.elapsed());
+                continue;
+            }
+            if self.remote && matches!(target, Target::Generate(_)) {
                 continue;
             }
             self.submit(target, map, pool, class);
