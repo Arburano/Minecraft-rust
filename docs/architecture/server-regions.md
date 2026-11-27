@@ -42,6 +42,17 @@ Sizes are tuned automatically from metrics; starting values come from Folia expe
 - **Cheap-entity limits:** falling blocks and item entities have per-region limits and merge rules (numbers in the `core` datapack), so lag machines cannot stall a region.
 - **Activation range:** the simulation LOD (simulation-and-ai.md) is our equivalent of an entity activation range; block mechanics inside the simulation distance are never slowed.
 
+Implementation (T2-10):
+
+- **Held at the edge:** unloaded cells are solid for the physics on both sides (T1-12, `MapBlocks`), and the server applies a player's intents only once the 3×3 columns around it are live; until then they stay queued. So no player position is ever inside unloaded terrain or below the world. The server counts player-ticks at the edge (`World::held_ticks`: the 3×3 not live, or the 5×5 not all live while moving); the client shows "Loading terrain…" when a column around where it will be in half a second is missing (`Session::terrain_loading`).
+- **Priority ahead:** a region's column requests carry a score, the distance to the player's column or to where it will be in 2 s (velocity × 40 ticks), whichever is nearer; the node sorts all regions' requests by score before the in-flight limit (128) applies. Territory columns are filled nearest to a member first.
+- **Entity limits:** `mods/core/data/entities/limits.toml` gives the simulated entities per region by kind (`[default] max_per_region`, `[kind."<name>"]`); entities over the limit stay stored (dormant) and wake when there is room. Only the engine's test entity (`test:walker`, 1,000) exists so far; falling blocks and items (stage 4) get entries there, with merging as their gameplay defines it.
+
+Measured (cloud VM 4 vCPU Xeon 2.1 GHz, release, `crates/server/tests/backpressure.rs`, one run):
+
+- 50 players flying straight out at the highest fly speed (≈ 176 blocks/s) for 20 s over a never-generated world (view 10, simulation 6): **0 positions inside unloaded terrain or below the world**; the farthest got 1,784 blocks; 82% of player-ticks were held at the edge (generation for 50 such flyers far exceeds 4 cores); **tick p99 10.7 ms**.
+- 10,000 entities spawned in one region: 1,000 simulated (the limit), 9,000 stored, none lost; tick p99 4.0 ms (`entity_load -- 10000`: p99 4.1 ms).
+
 ## Memory
 
 500 scattered players × 15,000 sections — ≈ 8.9 GB of voxels alone (estimate). Therefore: simulation distance 6–8 chunks, the rest of the view radius is an LRU cache of compressed columns for sending; light only where gameplay needs it.

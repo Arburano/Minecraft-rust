@@ -189,8 +189,13 @@ impl PlayerSnapshot {
 /// What a region's tick hands back to the node.
 #[derive(Default)]
 pub struct RegionOutput {
-    /// Columns its players should see that the node has not loaded.
-    pub needs: Vec<ColumnPos>,
+    /// Columns its players should see that the node has not loaded, with a
+    /// priority (lower first): the distance from where each player will be
+    /// in a moment, so terrain ahead of fast players loads first (T2-10).
+    pub needs: Vec<(i32, ColumnPos)>,
+    /// Player-ticks spent at the edge of the loaded world (held: the 3×3
+    /// columns around them, or the 5×5 ahead, not loaded yet).
+    pub held: u64,
     /// Accepted block changes (players of other regions may have the column).
     pub changes: Vec<(ColumnPos, BlockChange)>,
     /// Corrections issued.
@@ -498,7 +503,25 @@ impl Region {
                 })
             });
             if !ready {
+                // Backpressure: the authoritative player waits for terrain;
+                // its intents stay queued (T2-10).
+                if !p.intents.is_empty() {
+                    self.out.held += 1;
+                }
                 continue;
+            }
+            let edge = (-2..=2).any(|dx| {
+                (-2..=2).any(|dz| {
+                    self.map
+                        .column(ColumnPos {
+                            x: c.x + dx,
+                            z: c.z + dz,
+                        })
+                        .is_none()
+                })
+            });
+            if edge && !p.intents.is_empty() {
+                self.out.held += 1;
             }
             let p = &mut *p;
             for _ in 0..MAX_INTENTS_PER_TICK {
@@ -646,7 +669,7 @@ impl Region {
 
     fn stream(&mut self, ids: &[Entity], sh: &Shared<'_>, edited: &HashSet<ColumnPos>) {
         let view = sh.view;
-        let mut needs = HashSet::new();
+        let mut needs: HashMap<ColumnPos, i32> = HashMap::new();
         for &e in ids {
             let Some(mut p) = self.ecs.get_mut::<Player>(e) else {
                 continue;
@@ -658,6 +681,12 @@ impl Region {
             if p.complete_at == Some(center) {
                 continue;
             }
+            // Where the player will be in two seconds (velocity is per tick).
+            let ahead = p.body.pos + p.body.vel * (2.0 * f64::from(crate::game::TICK_RATE));
+            let ahead = ColumnPos {
+                x: (ahead.x / 16.0).floor() as i32,
+                z: (ahead.z / 16.0).floor() as i32,
+            };
             // Forget what left the view (with a margin).
             let far: Vec<ColumnPos> = p
                 .sent
@@ -682,7 +711,10 @@ impl Region {
                 }
                 all_sent = false;
                 let Some(bytes) = sh.cache.get(&c) else {
-                    needs.insert(c);
+                    // Priority: near the player and ahead of it first.
+                    let score = chebyshev(c, center).min(chebyshev(c, ahead) + 1);
+                    let e = needs.entry(c).or_insert(score);
+                    *e = (*e).min(score);
                     continue;
                 };
                 // A column edited this tick is sent next tick, once the node
@@ -706,8 +738,8 @@ impl Region {
                 p.complete_at = Some(center);
             }
         }
-        let mut needs: Vec<ColumnPos> = needs.into_iter().collect();
-        needs.sort_by_key(|c| (c.x, c.z));
+        let mut needs: Vec<(i32, ColumnPos)> = needs.into_iter().map(|(c, s)| (s, c)).collect();
+        needs.sort_by_key(|&(s, c)| (s, c.x, c.z));
         self.out.needs = needs;
     }
 

@@ -234,6 +234,8 @@ impl Server {
                 sim_distance: config.sim_distance,
                 threads: config.threads,
                 region_threads: config.region_threads,
+                entity_limits: crate::entities::EntityLimits::load(&config.data_dir)
+                    .map_err(ServerError::Data)?,
             },
             storage,
         )

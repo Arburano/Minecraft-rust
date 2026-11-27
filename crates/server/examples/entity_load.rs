@@ -67,6 +67,7 @@ fn main() {
             sim_distance: sim,
             threads: cores.saturating_sub(1).max(1),
             region_threads: (cores * 4 / 5).max(1),
+            entity_limits: server::entities::EntityLimits::load(&data).expect("limits"),
         },
         storage,
     )
@@ -113,6 +114,7 @@ fn main() {
     }
     let s = w.entity_stats();
     let ticks = total.len() as f64;
+    println!("  stored over the region limit: {}", s.over_limit);
     println!(
         "{entities} entities ({} live, {} dormant), player {distance} blocks from their center, {} ticks, {cores} logical CPUs:",
         s.live,

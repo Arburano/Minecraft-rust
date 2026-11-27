@@ -176,6 +176,8 @@ pub struct WorldSetup {
     pub threads: usize,
     /// Region tick threads.
     pub region_threads: usize,
+    /// Per-region entity limits (T2-10).
+    pub entity_limits: crate::entities::EntityLimits,
 }
 
 /// A column with its encoded message.
@@ -254,6 +256,9 @@ pub struct World {
     dormant: BTreeMap<NetId, Walker>,
     entity_stats: EntityStats,
     log: Option<Arc<crate::metrics::TickLog>>,
+    held: u64,
+    walker_limit: usize,
+    over_limit: usize,
 }
 
 /// Entity simulation counters since the last [`World::entity_stats`].
@@ -277,6 +282,9 @@ pub struct EntityStats {
     pub max_requests_per_region: usize,
     /// Ticks from request to path, per finished request.
     pub latency_ticks: Vec<u64>,
+    /// Entities inside a territory kept stored because their region is at
+    /// its limit (last tick).
+    pub over_limit: usize,
 }
 
 impl World {
@@ -336,6 +344,9 @@ impl World {
             dormant: BTreeMap::new(),
             entity_stats: EntityStats::default(),
             log: None,
+            held: 0,
+            walker_limit: setup.entity_limits.of(crate::entities::WALKER_NAME),
+            over_limit: 0,
         })
     }
 
@@ -825,9 +836,18 @@ impl World {
         self.regions
             .retain(|r| r.id == anchor || !r.index.is_empty() || !r.map.is_empty());
         self.regions.sort_by_key(|r| r.id);
-        let mut all: Vec<ColumnPos> = self.coverage.keys().copied().collect();
-        all.sort_by_key(|c| (c.x, c.z));
-        self.to_fill = all;
+        // Nearest to a member first (players need the ground under them).
+        let mut nearest: HashMap<ColumnPos, i32> = HashMap::with_capacity(self.coverage.len());
+        for m in members {
+            for c in Self::area(m) {
+                let d = chebyshev(c, m.column);
+                let e = nearest.entry(c).or_insert(d);
+                *e = (*e).min(d);
+            }
+        }
+        let mut all: Vec<(i32, ColumnPos)> = nearest.into_iter().map(|(c, d)| (d, c)).collect();
+        all.sort_by_key(|&(d, c)| (d, c.x, c.z));
+        self.to_fill = all.into_iter().map(|(_, c)| c).collect();
     }
 
     /// Makes territory columns live: decoded from the cache (bounded per
@@ -926,10 +946,18 @@ impl World {
                 }
             }
         }
+        let limit = self.walker_limit;
         for (from, id, to) in moves {
             let Some(w) = self.region_mut(from).and_then(|r| r.take_walker(id)) else {
                 continue;
             };
+            // A full region keeps newcomers stored, not simulated.
+            let to = to.filter(|&to| {
+                self.regions
+                    .iter()
+                    .find(|r| r.id == to)
+                    .is_some_and(|r| r.walkers.len() < limit)
+            });
             match to.and_then(|to| self.region_mut(to).map(|r| (to, r))) {
                 Some((to, r)) => {
                     r.insert_walker(w);
@@ -952,7 +980,17 @@ impl World {
                 self.coverage.get(&c).map(|e| (id, e.0))
             })
             .collect();
+        let mut over = 0;
         for (id, to) in wake {
+            let room = self
+                .regions
+                .iter()
+                .find(|r| r.id == to)
+                .is_some_and(|r| r.walkers.len() < limit);
+            if !room {
+                over += 1;
+                continue;
+            }
             if let Some(w) = self.dormant.remove(&id)
                 && let Some(r) = self.region_mut(to)
             {
@@ -960,6 +998,7 @@ impl World {
                 self.walker_owner.insert(id, to);
             }
         }
+        self.over_limit = over;
     }
 
     /// Spawns test entities around `center` (on the ground once their
@@ -1008,6 +1047,7 @@ impl World {
                 .flat_map(Region::walkers)
                 .filter(|w| w.waiting)
                 .count(),
+            over_limit: self.over_limit,
             ..s
         }
     }
@@ -1017,7 +1057,7 @@ impl World {
         // of edited columns.
         let mut all_changes: Vec<(RegionId, ColumnPos, BlockChange)> = Vec::new();
         let mut edited: BTreeMap<ColumnPos, RegionId> = BTreeMap::new();
-        let mut needs: Vec<ColumnPos> = Vec::new();
+        let mut needs: Vec<(i32, ColumnPos)> = Vec::new();
         let mut paths: Vec<crate::entities::PathRequest> = Vec::new();
         for r in &mut self.regions {
             self.entity_stats.max_requests_per_region = self
@@ -1034,6 +1074,7 @@ impl World {
                 edited.insert(c, r.id);
             }
             needs.append(&mut r.out.needs);
+            self.held += r.out.held;
         }
         for (&c, &rid) in &edited {
             if let Some(r) = self.regions.iter().find(|r| r.id == rid)
@@ -1061,8 +1102,13 @@ impl World {
             }
         }
         // Columns players should see, nearest first per region order.
-        needs.sort_by_key(|c| (c.x, c.z));
-        needs.dedup();
+        // Nearest and ahead first across all players (T2-10).
+        needs.sort_by_key(|&(s, c)| (s, c.x, c.z));
+        let mut seen = HashSet::new();
+        let needs: Vec<ColumnPos> = needs
+            .into_iter()
+            .filter_map(|(_, c)| seen.insert(c).then_some(c))
+            .collect();
         // Leftovers are asked for again next tick.
         let _ = self.request(needs);
         // Path jobs: near entities first (`Visible`), the rest `Prefetch`.
@@ -1188,6 +1234,22 @@ impl World {
             let _ = self.storage.tx.send(Request::Save(records));
         }
         self.storage.stop();
+    }
+
+    /// Player-ticks spent held at the edge of the loaded world (T2-10).
+    #[must_use]
+    pub fn held_ticks(&self) -> u64 {
+        self.held
+    }
+
+    /// Whether a player stands in a live column of its region, and its
+    /// position (T2-10 checks: never inside unloaded terrain).
+    #[must_use]
+    pub fn player_on_loaded(&self, id: &str) -> Option<(bool, DVec3)> {
+        let rid = self.owner.get(id)?;
+        let r = self.regions.iter().find(|r| r.id == *rid)?;
+        let p = r.player(id)?;
+        Some((r.map.column(p.column()).is_some(), p.body.pos))
     }
 
     /// Corrections issued so far (metrics and tests).

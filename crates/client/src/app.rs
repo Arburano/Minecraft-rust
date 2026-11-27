@@ -605,11 +605,17 @@ impl App {
                     .as_ref()
                     .filter(|(_, t)| t.elapsed() < Duration::from_secs(8))
                     .map(|(n, _)| n.clone());
-                let status = notice.or_else(|| {
-                    g.session.is_flying().then(|| {
-                        format!("Flying — speed ×{:.2} (mouse wheel)", g.session.fly_speed())
+                let status = notice
+                    .or_else(|| {
+                        g.session
+                            .terrain_loading()
+                            .then(|| "Loading terrain…".to_owned())
                     })
-                });
+                    .or_else(|| {
+                        g.session.is_flying().then(|| {
+                            format!("Flying — speed ×{:.2} (mouse wheel)", g.session.fly_speed())
+                        })
+                    });
                 menu::hud(
                     ui,
                     &names,

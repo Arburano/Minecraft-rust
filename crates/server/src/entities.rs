@@ -40,6 +40,57 @@ pub const PATH_HEIGHT: i32 = 6;
 pub const MAX_EXPANSIONS: usize = 4000;
 /// The entity type number of test walkers on the wire (players are 0).
 pub const WALKER_KIND: u16 = 1;
+/// The datapack name of test walkers (`entities/limits.toml`).
+pub const WALKER_NAME: &str = "test:walker";
+
+/// Per-region limits of simulated entities by kind (`mods/core/data/
+/// entities/limits.toml`, T2-10). Entities over the limit are kept stored
+/// (dormant), not simulated, until there is room.
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct EntityLimits {
+    /// For kinds without an entry.
+    #[serde(default)]
+    pub default: KindLimit,
+    /// By kind name.
+    #[serde(default)]
+    pub kind: std::collections::BTreeMap<String, KindLimit>,
+}
+
+/// The limit of one kind.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct KindLimit {
+    /// Simulated entities of this kind per region at most.
+    pub max_per_region: usize,
+}
+
+impl Default for KindLimit {
+    fn default() -> Self {
+        Self {
+            max_per_region: 2000,
+        }
+    }
+}
+
+impl EntityLimits {
+    /// Reads `entities/limits.toml` under a mod's data folder; a missing file
+    /// gives the defaults.
+    pub fn load(data: &std::path::Path) -> Result<Self, String> {
+        match std::fs::read_to_string(data.join("entities/limits.toml")) {
+            Ok(text) => toml::from_str(&text).map_err(|e| format!("entities/limits.toml: {e}")),
+            Err(_) => Ok(Self::default()),
+        }
+    }
+
+    /// The limit of a kind.
+    #[must_use]
+    pub fn of(&self, kind: &str) -> usize {
+        self.kind
+            .get(kind)
+            .map_or(self.default.max_per_region, |k| k.max_per_region)
+    }
+}
 
 /// Ticks between AI decisions at `distance` blocks from the nearest player:
 /// 1 within [`NEAR_BLOCKS`], then 2, 4 and 8 (the table in
@@ -375,6 +426,22 @@ mod tests {
         Grid::from_fn(BlockPos::new(-10, 0, -10), [21, 8, 21], |p| {
             p.y == 0 || wall(p)
         })
+    }
+
+    #[test]
+    fn limits_parse_and_default() {
+        let l: EntityLimits = toml::from_str(
+            "[default]\nmax_per_region = 10\n[kind.\"test:walker\"]\nmax_per_region = 3\n",
+        )
+        .expect("toml");
+        assert_eq!(l.of(WALKER_NAME), 3);
+        assert_eq!(l.of("core:item"), 10);
+        assert_eq!(EntityLimits::default().of("x"), 2000);
+        let core = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../mods/core/data");
+        assert_eq!(
+            EntityLimits::load(&core).expect("core").of(WALKER_NAME),
+            1000
+        );
     }
 
     #[test]

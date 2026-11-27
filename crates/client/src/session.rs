@@ -460,6 +460,32 @@ impl Session {
         self.spawned && self.ready_around(self.body.pos)
     }
 
+    /// Whether the player is at the edge of the loaded world: some column
+    /// around where it will be in half a second is not here yet. Movement
+    /// there is held (unloaded cells are solid, on the server too), so the
+    /// game says why (T2-10).
+    #[must_use]
+    pub fn terrain_loading(&self) -> bool {
+        if !self.is_playing() {
+            return false;
+        }
+        let ahead = self.body.pos + self.body.vel * 10.0;
+        let c = ColumnPos {
+            x: (ahead.x / 16.0).floor() as i32,
+            z: (ahead.z / 16.0).floor() as i32,
+        };
+        (-1..=1).any(|dx| {
+            (-1..=1).any(|dz| {
+                self.map
+                    .column(ColumnPos {
+                        x: c.x + dx,
+                        z: c.z + dz,
+                    })
+                    .is_none()
+            })
+        })
+    }
+
     /// Whether this session plays on a server.
     #[must_use]
     pub fn is_remote(&self) -> bool {

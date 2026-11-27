@@ -58,6 +58,7 @@ fn world(tag: &str, view: i32, sim: i32, region_threads: usize) -> (World, PathB
             sim_distance: sim,
             threads: 2,
             region_threads,
+            entity_limits: Default::default(),
         },
         storage,
     )

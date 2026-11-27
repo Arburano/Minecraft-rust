@@ -73,6 +73,7 @@ fn main() {
             sim_distance: sim,
             threads: cores.saturating_sub(1).max(1),
             region_threads,
+            entity_limits: Default::default(),
         },
         storage,
     )

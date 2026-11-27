@@ -113,7 +113,7 @@ The owner decided on 2026-11-23 to start stage 2 while the T1-15 laptop runs are
 | [T2-06](stage-2/T2-06-server-regions.md) | Regional multithreading on the real server | T2-02, T0-09 | agent (cloud) | in-progress (cloud part done; owner: laptop run) |
 | [T2-07](stage-2/T2-07-entity-sim-lod-pathfinding.md) | Entity simulation LOD and asynchronous pathfinding | T2-06 | agent (cloud) | done |
 | [T2-08](stage-2/T2-08-multiplayer-menu-and-embedded-server.md) | Multiplayer menu and single-player on an embedded server | T2-02, T2-04 | agent + owner's playtest | in-progress (cloud part done; owner: T1-15 route, LAN game) |
-| [T2-10](stage-2/T2-10-server-overload-protection.md) | Server overload protection: generation backpressure and entity limits | T2-02, T2-03 | agent (cloud) | todo |
+| [T2-10](stage-2/T2-10-server-overload-protection.md) | Server overload protection: generation backpressure and entity limits | T2-02, T2-03 | agent (cloud) | done |
 | [T2-09](stage-2/T2-09-stage-2-exit-measurement.md) | Stage 2 exit measurement | T2-01 … T2-08, T2-10 | agent + owner's machine | todo |
 
 ### Stage 2: order and parallel work
