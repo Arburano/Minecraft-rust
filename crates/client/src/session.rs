@@ -32,7 +32,10 @@ use server::input::{apply_fly_steps, corrected, intent, physics_input, state_has
 use crate::edit::{BatchSync, Editor, Placer, dig, pick, place};
 use crate::loading::{LoadConfig, Loader, Viewer};
 use crate::others::{OtherEntity, Others};
-use crate::remote::{Remote, RemoteError, RemoteEvent};
+use crate::remote::{ConnectOptions, Focus, Remote, RemoteError, RemoteEvent};
+
+/// Columns around a headless player that are kept (physics needs them).
+const HEADLESS_RADIUS: i32 = 2;
 use crate::worlds::{WorldInfo, WorldsError, now};
 
 /// How a session is set up.
@@ -50,6 +53,11 @@ pub struct SessionConfig {
     pub autosave: Duration,
     /// Sections relit per frame at most (deferred light).
     pub light_sections_per_frame: usize,
+    /// No light, meshes or loader: columns near the player go straight into
+    /// the map, the rest are dropped on arrival (headless bots, T2-05).
+    pub headless: bool,
+    /// Network runtime shared with other sessions (bots); `None`: a private one.
+    pub runtime: Option<tokio::runtime::Handle>,
 }
 
 impl SessionConfig {
@@ -63,6 +71,8 @@ impl SessionConfig {
             bounds: WorldBounds::default(),
             autosave: Duration::from_secs(30),
             light_sections_per_frame: 2,
+            headless: false,
+            runtime: None,
         }
     }
 }
@@ -123,6 +133,8 @@ pub struct NetStats {
     pub rejected_edits: u64,
     /// Own edits still waiting for the server's answer.
     pub pending_edits: usize,
+    /// Columns received.
+    pub columns: u64,
 }
 
 /// A server session's state.
@@ -153,6 +165,10 @@ struct Link {
     shadow: HashMap<BlockPos, (BlockStateId, u32)>,
     /// Changes for columns that have not arrived yet.
     late: HashMap<ColumnPos, Vec<(BlockPos, BlockStateId)>>,
+    /// Headless: the columns to decode (around the player).
+    focus: Option<Arc<Focus>>,
+    /// Headless: columns received outside the focus, still compressed.
+    packed: HashMap<ColumnPos, protocol::ColumnPayload>,
 }
 
 /// Where the world comes from.
@@ -173,7 +189,7 @@ pub struct Session {
     loader: Loader,
     editor: Editor,
     sync: BatchSync,
-    pool: JobPool,
+    pool: Option<JobPool>,
     physics: PhysicsConfig,
     swim: Vec<BlockStateId>,
     body: PlayerBody,
@@ -222,7 +238,24 @@ impl Session {
         config: SessionConfig,
     ) -> Result<Self, SessionError> {
         let data = ModData::load(&config.data)?;
-        let remote = Remote::connect(addr, name, Arc::clone(&data.registry))?;
+        let focus = config
+            .headless
+            .then(|| Arc::new(Focus::new(HEADLESS_RADIUS)));
+        let remote = Remote::connect_with(
+            addr,
+            name,
+            Arc::clone(&data.registry),
+            ConnectOptions {
+                runtime: config.runtime.clone(),
+                focus: focus.clone(),
+            },
+        )?;
+        if let Some(f) = &focus {
+            f.set(ColumnPos {
+                x: (remote.spawn.position[0] / 16.0).floor() as i32,
+                z: (remote.spawn.position[2] / 16.0).floor() as i32,
+            });
+        }
         let spawn = remote.spawn.clone();
         let info = WorldInfo {
             name: remote.welcome.server_name.clone(),
@@ -259,6 +292,8 @@ impl Session {
             pending: HashMap::new(),
             shadow: HashMap::new(),
             late: HashMap::new(),
+            focus,
+            packed: HashMap::new(),
         };
         Self::build(
             data,
@@ -303,9 +338,19 @@ impl Session {
         let map = WorldMap::new(Arc::clone(&registry), bounds);
         let mut light = WorldLight::new();
         light.track_changes();
-        let pool =
-            JobPool::with_low_priority_workers(config.threads.max(1)).map_err(|e| data_err(&e))?;
-        let editor = Editor::new(&map);
+        let pool = if config.headless {
+            None
+        } else {
+            Some(
+                JobPool::with_low_priority_workers(config.threads.max(1))
+                    .map_err(|e| data_err(&e))?,
+            )
+        };
+        let editor = if config.headless {
+            Editor::headless(&map)
+        } else {
+            Editor::new(&map)
+        };
         let (spawned, body) = match info.player.pos {
             Some(p) => (
                 true,
@@ -411,15 +456,23 @@ impl Session {
         };
         (-1..=1).all(|dx| {
             (-1..=1).all(|dz| {
-                self.loader.is_ready(
-                    &self.map,
-                    ColumnPos {
-                        x: c.x + dx,
-                        z: c.z + dz,
-                    },
-                )
+                let n = ColumnPos {
+                    x: c.x + dx,
+                    z: c.z + dz,
+                };
+                if self.config.headless {
+                    self.map.column(n).is_some()
+                } else {
+                    self.loader.is_ready(&self.map, n)
+                }
             })
         })
+    }
+
+    /// Edits one cell on behalf of the player (bots; no pick or reach check
+    /// on this side — the server checks).
+    pub fn edit_cell(&mut self, pos: BlockPos, state: Option<BlockStateId>) -> bool {
+        self.edit_for_test(pos, state)
     }
 
     /// One frame: stream the world around the player, place a new player on
@@ -440,13 +493,15 @@ impl Session {
                         .flatten()
                         .map(|(col, _)| col)
                 };
-                self.loader.tick_with_source(
-                    &viewer,
-                    &mut self.map,
-                    &mut self.light,
-                    &self.pool,
-                    Some(&mut source),
-                );
+                if let Some(pool) = &self.pool {
+                    self.loader.tick_with_source(
+                        &viewer,
+                        &mut self.map,
+                        &mut self.light,
+                        pool,
+                        Some(&mut source),
+                    );
+                }
             }
             Backend::Remote(link) => {
                 let now = Instant::now();
@@ -463,6 +518,7 @@ impl Session {
                             }
                         }
                         RemoteEvent::Column(mut c) => {
+                            link.stats.columns += 1;
                             // Changes that arrived before their column.
                             for (pos, id) in link.late.remove(&c.pos()).unwrap_or_default() {
                                 c.set(
@@ -475,6 +531,11 @@ impl Session {
                             }
                             link.forgotten.remove(&c.pos());
                             link.incoming.insert(c.pos(), c);
+                        }
+                        RemoteEvent::Packed(pos, payload) => {
+                            link.stats.columns += 1;
+                            link.forgotten.remove(&pos);
+                            link.packed.insert(pos, payload);
                         }
                         RemoteEvent::Blocks(changes) => {
                             for (pos, id) in changes {
@@ -539,6 +600,7 @@ impl Session {
                             }
                         }
                         RemoteEvent::Forget(c) => {
+                            link.packed.remove(&c);
                             link.late.remove(&c);
                             link.incoming.remove(&c);
                             if self.map.column(c).is_some() {
@@ -567,15 +629,68 @@ impl Session {
                 }
                 link.stats.offset = link.offset.length();
                 link.stats.others = link.others.len();
-                let incoming = &mut link.incoming;
-                let mut source = |c: ColumnPos| incoming.remove(&c);
-                self.loader.tick_with_source(
-                    &viewer,
-                    &mut self.map,
-                    &mut self.light,
-                    &self.pool,
-                    Some(&mut source),
-                );
+                if let Some(focus) = &link.focus {
+                    // Headless: columns near the player go straight into the
+                    // map; no light, meshes or loader.
+                    let center = ColumnPos {
+                        x: (self.body.pos.x / 16.0).floor() as i32,
+                        z: (self.body.pos.z / 16.0).floor() as i32,
+                    };
+                    focus.set(center);
+                    let near = |c: ColumnPos| {
+                        (c.x - center.x).abs() <= HEADLESS_RADIUS + 1
+                            && (c.z - center.z).abs() <= HEADLESS_RADIUS + 1
+                    };
+                    for (_, col) in link.incoming.drain() {
+                        if near(col.pos()) {
+                            let _ = self.map.insert_column(col);
+                        }
+                    }
+                    // Columns the player walked up to: decode them now.
+                    let wanted: Vec<ColumnPos> = link
+                        .packed
+                        .keys()
+                        .copied()
+                        .filter(|&c| near(c) && self.map.column(c).is_none())
+                        .collect();
+                    for c in wanted {
+                        if let Some(p) = link.packed.remove(&c)
+                            && let Some(mut col) = link.remote.unpack(&p)
+                        {
+                            for (pos, id) in link.late.remove(&c).unwrap_or_default() {
+                                col.set(
+                                    pos.x.rem_euclid(16) as usize,
+                                    pos.y,
+                                    pos.z.rem_euclid(16) as usize,
+                                    id,
+                                    &self.registry,
+                                );
+                            }
+                            let _ = self.map.insert_column(col);
+                        }
+                    }
+                    // Decoded columns stay until the server forgets them
+                    // (bounded by its view radius).
+                    let far: Vec<ColumnPos> = self
+                        .map
+                        .column_positions()
+                        .filter(|&c| link.forgotten.contains(&c))
+                        .collect();
+                    for c in far {
+                        self.map.remove_column(c);
+                        link.forgotten.remove(&c);
+                    }
+                } else if let Some(pool) = &self.pool {
+                    let incoming = &mut link.incoming;
+                    let mut source = |c: ColumnPos| incoming.remove(&c);
+                    self.loader.tick_with_source(
+                        &viewer,
+                        &mut self.map,
+                        &mut self.light,
+                        pool,
+                        Some(&mut source),
+                    );
+                }
             }
         }
         if !self.spawned

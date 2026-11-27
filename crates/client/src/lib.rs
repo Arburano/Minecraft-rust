@@ -3,6 +3,7 @@
 //!
 //! Spec: `docs/architecture/client-menu-and-updater.md`.
 
+pub mod bots;
 pub mod edit;
 pub mod loading;
 pub mod others;

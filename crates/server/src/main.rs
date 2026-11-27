@@ -45,6 +45,14 @@ struct Args {
     /// wander with the engine's pathfinding; real mobs are stage 4).
     #[arg(long, default_value_t = 0)]
     test_walkers: usize,
+    /// Write tick, memory and CPU statistics to this file when stopping
+    /// (load runs, T2-05/T2-09); a line is also printed every 10 s.
+    #[arg(long, value_name = "FILE")]
+    stats_out: Option<PathBuf>,
+    /// Seconds after the first player joins that the statistics skip
+    /// (joining and column streaming).
+    #[arg(long, default_value_t = 30)]
+    stats_warmup: u64,
 }
 
 fn mods_dir(arg: Option<PathBuf>) -> PathBuf {
@@ -126,12 +134,87 @@ fn main() -> ExitCode {
         "server: listening on {} (QUIC); press Enter or Ctrl+D to stop",
         server.local_addr()
     );
+    let log = server.tick_log();
+    let started = std::time::Instant::now();
+    let reporter = {
+        let log = std::sync::Arc::clone(&log);
+        std::thread::spawn(move || {
+            let mut from = 0;
+            loop {
+                std::thread::sleep(std::time::Duration::from_secs(10));
+                let ticks = log.since(from);
+                from = log.count();
+                if ticks.is_empty() {
+                    continue;
+                }
+                let times: Vec<_> = ticks.iter().map(|t| t.0).collect();
+                let p = server::metrics::Percentiles::of(&times);
+                let proc = server::metrics::Process::now();
+                println!(
+                    "server: {} players, {} regions; tick {}; memory {} MB",
+                    ticks.last().map_or(0, |t| t.1),
+                    log.regions(),
+                    p.line(),
+                    proc.memory.map_or(0, |m| m / (1 << 20)),
+                );
+            }
+        })
+    };
+    let _ = reporter;
     // Stop on Enter or end of input; the world and players are saved.
     let mut line = String::new();
     let _ = std::io::stdin().read_line(&mut line);
+    if let Some(path) = &args.stats_out {
+        let text = stats_summary(&log, args.stats_warmup, started.elapsed());
+        match std::fs::write(path, &text) {
+            Ok(()) => println!("server: statistics written to {}", path.display()),
+            Err(e) => eprintln!("error: writing {}: {e}", path.display()),
+        }
+        print!("{text}");
+    }
     server.shutdown();
     println!("server: stopped");
     ExitCode::SUCCESS
+}
+
+/// The load-run summary: ticks with players, after the warm-up.
+fn stats_summary(
+    log: &server::metrics::TickLog,
+    warmup: u64,
+    uptime: std::time::Duration,
+) -> String {
+    let ticks = log.since(0);
+    let first = ticks.iter().position(|t| t.1 > 0).unwrap_or(ticks.len());
+    let skip = first + (warmup as usize * usize::from(server::game::TICK_RATE));
+    let steady: Vec<_> = ticks
+        .iter()
+        .skip(skip)
+        .filter(|t| t.1 > 0)
+        .map(|t| t.0)
+        .collect();
+    let players = ticks.iter().skip(skip).map(|t| t.1).max().unwrap_or(0);
+    let p = server::metrics::Percentiles::of(&steady);
+    let proc = server::metrics::Process::now();
+    let cores = std::thread::available_parallelism().map_or(0, |n| n.get());
+    format!(
+        "server load run\n\
+         uptime: {:.0} s, logical CPUs: {cores}\n\
+         players (max after warm-up): {players}\n\
+         regions with players (last tick): {}\n\
+         tick after {warmup} s warm-up: {}\n\
+         memory: {}\n\
+         CPU time: {}\n",
+        uptime.as_secs_f64(),
+        log.regions(),
+        p.line(),
+        proc.memory
+            .map_or("n/a".into(), |m| format!("{} MB", m / (1 << 20))),
+        proc.cpu.map_or("n/a".into(), |c| format!(
+            "{:.1} s ({:.2} cores on average)",
+            c.as_secs_f64(),
+            c.as_secs_f64() / uptime.as_secs_f64().max(1e-9)
+        )),
+    )
 }
 
 #[cfg(test)]

@@ -28,6 +28,7 @@ rcgen = { workspace = true }
 serde = { workspace = true }
 toml = { workspace = true }
 thiserror = { workspace = true }
+memory-stats = { workspace = true }
 
 [dev-dependencies]
 anyhow = { workspace = true }

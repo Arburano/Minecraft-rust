@@ -57,6 +57,8 @@ pub enum RemoteEvent {
     Column(Column),
     /// The server will not keep this column up to date any more.
     Forget(ColumnPos),
+    /// A column outside the focus, still compressed ([`Remote::unpack`]).
+    Packed(ColumnPos, protocol::ColumnPayload),
     /// This tick's server datagram (reconciliation and entity deltas).
     Datagram(EntityDatagram),
     /// Authoritative block changes, already in this client's block IDs.
@@ -78,14 +80,61 @@ enum Command {
     Leave,
 }
 
+/// Only columns within `radius` of `center` are decoded; the rest are
+/// received (and counted) but dropped. Headless bots use it so a bot does
+/// not spend CPU and memory on columns it never looks at.
+#[derive(Debug)]
+pub struct Focus {
+    center: std::sync::atomic::AtomicU64,
+    radius: i32,
+}
+
+impl Focus {
+    /// A focus of `radius` columns around the origin.
+    #[must_use]
+    pub fn new(radius: i32) -> Self {
+        Self {
+            center: std::sync::atomic::AtomicU64::new(0),
+            radius,
+        }
+    }
+
+    /// Moves the center.
+    pub fn set(&self, c: ColumnPos) {
+        let packed = (u64::from(c.x as u32) << 32) | u64::from(c.z as u32);
+        self.center
+            .store(packed, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// Whether `c` is decoded.
+    #[must_use]
+    pub fn wants(&self, c: ColumnPos) -> bool {
+        let v = self.center.load(std::sync::atomic::Ordering::Relaxed);
+        let (x, z) = ((v >> 32) as u32 as i32, v as u32 as i32);
+        (c.x - x).abs() <= self.radius && (c.z - z).abs() <= self.radius
+    }
+}
+
+/// How to connect.
+#[derive(Clone, Default)]
+pub struct ConnectOptions {
+    /// Run on this runtime instead of a private one (many bots in one process).
+    pub runtime: Option<tokio::runtime::Handle>,
+    /// Decode only the columns this focus wants.
+    pub focus: Option<Arc<Focus>>,
+}
+
 /// A joined server.
 pub struct Remote {
     runtime: Option<tokio::runtime::Runtime>,
+    handle: tokio::runtime::Handle,
     events: Receiver<RemoteEvent>,
     commands: UnboundedSender<Command>,
     conn: Connection,
     /// This client's state ID → the server's (`None`: the server lacks it).
     to_server: Vec<Option<u16>>,
+    registry: Arc<Registry>,
+    remap: Arc<Option<Vec<BlockStateId>>>,
     /// The server's greeting.
     pub welcome: Welcome,
     /// Where the player starts.
@@ -99,13 +148,33 @@ impl Remote {
         name: &str,
         registry: Arc<Registry>,
     ) -> Result<Self, RemoteError> {
-        let runtime = tokio::runtime::Builder::new_multi_thread()
-            .worker_threads(2)
-            .thread_name("client-net")
-            .enable_all()
-            .build()
-            .map_err(|e| RemoteError::Connection(e.to_string()))?;
-        let login = runtime.block_on(async {
+        Self::connect_with(addr, name, registry, ConnectOptions::default())
+    }
+
+    /// [`Self::connect`] with options.
+    pub fn connect_with(
+        addr: SocketAddr,
+        name: &str,
+        registry: Arc<Registry>,
+        options: ConnectOptions,
+    ) -> Result<Self, RemoteError> {
+        let runtime = match &options.runtime {
+            Some(_) => None,
+            None => Some(
+                tokio::runtime::Builder::new_multi_thread()
+                    .worker_threads(2)
+                    .thread_name("client-net")
+                    .enable_all()
+                    .build()
+                    .map_err(|e| RemoteError::Connection(e.to_string()))?,
+            ),
+        };
+        let handle = match (&options.runtime, &runtime) {
+            (Some(h), _) => h.clone(),
+            (None, Some(rt)) => rt.handle().clone(),
+            (None, None) => return Err(RemoteError::Connection("no runtime".into())),
+        };
+        let login = handle.block_on(async {
             tokio::time::timeout(CONNECT_TIMEOUT, login(addr, name, &registry))
                 .await
                 .map_err(|_| RemoteError::Timeout(CONNECT_TIMEOUT))?
@@ -135,33 +204,39 @@ impl Remote {
             }
         }
         let from_server = Arc::new(table);
-        runtime.spawn(receive_columns(
+        let remap = Arc::new(remap);
+        let runtime_ref = &handle;
+        runtime_ref.spawn(receive_columns(
             conn.clone(),
             events_tx.clone(),
             Arc::clone(&registry),
-            Arc::new(remap),
+            Arc::clone(&remap),
             spawn.bounds(),
+            options.focus.clone(),
         ));
-        runtime.spawn(receive_events(
+        runtime_ref.spawn(receive_events(
             conn.clone(),
             events_tx.clone(),
             from_server,
             registry.missing(),
         ));
-        runtime.spawn(receive_datagrams(conn.clone(), events_tx.clone()));
-        runtime.spawn(receive_control(ctrl_recv, events_tx.clone()));
-        runtime.spawn(send_commands(
+        runtime_ref.spawn(receive_datagrams(conn.clone(), events_tx.clone()));
+        runtime_ref.spawn(receive_control(ctrl_recv, events_tx.clone()));
+        runtime_ref.spawn(send_commands(
             conn.clone(),
             ctrl_send,
             commands_rx,
             events_tx,
         ));
         Ok(Self {
-            runtime: Some(runtime),
+            runtime,
+            handle,
             events,
             commands,
             conn,
             to_server,
+            registry: Arc::clone(&registry),
+            remap,
             welcome,
             spawn,
         })
@@ -178,6 +253,12 @@ impl Remote {
     pub fn bytes(&self) -> (u64, u64) {
         let s = self.conn.stats();
         (s.udp_rx.bytes, s.udp_tx.bytes)
+    }
+
+    /// Decodes a column kept compressed ([`RemoteEvent::Packed`]).
+    #[must_use]
+    pub fn unpack(&self, payload: &protocol::ColumnPayload) -> Option<Column> {
+        decode_payload(payload, &self.registry, &self.remap, self.spawn.bounds())
     }
 
     /// Sends a reliable event (an edit, chat).
@@ -197,12 +278,22 @@ impl Remote {
         let _ = self.commands.send(Command::Input(d));
     }
 
-    /// Leaves the server politely and stops the network threads.
+    /// Leaves the server politely and stops the network threads (a shared
+    /// runtime keeps running).
     pub fn leave(mut self) {
         let _ = self.commands.send(Command::Leave);
-        if let Some(rt) = self.runtime.take() {
-            rt.block_on(async { tokio::time::sleep(Duration::from_millis(100)).await });
-            rt.shutdown_timeout(Duration::from_millis(500));
+        match self.runtime.take() {
+            Some(rt) => {
+                rt.block_on(async { tokio::time::sleep(Duration::from_millis(100)).await });
+                rt.shutdown_timeout(Duration::from_millis(500));
+            }
+            None => {
+                let conn = self.conn.clone();
+                self.handle.spawn(async move {
+                    tokio::time::sleep(Duration::from_millis(100)).await;
+                    conn.close(0u32.into(), b"left");
+                });
+            }
         }
     }
 }
@@ -211,6 +302,8 @@ impl Drop for Remote {
     fn drop(&mut self) {
         if let Some(rt) = self.runtime.take() {
             rt.shutdown_background();
+        } else {
+            self.conn.close(0u32.into(), b"dropped");
         }
     }
 }
@@ -283,38 +376,54 @@ async fn login(addr: SocketAddr, name: &str, registry: &Registry) -> Result<Logi
     })
 }
 
+/// A column from its payload, in this client's block IDs.
+fn decode_payload(
+    payload: &protocol::ColumnPayload,
+    registry: &Registry,
+    remap: &Option<Vec<BlockStateId>>,
+    bounds: world::WorldBounds,
+) -> Option<Column> {
+    let mut record = payload.decode().ok()?;
+    if record.bounds != bounds {
+        return None;
+    }
+    if let Some(table) = remap.as_ref() {
+        for s in &mut record.sections {
+            s.remap(table, registry.missing());
+        }
+    }
+    Column::from_sections(record.pos, bounds, record.sections, registry)
+}
+
 async fn receive_columns(
     conn: Connection,
     events: Sender<RemoteEvent>,
     registry: Arc<Registry>,
     remap: Arc<Option<Vec<BlockStateId>>>,
     bounds: world::WorldBounds,
+    focus: Option<Arc<Focus>>,
 ) {
     while let Ok(mut stream) = conn.accept_uni().await {
+        let focus = focus.clone();
         let (events, registry, remap) = (events.clone(), Arc::clone(&registry), Arc::clone(&remap));
         tokio::spawn(async move {
             let Ok(bytes) = stream.read_to_end(ChunkStream::MAX_LEN).await else {
                 return;
             };
             // Decompression and decoding are CPU work: off the async workers.
-            let column = tokio::task::spawn_blocking(move || {
+            let event = tokio::task::spawn_blocking(move || {
                 let ChunkStream::Column(payload) = ChunkStream::decode(&bytes).ok()?;
-                let mut record = payload.decode().ok()?;
-                if record.bounds != bounds {
-                    return None;
+                if focus.is_some_and(|f| !f.wants(payload.pos.into())) {
+                    // Not needed now: kept compressed, decoded when needed.
+                    return Some(RemoteEvent::Packed(payload.pos.into(), payload));
                 }
-                if let Some(table) = remap.as_ref() {
-                    for s in &mut record.sections {
-                        s.remap(table, registry.missing());
-                    }
-                }
-                Column::from_sections(record.pos, bounds, record.sections, &registry)
+                decode_payload(&payload, &registry, &remap, bounds).map(RemoteEvent::Column)
             })
             .await
             .ok()
             .flatten();
-            if let Some(c) = column {
-                let _ = events.send(RemoteEvent::Column(c));
+            if let Some(e) = event {
+                let _ = events.send(e);
             }
         });
     }

@@ -109,7 +109,7 @@ The owner decided on 2026-11-23 to start stage 2 while the T1-15 laptop runs are
 | [T2-02](stage-2/T2-02-dedicated-server-world.md) | Dedicated server: world, join, chunk streaming | T2-01, T1-02, T1-03 | agent (cloud) | in-progress (cloud part done; owner: LAN login time) |
 | [T2-03](stage-2/T2-03-movement-prediction-replication.md) | Player movement: prediction, reconciliation, entity replication | T2-02, T1-12 | agent + owner's feel review | in-progress (cloud part done; owner: feel review) |
 | [T2-04](stage-2/T2-04-network-block-edits.md) | Block edits over the network | T2-02, T2-03 | agent (cloud) | done |
-| [T2-05](stage-2/T2-05-headless-bots.md) | Headless bot clients and the load harness | T2-03, T2-04 | agent (cloud) | todo |
+| [T2-05](stage-2/T2-05-headless-bots.md) | Headless bot clients and the load harness | T2-03, T2-04 | agent (cloud) | done |
 | [T2-06](stage-2/T2-06-server-regions.md) | Regional multithreading on the real server | T2-02, T0-09 | agent (cloud) | in-progress (cloud part done; owner: laptop run) |
 | [T2-07](stage-2/T2-07-entity-sim-lod-pathfinding.md) | Entity simulation LOD and asynchronous pathfinding | T2-06 | agent (cloud) | done |
 | [T2-08](stage-2/T2-08-multiplayer-menu-and-embedded-server.md) | Multiplayer menu and single-player on an embedded server | T2-02, T2-04 | agent + owner's playtest | todo |

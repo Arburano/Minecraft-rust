@@ -14,6 +14,7 @@ pub mod conn;
 pub mod entities;
 pub mod game;
 pub mod input;
+pub mod metrics;
 pub mod partition;
 pub mod players;
 pub mod region;
@@ -149,6 +150,7 @@ fn world_seed(config: &ServerConfig) -> Result<u64, ServerError> {
 /// but without waiting for the save.
 pub struct Server {
     addr: SocketAddr,
+    log: Arc<metrics::TickLog>,
     stop: Arc<AtomicBool>,
     world: Option<JoinHandle<()>>,
     endpoint: quinn::Endpoint,
@@ -194,6 +196,8 @@ impl Server {
             storage,
         )
         .map_err(ServerError::World)?;
+        let log = Arc::new(metrics::TickLog::default());
+        world.set_log(Arc::clone(&log));
         if config.test_walkers > 0 {
             world.spawn_walkers(glam::DVec3::new(8.5, 0.0, 8.5), config.test_walkers, 30.0);
         }
@@ -243,11 +247,18 @@ impl Server {
             .map_err(|e| ServerError::World(e.to_string()))?;
         Ok(Self {
             addr,
+            log,
             stop,
             world: Some(world),
             endpoint,
             runtime: Some(runtime),
         })
+    }
+
+    /// Tick records of the world thread (metrics).
+    #[must_use]
+    pub fn tick_log(&self) -> Arc<metrics::TickLog> {
+        Arc::clone(&self.log)
     }
 
     /// The address the server listens on (useful with port 0).

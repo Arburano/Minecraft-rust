@@ -251,6 +251,7 @@ pub struct World {
     /// Entities outside every territory: stored, not simulated.
     dormant: BTreeMap<NetId, Walker>,
     entity_stats: EntityStats,
+    log: Option<Arc<crate::metrics::TickLog>>,
 }
 
 /// Entity simulation counters since the last [`World::entity_stats`].
@@ -332,7 +333,13 @@ impl World {
             walker_owner: HashMap::new(),
             dormant: BTreeMap::new(),
             entity_stats: EntityStats::default(),
+            log: None,
         })
+    }
+
+    /// Records every tick into `log` from now on.
+    pub fn set_log(&mut self, log: Arc<crate::metrics::TickLog>) {
+        self.log = Some(log);
     }
 
     /// Ticks at 20 TPS until `stop` is set or the connections' sender is
@@ -414,6 +421,13 @@ impl World {
                 .unwrap_or_default(),
             regions: self.regions.len(),
         };
+        if let Some(log) = &self.log {
+            log.push(
+                self.times.total,
+                self.owner.len(),
+                self.regions.iter().filter(|r| !r.index.is_empty()).count(),
+            );
+        }
         true
     }
 

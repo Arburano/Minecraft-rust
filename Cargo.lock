@@ -4394,6 +4394,7 @@ dependencies = [
  "crossbeam-channel",
  "engine-core",
  "glam 0.34.3",
+ "memory-stats",
  "net",
  "protocol",
  "quinn",
