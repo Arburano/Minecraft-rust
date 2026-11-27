@@ -345,3 +345,38 @@ fn garbage_and_wrong_versions_do_not_hurt_the_server() {
     server.shutdown();
     let _ = std::fs::remove_dir_all(dir);
 }
+
+/// A world remembers its overworld generator; a build with another one
+/// refuses to open it, and old worlds without the record get it.
+#[test]
+fn a_world_keeps_its_generator() {
+    let dir = temp_world("generator");
+    let open = |build: &str| {
+        let mut config = ServerConfig::new(
+            "127.0.0.1:0".parse().expect("addr"),
+            AdmissionPolicy {
+                allow_offline: true,
+            },
+            dir.clone(),
+            world::modset::source_build(build).expect("build"),
+        );
+        config.seed = Some(7);
+        config.threads = 1;
+        config.lan_announce = false;
+        Server::start(config)
+    };
+    // A stage 1 world: only the seed.
+    std::fs::create_dir_all(&dir).expect("dir");
+    std::fs::write(dir.join("server.toml"), "seed = 7\n").expect("write");
+    let server = open("classic").expect("old worlds open");
+    server.shutdown();
+    let meta = std::fs::read_to_string(dir.join("server.toml")).expect("meta");
+    assert!(meta.contains("overworld:classic"), "{meta}");
+    let err = open("classic_plus")
+        .err()
+        .expect("another generator is refused");
+    assert!(err.to_string().contains("overworld:classic"), "{err}");
+    let server = open("classic").expect("the same build opens it");
+    server.shutdown();
+    let _ = std::fs::remove_dir_all(dir);
+}

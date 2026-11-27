@@ -1,0 +1,6 @@
+id = "overworld_plus:birch_log"
+model = "core:models/cube_all"
+textures = { side = "minecraft:block/birch_log", top = "minecraft:block/birch_log_top", bottom = "minecraft:block/birch_log_top" }   # fallback: core:fallback/birch_log
+hardness = 2.0
+tool = "axe"
+opaque = true

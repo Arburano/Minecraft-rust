@@ -326,6 +326,15 @@ impl ModSet {
             .find(|p| p.is_file())
     }
 
+    /// The mod that provides `data/<file>` ([`ModSet::find`]).
+    #[must_use]
+    pub fn provider(&self, file: &str) -> Option<&ModInfo> {
+        self.mods
+            .iter()
+            .rev()
+            .find(|m| m.data_dir().join(file).is_file())
+    }
+
     /// Reads `data/<file>` from the mod that provides it ([`ModSet::find`]).
     pub fn read(&self, file: &str) -> Result<String, ModSetError> {
         let path = self

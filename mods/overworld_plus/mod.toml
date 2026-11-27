@@ -1,0 +1,20 @@
+# An advanced overworld engine (ADR-0017, docs/modding/builds.md): it replaces
+# only the overworld's generation. It provides `worldgen/overworld.toml` with
+# the `climate` engine (continents, oceans, mountains, plateaus, climate-based
+# biomes) and adds the blocks its biomes need (spruce and birch trees, snow).
+# A build lists it instead of `overworld`; everything else stays the same.
+[mod]
+id = "overworld_plus"
+version = "0.1.0"
+api = "^0.1"
+side = "both"
+authors = ["project team"]
+description = "Advanced overworld: climate engine, mountains, oceans, more biomes and trees"
+
+[dependencies]
+core = "^0.1"
+
+[permissions]
+
+[budget]
+tick_ms = 0.5

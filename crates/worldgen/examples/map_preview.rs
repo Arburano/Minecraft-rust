@@ -1,6 +1,6 @@
 //! Top-down map of a generated area as a BMP (one pixel per block, colored by
 //! the topmost block, shaded by height): `cargo run --release -p worldgen
-//! --example map_preview -- <out.bmp> [seed] [radius in columns]`.
+//! --example map_preview -- <out.bmp> [seed] [radius in columns] [build]`.
 
 use std::process::ExitCode;
 
@@ -17,6 +17,11 @@ fn color(name: &str) -> [u8; 3] {
         "core:stone" | "core:cobblestone" => [125, 125, 125],
         "core:gravel" => [131, 127, 126],
         "core:dirt" => [134, 96, 67],
+        "overworld_plus:snow_block" => [240, 246, 250],
+        "overworld_plus:spruce_leaves" => [40, 85, 45],
+        "overworld_plus:spruce_log" => [70, 50, 30],
+        "overworld_plus:birch_leaves" => [104, 150, 60],
+        "overworld_plus:birch_log" => [215, 212, 200],
         _ => [255, 0, 255],
     }
 }
@@ -24,12 +29,15 @@ fn color(name: &str) -> [u8; 3] {
 fn main() -> ExitCode {
     let mut args = std::env::args().skip(1);
     let Some(out) = args.next() else {
-        eprintln!("usage: map_preview <out.bmp> [seed] [radius]");
+        eprintln!("usage: map_preview <out.bmp> [seed] [radius] [build]");
         return ExitCode::FAILURE;
     };
     let seed: u64 = args.next().and_then(|s| s.parse().ok()).unwrap_or(7);
     let r: i32 = args.next().and_then(|s| s.parse().ok()).unwrap_or(16);
-    let Ok(mods) = world::modset::source_build(world::modset::DEFAULT_BUILD) else {
+    let build = args
+        .next()
+        .unwrap_or_else(|| world::modset::DEFAULT_BUILD.into());
+    let Ok(mods) = world::modset::source_build(&build) else {
         return ExitCode::FAILURE;
     };
     let Ok(b) = mods.registry_builder() else {

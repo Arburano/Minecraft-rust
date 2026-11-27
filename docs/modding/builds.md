@@ -55,6 +55,7 @@ Size is the data on disk today; the tick budget is the soft limit from `mod.toml
 | `core` | the shared block palette (stone, dirt, grass, sand, gravel, water, wood, leaves, ores, glass, glowstone, torch), default entity limits | — | done | 15 block files, 1 limits file (< 10 KB) | 0.5 ms |
 | `movement` | the player movement profile (walk, sprint, jump, swim, fly); the abilities of T1-18 later | `core` (swim blocks) | done | 1 file (< 2 KB) | 0.2 ms |
 | `overworld` | overworld generation: terrain, caves, biomes, beaches, ores, trees; later its biomes' tints, weather, structures | `core` | done | 1 file (< 3 KB) | 0.5 ms |
+| `overworld_plus` | an advanced overworld: the `climate` engine (continents, oceans, mountains, snowy peaks, 9 biomes) and its blocks: spruce and birch logs and leaves, snow (`overworld_plus:*`); replaces `overworld` in a build | `core` | done (look: owner review) | 5 block files + 1 file (< 8 KB) | 0.5 ms |
 | `nether` | nether generation, nether blocks (`nether:*`), portals to the overworld (optional dependency) | `core` | planned (stage 4+), no content | manifest only | 0.5 ms |
 | `end` | end generation (islands), end blocks (`end:*`), the boss fight (depends on `mobs`), the exit portal | `core` | planned (stage 4+), no content | manifest only | 0.5 ms |
 | `mobs` | creatures: entity kinds, AI goals, spawning rules, per-kind limits, drops | `core` | planned (stage 4), no content | manifest only | 1.5 ms |
@@ -66,8 +67,15 @@ The engine's test entity (`test:walker`, T2-07) is not gameplay; its limit sits 
 | Build | Mods | What it is |
 | --- | --- | --- |
 | `classic` | `core`, `movement`, `overworld` | the current game: the overworld, no mobs yet |
+| `classic_plus` | `core`, `movement`, `overworld_plus` | the same game with the advanced overworld engine |
+
+A world remembers the generator that made it (`server.toml`), so it opens only with a build that has the same overworld module and engine.
 
 `nether`, `end` and `mobs` join `classic` when they have content.
+
+## World-generation modules
+
+A world module provides its dimension's `worldgen/<dimension>.toml`, which picks a landscape engine (`worldgen.md`, "Engines") and names every block it places. A module that replaces only the generation (like `overworld_plus`) brings just its engine settings, biomes, tree kinds and the blocks they need; everything else in the build stays. A build lists one module per dimension; if it lists two that provide the same file, the later one in load order wins (slot checks that make this an error come with T1-18).
 
 ## Rules for cutting modules
 

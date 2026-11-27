@@ -20,7 +20,7 @@ use crate::AssetError;
 use crate::texture_array::TextureArray;
 
 /// Version of the conversion code. Bump on any change of conversion output.
-pub const CONVERTER_VERSION: u32 = 1;
+pub const CONVERTER_VERSION: u32 = 2;
 /// Version of the `.vxta` file format.
 pub const FORMAT_VERSION: u32 = 1;
 const MAGIC: &[u8; 4] = b"VXTA";

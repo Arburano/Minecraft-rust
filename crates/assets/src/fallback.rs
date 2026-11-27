@@ -14,7 +14,7 @@ use crate::image::Rgba8Image;
 pub const FALLBACK_SIZE: u32 = 16;
 
 /// Keys with a dedicated look. Everything else falls back to the missing pattern.
-pub const FALLBACK_KEYS: [&str; 16] = [
+pub const FALLBACK_KEYS: [&str; 21] = [
     "stone",
     "dirt",
     "grass_block",
@@ -30,6 +30,11 @@ pub const FALLBACK_KEYS: [&str; 16] = [
     "glass",
     "torch",
     "glowstone",
+    "spruce_log",
+    "spruce_leaves",
+    "birch_log",
+    "birch_leaves",
+    "snow_block",
     "missing",
 ];
 
@@ -80,6 +85,31 @@ fn ore(rng: &mut Rng, mineral: [u8; 3]) -> Rgba8Image {
             if rng.next() % 4 != 0 {
                 let (x, y) = ((cx + dx) as u32, (cy + dy) as u32);
                 img.set(x.min(15), y.min(15), shade(mineral, rng.jitter(15), 255));
+            }
+        }
+    }
+    img
+}
+
+/// Bark with vertical stripes.
+fn log(rng: &mut Rng, base: [u8; 3]) -> Rgba8Image {
+    let mut img = Rgba8Image::filled(FALLBACK_SIZE, FALLBACK_SIZE, [0; 4]);
+    for y in 0..FALLBACK_SIZE {
+        for x in 0..FALLBACK_SIZE {
+            let stripe = if x % 4 == 0 { -25 } else { 0 };
+            img.set(x, y, shade(base, stripe + rng.jitter(8), 255));
+        }
+    }
+    img
+}
+
+/// Leaves with holes.
+fn leaves(rng: &mut Rng, base: [u8; 3]) -> Rgba8Image {
+    let mut img = Rgba8Image::filled(FALLBACK_SIZE, FALLBACK_SIZE, [0; 4]);
+    for y in 0..FALLBACK_SIZE {
+        for x in 0..FALLBACK_SIZE {
+            if rng.next() % 5 != 0 {
+                img.set(x, y, shade(base, rng.jitter(20), 255));
             }
         }
     }
@@ -142,6 +172,19 @@ pub fn fallback_texture(key: &str) -> Rgba8Image {
             }
             img
         }
+        "spruce_log" => log(&mut rng, [70, 50, 30]),
+        "spruce_leaves" => leaves(&mut rng, [40, 85, 45]),
+        "birch_log" => {
+            let mut img = speckle(&mut rng, [215, 212, 200], 8);
+            for _ in 0..10 {
+                let (x, y) = ((rng.next() % 14) as u32, (rng.next() % 16) as u32);
+                img.set(x, y, [40, 40, 36, 255]);
+                img.set(x + 1, y, [52, 50, 44, 255]);
+            }
+            img
+        }
+        "birch_leaves" => leaves(&mut rng, [104, 150, 60]),
+        "snow_block" => speckle(&mut rng, [240, 246, 250], 5),
         "coal_ore" => ore(&mut rng, [40, 40, 40]),
         "iron_ore" => ore(&mut rng, [216, 175, 147]),
         "water" => {

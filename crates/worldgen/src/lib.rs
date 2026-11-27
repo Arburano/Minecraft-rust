@@ -13,7 +13,7 @@ pub mod pipeline;
 pub mod stages;
 pub mod test_corpus;
 
-pub use config::{ConfigError, WorldgenConfig};
-pub use pipeline::{GenContext, Pipeline, ProtoColumn, Stage, Surface};
+pub use config::{ConfigError, Engine, TreeShape, WorldgenConfig};
+pub use pipeline::{ClimateSample, GenContext, Pipeline, ProtoColumn, Stage, Surface};
 
 pub use test_corpus::{CorpusArea, TestColumn, test_column, test_corpus};

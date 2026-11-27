@@ -1,0 +1,8 @@
+id = "overworld_plus:spruce_leaves"
+model = "core:models/cube_all"
+textures = { all = "minecraft:block/spruce_leaves" }   # fallback: core:fallback/spruce_leaves
+tint = { all = "foliage" }
+hardness = 0.2
+opaque = false
+transparent = true
+light_opacity = 1

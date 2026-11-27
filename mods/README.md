@@ -6,7 +6,8 @@ The base game is split into modules by responsibility ([ADR-0017](../docs/adr/00
 
 - `core/` — what every build shares: the common block palette and default entity limits.
 - `movement/` — the player movement profile.
-- `overworld/` — the overworld dimension: its generation.
+- `overworld/` — the overworld dimension: its generation (the `classic` engine).
+- `overworld_plus/` — an advanced overworld that replaces `overworld` in a build: the `climate` engine, more biomes, spruce and birch trees, snow.
 - `nether/`, `end/` — planned dimensions (manifests only, content with stage 4+).
 - `mobs/` — planned creatures (manifest only, content with stage 4).
 
