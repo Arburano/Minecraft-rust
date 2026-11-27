@@ -61,7 +61,7 @@ stage 1 carry-over in `tasks/README.md`.
 | What | Value | Status |
 | --- | --- | --- |
 | Tick with 500 players per node (16+ cores, players in ≥ 8 regions) | ≤ 25 ms p99, hard 50 ms | Target |
-| Capacity of one region | determined by the stage 2 benchmark | Open (first data: T0-09, 2 000 lightweight bots in 1 region at p99 ≈ 0.18–0.21 ms — machinery overhead only, not gameplay capacity) |
+| Capacity of one region | determined by the stage 2 benchmark | Measured (T2-06, cloud VM 4 vCPU, release, real world and physics, players all in view of each other, no network): **≈ 200 players** at tick p99 ≤ 25 ms (200: 25.7 ms; 100: 5.4 ms; 400: 58 ms); 200 players in 8 regions: p99 5.8–6.8 ms. Laptop run pending (owner); [server-regions.md](../architecture/server-regions.md#implementation-on-the-real-server-t2-06-cratesserver) |
 | Entity transfer between `World`s | ≤ 5 µs | Measured (bare-metal Ryzen 7 3750H: ≈ 168.5 ns despawn + spawn by `NetId` incl. index updates; `sim` bench `region_tick/entity_transfer_between_worlds`, T0-09, [details](../research/sim-regions-2026-11-20.md)) |
 | Entity handoff between nodes | ≤ 50 ms p99, 0 dupes | Target (stage 6) |
 | Network CPU | ≤ 1 core per 10,000 packets/s | Hypothesis |

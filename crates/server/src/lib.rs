@@ -9,10 +9,13 @@
 //! connection, one task per column stream), the world thread (20 TPS, owns
 //! the world map), the generation job pool and the storage thread.
 
+pub mod columns;
 pub mod conn;
 pub mod game;
 pub mod input;
+pub mod partition;
 pub mod players;
+pub mod region;
 pub mod replication;
 pub mod storage;
 
@@ -41,6 +44,8 @@ pub const DEFAULT_PORT: u16 = 47_777;
 /// Default streamed column radius: render distance 12 plus the 2 columns the
 /// client needs around it to light and mesh the border (`loading.rs`).
 pub const DEFAULT_VIEW_DISTANCE: i32 = 14;
+/// Default simulated column radius (`server-regions.md`: 6–8 chunks).
+pub const DEFAULT_SIM_DISTANCE: i32 = 8;
 
 /// Everything the server needs to start.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -59,6 +64,12 @@ pub struct ServerConfig {
     pub view_distance: i32,
     /// Generation worker threads.
     pub threads: usize,
+    /// Region tick threads (`server-regions.md`: ≈ 80% of the cores left
+    /// after network, storage and generation).
+    pub region_threads: usize,
+    /// Simulated column radius around each player (6–8, `server-regions.md`);
+    /// the rest of the view radius is only streamed.
+    pub sim_distance: i32,
     /// Display name.
     pub server_name: String,
     /// Message of the day.
@@ -83,6 +94,9 @@ impl ServerConfig {
             view_distance: DEFAULT_VIEW_DISTANCE,
             threads: std::thread::available_parallelism()
                 .map_or(2, |n| n.get().saturating_sub(2).max(1)),
+            region_threads: std::thread::available_parallelism()
+                .map_or(2, |n| (n.get() * 4 / 5).max(1)),
+            sim_distance: DEFAULT_SIM_DISTANCE,
             server_name: "Voxel Engine server".into(), // OPEN-QUESTION: 15
             motd: String::new(),
         }
@@ -169,7 +183,9 @@ impl Server {
                 physics,
                 dir: config.world_dir.clone(),
                 view_distance: config.view_distance.max(2),
+                sim_distance: config.sim_distance,
                 threads: config.threads,
+                region_threads: config.region_threads,
             },
             storage,
         )

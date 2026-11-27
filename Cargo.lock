@@ -4389,6 +4389,7 @@ version = "0.0.1"
 dependencies = [
  "anyhow",
  "auth",
+ "bevy_ecs",
  "clap",
  "crossbeam-channel",
  "engine-core",
@@ -4396,6 +4397,7 @@ dependencies = [
  "net",
  "protocol",
  "quinn",
+ "rayon",
  "rcgen",
  "serde",
  "sim",

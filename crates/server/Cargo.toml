@@ -17,6 +17,8 @@ protocol = { path = "../protocol" }
 net = { path = "../net" }
 sim = { path = "../sim" }
 crossbeam-channel = { workspace = true }
+bevy_ecs = { workspace = true }
+rayon = { workspace = true }
 glam = { workspace = true }
 quinn = { workspace = true }
 tokio = { workspace = true }

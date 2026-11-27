@@ -177,12 +177,24 @@ impl Replicator {
             removed,
         };
         // Keep the nearest updates that fit one datagram; the rest follow.
-        while d.encode().is_err() && !(d.updates.is_empty() && d.removed.is_empty()) {
-            if d.removed.len() > d.updates.len() {
-                d.removed.pop();
-            } else {
-                d.updates.pop();
+        // Binary search on the number of updates (each try is an encode),
+        // then trim removals if even no update fits.
+        if d.encode().is_err() {
+            let all = std::mem::take(&mut d.updates);
+            let (mut lo, mut hi) = (0, all.len());
+            while lo < hi {
+                let mid = (lo + hi).div_ceil(2);
+                d.updates.clear();
+                d.updates.extend_from_slice(&all[..mid]);
+                if d.encode().is_ok() {
+                    lo = mid;
+                } else {
+                    hi = mid - 1;
+                }
             }
+            d.updates.clear();
+            d.updates.extend_from_slice(&all[..lo]);
+            while d.encode().is_err() && d.removed.pop().is_some() {}
         }
         debug_assert!(d.encode().map_or(true, |b| b.len() <= MAX_DATAGRAM));
 

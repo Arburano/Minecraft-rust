@@ -20,8 +20,9 @@ pub enum Request {
 
 /// An answer from the storage thread.
 pub enum Reply {
-    /// A load result: `None` if the column was never saved (generate it).
-    Loaded(ColumnPos, Option<Column>),
+    /// A load result with the column's encoded message: `None` if the
+    /// column was never saved (generate it).
+    Loaded(ColumnPos, Option<(Column, Arc<[u8]>)>),
     /// A write failed; the message is for the log.
     Error(String),
 }
@@ -47,7 +48,9 @@ impl Storage {
                     match req {
                         Request::Load(pos) => {
                             let column = match store.load_column(pos, &registry) {
-                                Ok(c) => c.map(|(col, _)| col),
+                                Ok(c) => c.and_then(|(col, _)| {
+                                    crate::columns::encode(&col).ok().map(|b| (col, b))
+                                }),
                                 Err(e) => {
                                     // A corrupt column is regenerated rather
                                     // than stopping the server.

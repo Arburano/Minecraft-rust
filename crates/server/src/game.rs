@@ -1,13 +1,30 @@
-//! The world thread: one region for now (T2-06 adds regional threading).
+//! The node: the world thread that owns all regions (T2-06, ADR-0008,
+//! `server-regions.md`, `engine-core.md` tick phases).
 //!
-//! At 20 TPS it takes messages from the connections, applies loaded and
-//! generated columns, moves players by their intents, streams columns to each
-//! player nearest first (at most [`MAX_STREAMS`] in flight per player), tells
-//! clients to forget columns that left their view, and unloads columns no
-//! player needs. The world map is owned by this thread only (no locks around
-//! the world, AGENTS.md rule 3); connections talk to it through channels.
+//! Each tick at 20 TPS:
+//! 1. **PreTick** (sequential): messages from connections are routed to the
+//!    owning region (intents, edits, stream acks); joins and leaves; loaded
+//!    and generated columns enter the node's column cache and, inside a
+//!    region's territory, that region's live map.
+//! 2. **PostTick of the previous tick / restructure** (sequential): the
+//!    partition is recomputed ([`crate::partition`]): players whose areas
+//!    touch share a region, others split off. Players (ECS entities) and live
+//!    columns move to their region; columns no territory covers are released
+//!    (saved if edited). A region is never restructured while it ticks.
+//! 3. **Simulate** (regions in parallel on the region pool): each region
+//!    moves its players, applies edits, streams columns and replicates. It
+//!    reads only its own state and the node's immutable shared state.
+//! 4. **Exchange** (sequential): block changes go to players of other regions
+//!    that hold the column, edited columns are re-encoded into the cache,
+//!    column requests go to storage and generation, and the player snapshot
+//!    for the next tick is taken.
+//!
+//! Territories: a player's area is the columns within the simulation radius
+//! plus a 1-column buffer; regions never border each other directly. The
+//! columns between the simulation radius and the view radius are kept only
+//! encoded in the node's cache (the "LRU of compressed columns for sending").
 
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -16,45 +33,41 @@ use std::time::{Duration, Instant};
 use crossbeam_channel::Receiver;
 use engine_core::jobs::{CancelToken, JobPool, Priority};
 use glam::DVec3;
-use protocol::{
-    Angle8, BlockChange, BlockXyz, ChunkStream, ColumnPayload, Correction, Intent, KickReason,
-    Look, MAX_BLOCK_CHANGES, Message, NetId, ServerEvent, Spawn,
-};
-use sim::physics::{MapBlocks, PhysicsConfig, PlayerBody, step};
+use protocol::{BlockChange, Intent, KickReason, MAX_BLOCK_CHANGES, NetId, ServerEvent};
+use rayon::prelude::*;
+use sim::physics::{PhysicsConfig, PlayerBody};
 use tokio::sync::mpsc::UnboundedSender;
 use world::coords::BlockPos;
-use world::map::DirtyKind;
-use world::registry::Collision;
 use world::storage::ColumnRecord;
-use world::{Column, ColumnPos, Registry, WorldMap};
+use world::{Column, ColumnPos, Registry, WorldBounds};
 use worldgen::{GenContext, Pipeline};
 
-use crate::input::{apply_fly_steps, correction, flags, physics_input, state_hash, wire_yaw};
-use crate::players::{self, SavedPlayer};
-use crate::replication::{Candidate, EntityState, Replicator, quantize};
+use crate::columns::{decode, encode, record};
+use crate::partition::{Member, RegionId, partition};
+use crate::players;
+use crate::region::{EditRequest, Player, PlayerSnapshot, Region, Shared, chebyshev};
+use crate::replication::Replicator;
 use crate::storage::{Reply, Request, Storage};
 
 /// Simulation rate.
 pub const TICK_RATE: u8 = 20;
-/// Column streams in flight per player (`networking-protocol.md`).
+/// Column streams in flight per player (`networking-protocol.md`; 32, see T2-02).
 pub const MAX_STREAMS: usize = 32;
-/// Columns are forgotten (client) and unloaded (server) beyond the view
-/// distance plus this margin, so a player walking back and forth on a
-/// border does not make them flicker.
+/// Columns are forgotten (client) and dropped from the cache (server)
+/// beyond the view distance plus this margin, so a player walking back and
+/// forth on a border does not make them flicker.
 pub const UNLOAD_MARGIN: i32 = 2;
-/// Intents a player may queue; older ones are dropped (a flooding or
-/// stalled client cannot grow server memory).
-const MAX_QUEUED_INTENTS: usize = 40;
-/// Intents applied per tick at most: one is normal, more catch up after
-/// jitter, never so many that a client moves faster than it could.
-const MAX_INTENTS_PER_TICK: usize = 3;
 /// Column loads and generation jobs in flight at most.
-const MAX_PENDING: usize = 96;
+const MAX_PENDING: usize = 128;
+/// Cached columns decoded into a region's live map per tick at most.
+const MAX_DECODES_PER_TICK: usize = 64;
 /// Where a new player appears (x, z); the height comes from the terrain.
 const WORLD_SPAWN: [f64; 2] = [8.5, 8.5];
-/// Columns around the world spawn stay loaded even with nobody online, so a
+/// Columns around the world spawn stay live even with nobody online, so a
 /// new player spawns without waiting for generation.
 const SPAWN_KEEP: i32 = 2;
+/// The partition key of the spawn anchor.
+const ANCHOR: &str = "";
 
 fn spawn_column() -> ColumnPos {
     ColumnPos {
@@ -121,19 +134,15 @@ pub enum Edit {
     Place(u16),
 }
 
-/// How far beyond the movement profile's reach an edit may be: the server's
-/// view of the player lags the client's by up to a round trip.
-const REACH_TOLERANCE: f64 = 1.5;
-
 /// A message from the world thread to one connection.
 pub enum ToConn {
     /// Player control starts here.
-    Spawn(Spawn),
+    Spawn(protocol::Spawn),
     /// Send a column on its own stream.
     Column {
         /// The column.
         pos: ColumnPos,
-        /// The encoded [`ChunkStream`] message, shared between players.
+        /// The encoded `ChunkStream` message, shared between players.
         bytes: Arc<[u8]>,
         /// QUIC stream priority (higher is sent first).
         priority: i32,
@@ -158,128 +167,137 @@ pub struct WorldSetup {
     pub dir: PathBuf,
     /// Column radius streamed to each player.
     pub view_distance: i32,
+    /// Column radius simulated around each player (≤ view distance).
+    pub sim_distance: i32,
     /// Generation worker threads.
     pub threads: usize,
+    /// Region tick threads.
+    pub region_threads: usize,
 }
 
-struct Player {
-    name: String,
-    net_id: NetId,
-    /// Pending correction: resent every tick until the client's hashes agree.
-    correction: Option<Correction>,
-    replicator: Replicator,
-    out: UnboundedSender<ToConn>,
-    body: PlayerBody,
-    yaw: f64,
-    pitch: f64,
-    fly_speed: f64,
-    spawned: bool,
-    intents: VecDeque<Intent>,
-    last_tick: Option<u32>,
-    sent: HashSet<ColumnPos>,
-    in_flight: usize,
-}
-
-impl Player {
-    fn column(&self) -> ColumnPos {
-        ColumnPos {
-            x: (self.body.pos.x / 16.0).floor() as i32,
-            z: (self.body.pos.z / 16.0).floor() as i32,
-        }
-    }
-
-    fn saved(&self) -> SavedPlayer {
-        SavedPlayer {
-            pos: self.body.pos.to_array(),
-            yaw: self.yaw,
-            pitch: self.pitch,
-            flying: self.body.flying,
-        }
-    }
-}
-
-/// Columns within `radius` of `center`, nearest first (Chebyshev rings,
-/// Euclidean order inside), the order in which they are loaded and streamed.
-#[must_use]
-pub fn columns_by_distance(center: ColumnPos, radius: i32) -> Vec<ColumnPos> {
-    let mut v: Vec<(i32, ColumnPos)> = Vec::with_capacity(((2 * radius + 1) as usize).pow(2));
-    for dx in -radius..=radius {
-        for dz in -radius..=radius {
-            v.push((
-                dx * dx + dz * dz,
-                ColumnPos {
-                    x: center.x + dx,
-                    z: center.z + dz,
-                },
-            ));
-        }
-    }
-    v.sort_by_key(|&(d, c)| (d, c.x, c.z));
-    v.into_iter().map(|(_, c)| c).collect()
-}
-
-fn chebyshev(a: ColumnPos, b: ColumnPos) -> i32 {
-    (a.x - b.x).abs().max((a.z - b.z).abs())
-}
+/// A column with its encoded message.
+type Loaded = (Column, Arc<[u8]>);
 
 enum Job {
-    Generated(Option<Column>, ColumnPos),
+    Generated(ColumnPos, Option<(Column, Arc<[u8]>)>),
+    /// A cached column decoded to become live again.
+    Decoded(ColumnPos, Option<Column>),
+}
+
+/// Tick timing of the last tick (metrics, the T2-06 benchmark).
+#[derive(Clone, Copy, Debug, Default)]
+pub struct TickTimes {
+    /// The whole tick.
+    pub total: Duration,
+    /// `PreTick`: messages and arriving columns.
+    pub pre: Duration,
+    /// The restructure (partition, moves).
+    pub restructure: Duration,
+    /// `Exchange`.
+    pub exchange: Duration,
+    /// The parallel `Simulate` phase.
+    pub simulate: Duration,
+    /// The slowest region's own tick.
+    pub slowest_region: Duration,
+    /// Regions.
+    pub regions: usize,
 }
 
 /// The world thread's state.
 pub struct World {
     registry: Arc<Registry>,
-    map: WorldMap,
     context: Arc<GenContext>,
     pipeline: Arc<Pipeline>,
-    pool: JobPool,
+    jobs: JobPool,
+    pool: rayon::ThreadPool,
     physics: PhysicsConfig,
     swim: Vec<world::BlockStateId>,
     storage: Storage,
     dir: PathBuf,
     view: i32,
+    sim: i32,
+    bounds: WorldBounds,
+    /// Encoded messages of every loaded column (live or not).
+    cache: HashMap<ColumnPos, Arc<[u8]>>,
     pending: HashSet<ColumnPos>,
-    encoded: HashMap<ColumnPos, Arc<[u8]>>,
-    players: HashMap<String, Player>,
-    unsaved: HashSet<ColumnPos>,
-    dirty: Vec<world::coords::SectionPos>,
+    regions: Vec<Region>,
+    /// Which region each player is in.
+    owner: HashMap<String, RegionId>,
+    anchor_region: RegionId,
+    snapshot_players: Vec<PlayerSnapshot>,
+    next_region_id: u64,
     next_net_id: u64,
     snapshot: u32,
     corrections: u64,
-    edits: Vec<(String, u32, BlockPos, Edit, bool)>,
     edit_count: u64,
+    times: TickTimes,
+    ticks: u64,
+    /// View offsets, nearest first.
+    offsets: Vec<(i32, i32)>,
+    /// Territory: column → (owning region, how many member areas cover it).
+    coverage: HashMap<ColumnPos, (RegionId, u32)>,
+    /// The members the last restructure saw, with their regions.
+    last_members: Vec<(String, ColumnPos, RegionId)>,
+    /// Territory columns that are not live yet (decoded from the cache a
+    /// few per tick, or requested).
+    to_fill: Vec<ColumnPos>,
+    /// Cached columns being decoded on the job pool.
+    decoding: HashSet<ColumnPos>,
 }
 
 impl World {
     /// Creates the world state (the caller runs [`World::run`] on its thread).
     pub fn new(setup: WorldSetup, storage: Storage) -> Result<Self, String> {
-        let pool =
+        let jobs =
             JobPool::with_low_priority_workers(setup.threads.max(1)).map_err(|e| e.to_string())?;
+        let pool = rayon::ThreadPoolBuilder::new()
+            .num_threads(setup.region_threads.max(1))
+            .thread_name(|i| format!("region-{i}"))
+            .build()
+            .map_err(|e| e.to_string())?;
         let swim = setup
             .physics
             .swim_ids(&setup.registry)
             .map_err(|e| e.to_string())?;
+        let bounds = setup.context.bounds;
+        let anchor = Region::new(RegionId(1), Arc::clone(&setup.registry), bounds);
         Ok(Self {
-            map: WorldMap::new(Arc::clone(&setup.registry), setup.context.bounds),
             registry: setup.registry,
             context: setup.context,
             pipeline: Arc::new(Pipeline::overworld()),
+            jobs,
             pool,
             physics: setup.physics,
             swim,
             storage,
             dir: setup.dir,
             view: setup.view_distance,
+            sim: setup.sim_distance.clamp(2, setup.view_distance.max(2)),
+            bounds,
+            cache: HashMap::new(),
             pending: HashSet::new(),
-            encoded: HashMap::new(),
-            players: HashMap::new(),
-            unsaved: HashSet::new(),
-            dirty: Vec::new(),
+            regions: vec![anchor],
+            owner: HashMap::new(),
+            anchor_region: RegionId(1),
+            snapshot_players: Vec::new(),
+            next_region_id: 2,
             next_net_id: 1,
             snapshot: 0,
             corrections: 0,
-            edits: Vec::new(),
             edit_count: 0,
+            times: TickTimes::default(),
+            ticks: 0,
+            offsets: crate::region::columns_by_distance(
+                ColumnPos { x: 0, z: 0 },
+                setup.view_distance,
+            )
+            .into_iter()
+            .map(|c| (c.x, c.z))
+            .collect(),
+            coverage: HashMap::new(),
+            last_members: Vec::new(),
+            to_fill: Vec::new(),
+            decoding: HashSet::new(),
         })
     }
 
@@ -306,6 +324,8 @@ impl World {
 
     /// One tick. Returns `false` once no connection can reach the world.
     pub fn tick(&mut self, inbox: &Receiver<ToWorld>) -> bool {
+        let start = Instant::now();
+        // PreTick.
         loop {
             match inbox.try_recv() {
                 Ok(msg) => self.handle(msg),
@@ -313,30 +333,77 @@ impl World {
                 Err(crossbeam_channel::TryRecvError::Disconnected) => return false,
             }
         }
-        self.apply_columns();
-        self.move_players();
-        self.apply_edits();
-        self.request_columns();
-        self.stream();
-        self.replicate();
-        self.unload();
+        self.receive_columns();
+        let pre = start.elapsed();
+        // Restructure between ticks.
+        let t = Instant::now();
+        self.restructure();
+        let restructure = t.elapsed();
+        // Simulate.
+        let simulate = Instant::now();
+        self.snapshot = self.snapshot.wrapping_add(1).max(1);
+        {
+            let shared = Shared {
+                registry: &self.registry,
+                physics: &self.physics,
+                swim: &self.swim,
+                view: self.view,
+                cache: &self.cache,
+                snapshot: self.snapshot,
+                spawn: WORLD_SPAWN,
+                offsets: &self.offsets,
+                players: &self.snapshot_players,
+            };
+            let regions = &mut self.regions;
+            self.pool
+                .install(|| regions.par_iter_mut().for_each(|r| r.tick(&shared)));
+        }
+        let simulate = simulate.elapsed();
+        // Exchange.
+        let t = Instant::now();
+        self.exchange();
+        let exchange = t.elapsed();
+        self.ticks += 1;
+        self.times = TickTimes {
+            total: start.elapsed(),
+            pre,
+            restructure,
+            exchange,
+            simulate,
+            slowest_region: self
+                .regions
+                .iter()
+                .map(|r| r.out.time)
+                .max()
+                .unwrap_or_default(),
+            regions: self.regions.len(),
+        };
         true
+    }
+
+    fn region_mut(&mut self, id: RegionId) -> Option<&mut Region> {
+        self.regions.iter_mut().find(|r| r.id == id)
+    }
+
+    fn player_region(&mut self, player: &str) -> Option<&mut Region> {
+        let id = *self.owner.get(player)?;
+        self.region_mut(id)
     }
 
     fn handle(&mut self, msg: ToWorld) {
         match msg {
             ToWorld::Join { id, name, out } => {
-                if self.players.contains_key(&id) {
+                if self.owner.contains_key(&id) {
                     let _ = out.send(ToConn::Kick(
                         KickReason::BadName,
                         format!("{name} is already playing on this server"),
                     ));
                     return;
                 }
-                let saved = players::load(&self.dir, &id);
                 let net_id = NetId(self.next_net_id);
                 self.next_net_id += 1;
                 let mut p = Player {
+                    id: id.clone(),
                     name,
                     net_id,
                     correction: None,
@@ -354,28 +421,31 @@ impl World {
                     last_tick: None,
                     sent: HashSet::new(),
                     in_flight: 0,
+                    complete_at: None,
                 };
-                if let Some(s) = saved {
+                if let Some(s) = players::load(&self.dir, &id) {
                     p.body.pos = DVec3::from_array(s.pos);
                     p.body.flying = s.flying;
                     p.yaw = s.yaw;
                     p.pitch = s.pitch;
-                    self.spawn(&mut p);
-                } else if let Some(h) = self
-                    .map
-                    .height(WORLD_SPAWN[0] as i32, WORLD_SPAWN[1] as i32)
-                {
-                    p.body.pos.y = f64::from(h);
-                    self.spawn(&mut p);
+                    Region::send_spawn(&mut p, self.bounds, self.view);
                 }
-                self.players.insert(id, p);
+                // A new player waits in the spawn region (its region's tick
+                // spawns it on the ground); the restructure moves a returning
+                // one to where it stands.
+                let anchor = self.anchor_region;
+                self.owner.insert(id, anchor);
+                if let Some(r) = self.region_mut(anchor) {
+                    r.insert(p);
+                }
             }
             ToWorld::Intents {
                 id,
                 intents,
                 ack_snapshot,
             } => {
-                if let Some(p) = self.players.get_mut(&id)
+                if let Some(r) = self.player_region(&id)
+                    && let Some(mut p) = r.player_mut(&id)
                     && p.spawned
                 {
                     p.replicator.ack(ack_snapshot);
@@ -386,16 +456,19 @@ impl World {
                             p.intents.push_back(i);
                         }
                     }
-                    while p.intents.len() > MAX_QUEUED_INTENTS {
+                    while p.intents.len() > crate::region::MAX_QUEUED_INTENTS {
                         p.intents.pop_front();
                     }
                 }
             }
             ToWorld::Delivered { id, pos, ok } => {
-                if let Some(p) = self.players.get_mut(&id) {
+                if let Some(r) = self.player_region(&id)
+                    && let Some(mut p) = r.player_mut(&id)
+                {
                     p.in_flight = p.in_flight.saturating_sub(1);
                     if !ok {
                         p.sent.remove(&pos);
+                        p.complete_at = None;
                     }
                 }
             }
@@ -405,9 +478,23 @@ impl World {
                 pos,
                 edit,
                 allowed,
-            } => self.edits.push((id, seq, pos, edit, allowed)),
+            } => {
+                if let Some(r) = self.player_region(&id) {
+                    r.edits.push(EditRequest {
+                        id,
+                        seq,
+                        pos,
+                        edit,
+                        allowed,
+                    });
+                }
+            }
             ToWorld::Leave { id } => {
-                if let Some(p) = self.players.remove(&id)
+                let Some(rid) = self.owner.remove(&id) else {
+                    return;
+                };
+                if let Some(r) = self.region_mut(rid)
+                    && let Some(p) = r.take(&id)
                     && p.spawned
                     && let Err(e) = players::save(&self.dir, &id, &p.saved())
                 {
@@ -417,373 +504,461 @@ impl World {
         }
     }
 
-    fn spawn(&self, p: &mut Player) {
-        p.spawned = true;
-        let b = self.map.bounds();
-        let _ = p.out.send(ToConn::Spawn(Spawn {
-            tick: 0,
-            position: p.body.pos.to_array(),
-            yaw: p.yaw as f32,
-            pitch: p.pitch as f32,
-            min_section_y: b.min_section_y,
-            section_count: b.section_count,
-            flying: p.body.flying,
-            view_distance: self.view.clamp(2, 255) as u8,
-        }));
-    }
-
-    fn apply_columns(&mut self) {
-        let mut generate = Vec::new();
+    /// Loaded and generated columns: into the cache, and live into the
+    /// region whose territory covers them.
+    fn receive_columns(&mut self) {
+        let mut arrived: Vec<(ColumnPos, Option<Loaded>)> = Vec::new();
         while let Ok(reply) = self.storage.rx.try_recv() {
             match reply {
-                Reply::Loaded(pos, Some(column)) => {
-                    self.pending.remove(&pos);
-                    let _ = self.map.insert_column(column);
+                Reply::Loaded(pos, Some(c)) => arrived.push((pos, Some(c))),
+                Reply::Loaded(pos, None) => {
+                    let (pipeline, ctx, registry) = (
+                        Arc::clone(&self.pipeline),
+                        Arc::clone(&self.context),
+                        Arc::clone(&self.registry),
+                    );
+                    self.jobs
+                        .submit(Priority::Visible, CancelToken::new(), move |_| {
+                            let col = pipeline.generate(&ctx, pos).into_column(&registry);
+                            Job::Generated(pos, col.and_then(|c| encode(&c).ok().map(|b| (c, b))))
+                        });
                 }
-                Reply::Loaded(pos, None) => generate.push(pos),
                 Reply::Error(e) => eprintln!("server: {e}"),
             }
         }
-        for pos in generate {
-            let (pipeline, ctx, registry) = (
-                Arc::clone(&self.pipeline),
-                Arc::clone(&self.context),
-                Arc::clone(&self.registry),
-            );
-            self.pool
-                .submit(Priority::Visible, CancelToken::new(), move |_| {
-                    Job::Generated(pipeline.generate(&ctx, pos).into_column(&registry), pos)
-                });
-        }
-        let done: Vec<Job> = self
-            .pool
+        for job in self
+            .jobs
             .drain_completed()
             .filter_map(|j| j.downcast::<Job>())
-            .collect();
-        for Job::Generated(column, pos) in done {
-            self.pending.remove(&pos);
-            match column {
-                Some(c) => {
-                    let _ = self.map.insert_column(c);
-                }
-                None => eprintln!("server: generating column {pos:?} failed"),
-            }
-        }
-        // New players appear on the ground once the spawn column exists.
-        let mut ready = Vec::new();
-        for (id, p) in &self.players {
-            if !p.spawned
-                && let Some(h) = self
-                    .map
-                    .height(WORLD_SPAWN[0] as i32, WORLD_SPAWN[1] as i32)
-            {
-                ready.push((id.clone(), h));
-            }
-        }
-        for (id, h) in ready {
-            if let Some(mut p) = self.players.remove(&id) {
-                p.body.pos.y = f64::from(h);
-                self.spawn(&mut p);
-                self.players.insert(id, p);
-            }
-        }
-    }
-
-    fn move_players(&mut self) {
-        let world = MapBlocks {
-            map: &self.map,
-            swim: &self.swim,
-        };
-        for p in self.players.values_mut().filter(|p| p.spawned) {
-            // Hold the player until the ground around them is loaded (the
-            // client does the same before it sends any intent).
-            let c = p.column();
-            let ready = (-1..=1).all(|dx| {
-                (-1..=1).all(|dz| {
-                    self.map
-                        .column(ColumnPos {
-                            x: c.x + dx,
-                            z: c.z + dz,
-                        })
-                        .is_some()
-                })
-            });
-            if !ready {
-                continue;
-            }
-            for _ in 0..MAX_INTENTS_PER_TICK {
-                let Some(i) = p.intents.pop_front() else {
-                    break;
-                };
-                p.fly_speed =
-                    apply_fly_steps(p.fly_speed, i.fly_speed_steps, self.physics.fly_speed_range);
-                let input = physics_input(&i, p.fly_speed);
-                step(&mut p.body, &input, &self.physics, &world);
-                // Reconciliation: a correction only when the prediction differs.
-                if state_hash(&p.body, p.fly_speed) == i.state_hash {
-                    if p.correction.is_some_and(|c| i.tick > c.tick) {
-                        p.correction = None; // the client has applied it
+            .collect::<Vec<_>>()
+        {
+            match job {
+                Job::Generated(pos, c) => arrived.push((pos, c)),
+                Job::Decoded(pos, c) => {
+                    self.decoding.remove(&pos);
+                    if let Some(col) = c
+                        && let Some(&(rid, _)) = self.coverage.get(&pos)
+                        && let Some(r) = self.region_mut(rid)
+                        && r.map.column(pos).is_none()
+                    {
+                        let _ = r.map.insert_column(col);
                     }
-                } else {
-                    if p.correction.is_none() {
-                        self.corrections += 1;
-                    }
-                    p.correction = Some(correction(i.tick, &p.body, p.fly_speed));
-                }
-                p.yaw = wire_yaw(&i);
-                p.pitch = f64::from(i.pitch.to_signed_radians());
-                p.last_tick = Some(i.tick);
-                if p.intents.len() <= 1 {
-                    // Normal pace: one per tick; catch up only when behind.
-                    break;
                 }
             }
         }
-    }
-
-    fn request_columns(&mut self) {
-        let mut centers: Vec<ColumnPos> = self.players.values().map(Player::column).collect();
-        centers.sort_by_key(|c| (c.x, c.z));
-        centers.dedup();
-        // Round-robin over players by ring, so one player's far columns do
-        // not starve another's near ones. The spawn area comes first.
-        let mut lists = vec![columns_by_distance(spawn_column(), SPAWN_KEEP)];
-        lists.extend(centers.iter().map(|&c| columns_by_distance(c, self.view)));
-        let longest = lists.iter().map(Vec::len).max().unwrap_or(0);
-        'outer: for i in 0..longest {
-            for list in &lists {
-                if self.pending.len() >= MAX_PENDING {
-                    break 'outer;
-                }
-                if let Some(&c) = list.get(i)
-                    && self.map.column(c).is_none()
-                    && self.pending.insert(c)
-                {
-                    let _ = self.storage.tx.send(Request::Load(c));
-                }
-            }
-        }
-    }
-
-    fn stream(&mut self) {
-        let view = self.view;
-        for p in self.players.values_mut().filter(|p| p.spawned) {
-            let center = p.column();
-            // Forget what left the view (with a margin).
-            let far: Vec<ColumnPos> = p
-                .sent
-                .iter()
-                .copied()
-                .filter(|&c| chebyshev(c, center) > view + UNLOAD_MARGIN)
-                .collect();
-            for c in far {
-                p.sent.remove(&c);
-                let _ = p
-                    .out
-                    .send(ToConn::Event(ServerEvent::ForgetColumn(c.into())));
-            }
-            if p.in_flight >= MAX_STREAMS {
-                continue;
-            }
-            for c in columns_by_distance(center, view) {
-                if p.in_flight >= MAX_STREAMS {
-                    break;
-                }
-                if p.sent.contains(&c) {
-                    continue;
-                }
-                let Some(column) = self.map.column(c) else {
-                    continue;
-                };
-                let bytes = match self.encoded.get(&c) {
-                    Some(b) => Arc::clone(b),
-                    None => match encode(column) {
-                        Ok(b) => {
-                            self.encoded.insert(c, Arc::clone(&b));
-                            b
-                        }
-                        Err(e) => {
-                            eprintln!("server: encoding column {c:?}: {e}");
-                            continue;
-                        }
-                    },
-                };
-                let d = chebyshev(c, center);
-                if p.out
-                    .send(ToConn::Column {
-                        pos: c,
-                        bytes,
-                        priority: -d,
-                    })
-                    .is_ok()
-                {
-                    p.sent.insert(c);
-                    p.in_flight += 1;
-                }
-            }
-        }
-    }
-
-    /// Validates and applies this tick's edits in arrival order, then sends
-    /// every player the changes in columns they have, followed by the acks of
-    /// their own edits (the events stream is ordered, so a client sees the
-    /// authoritative state before it resolves its prediction).
-    fn apply_edits(&mut self) {
-        if self.edits.is_empty() {
+        if arrived.is_empty() {
             return;
         }
-        let edits = std::mem::take(&mut self.edits);
-        let mut changes: Vec<(ColumnPos, BlockChange)> = Vec::new();
-        let mut acks: HashMap<String, Vec<ServerEvent>> = HashMap::new();
-        for (id, seq, pos, edit, allowed) in edits {
-            let accepted = allowed && self.check_edit(&id, pos, edit);
-            if accepted {
-                let state = match edit {
-                    Edit::Dig => world::BlockStateId::AIR,
-                    Edit::Place(s) => world::BlockStateId(s),
-                };
-                if self.map.set_block(pos, state).is_ok() {
-                    let c = ColumnPos::of_block(pos);
-                    self.encoded.remove(&c);
-                    changes.push((
-                        c,
-                        BlockChange {
-                            pos: pos.into(),
-                            state: state.0,
-                        },
-                    ));
+        for (pos, c) in arrived {
+            self.pending.remove(&pos);
+            let Some((column, bytes)) = c else {
+                eprintln!("server: column {pos:?} could not be loaded or generated");
+                continue;
+            };
+            self.cache.insert(pos, bytes);
+            if let Some(&(rid, _)) = self.coverage.get(&pos)
+                && let Some(r) = self.region_mut(rid)
+                && r.map.column(pos).is_none()
+            {
+                let _ = r.map.insert_column(column);
+            }
+        }
+    }
+
+    /// The partition members: the spawn anchor and every player.
+    fn members(&self) -> Vec<Member> {
+        let mut m = vec![Member {
+            key: ANCHOR.into(),
+            column: spawn_column(),
+            radius: SPAWN_KEEP,
+            region: Some(self.anchor_region),
+        }];
+        for r in &self.regions {
+            for id in r.player_ids() {
+                if let Some(p) = r.player(id) {
+                    m.push(Member {
+                        key: id.to_owned(),
+                        column: p.column(),
+                        radius: self.sim + 1,
+                        region: Some(r.id),
+                    });
                 }
             }
-            acks.entry(id)
-                .or_default()
-                .push(ServerEvent::BlockAck { seq, accepted });
         }
-        for (id, p) in &self.players {
-            let mine: Vec<BlockChange> = changes
+        m.sort_by(|a, b| a.key.cmp(&b.key));
+        m
+    }
+
+    /// Recomputes the partition and moves players and live columns
+    /// (merge and split, `PostTick`). When only positions changed and every
+    /// member keeps its region, the territories are updated incrementally:
+    /// a member that crossed a column border adds and removes only the edge
+    /// strips of its area.
+    pub fn restructure(&mut self) {
+        let members = self.members();
+        let same_keys = members.len() == self.last_members.len()
+            && members
                 .iter()
-                .filter(|(c, _)| p.sent.contains(c))
-                .map(|(_, b)| *b)
-                .collect();
-            for chunk in mine.chunks(MAX_BLOCK_CHANGES) {
-                let _ = p
-                    .out
-                    .send(ToConn::Event(ServerEvent::BlockChanges(chunk.to_vec())));
-            }
-            for a in acks.remove(id).unwrap_or_default() {
-                let _ = p.out.send(ToConn::Event(a));
-            }
+                .zip(&self.last_members)
+                .all(|(m, l)| m.key == l.0);
+        if same_keys
+            && members
+                .iter()
+                .zip(&self.last_members)
+                .all(|(m, l)| m.column == l.1)
+        {
+            self.fill_territories();
+            return;
         }
-        self.edit_count += changes.len() as u64;
+        let assigned = partition(&members, &mut self.next_region_id);
+        let same_partition = same_keys
+            && members
+                .iter()
+                .zip(&assigned)
+                .all(|(m, &a)| m.region == Some(a));
+        if same_partition {
+            self.shift_territories(&members);
+        } else {
+            self.repartition(&members, &assigned);
+        }
+        self.last_members = members
+            .iter()
+            .zip(&assigned)
+            .map(|(m, &a)| (m.key.clone(), m.column, a))
+            .collect();
+        self.fill_territories();
     }
 
-    /// Whether `id` may make this edit: spawned, within reach, the cell
-    /// loaded, digging something, placing a real block into air or a fluid
-    /// and not into another player.
-    fn check_edit(&self, id: &str, pos: BlockPos, edit: Edit) -> bool {
-        let Some(p) = self.players.get(id).filter(|p| p.spawned) else {
-            return false;
-        };
-        let Some(current) = self.map.get_block(pos) else {
-            return false; // not loaded or outside the world height
-        };
-        let eye = p.body.eye(&self.physics);
-        let center = DVec3::new(
-            f64::from(pos.x) + 0.5,
-            f64::from(pos.y) + 0.5,
-            f64::from(pos.z) + 0.5,
-        );
-        if eye.distance(center) > self.physics.reach + REACH_TOLERANCE {
-            return false;
-        }
-        match edit {
-            Edit::Dig => current != world::BlockStateId::AIR,
-            Edit::Place(s) => {
-                let state = world::BlockStateId(s);
-                if state == world::BlockStateId::AIR
-                    || !self.registry.contains(state)
-                    || (current != world::BlockStateId::AIR && !self.swim.contains(&current))
+    fn area(m: &Member) -> impl Iterator<Item = ColumnPos> + '_ {
+        (-m.radius..=m.radius).flat_map(move |dx| {
+            (-m.radius..=m.radius).map(move |dz| ColumnPos {
+                x: m.column.x + dx,
+                z: m.column.z + dz,
+            })
+        })
+    }
+
+    /// Positions changed, regions did not: move area strips.
+    fn shift_territories(&mut self, members: &[Member]) {
+        let mut uncovered: Vec<ColumnPos> = Vec::new();
+        for (m, last) in members.iter().zip(self.last_members.clone()) {
+            if m.column == last.1 {
+                continue;
+            }
+            let rid = m.region.unwrap_or_default();
+            let old = Member {
+                column: last.1,
+                ..m.clone()
+            };
+            for c in Self::area(&old) {
+                if !m.covers(c)
+                    && let Some(e) = self.coverage.get_mut(&c)
                 {
-                    return false;
+                    e.1 -= 1;
+                    if e.1 == 0 {
+                        uncovered.push(c);
+                    }
                 }
-                if self.registry.props(state).collision == Collision::None {
-                    return true;
-                }
-                // The editor checked itself on its side; here no other player
-                // may end up inside the block.
-                let min = DVec3::new(f64::from(pos.x), f64::from(pos.y), f64::from(pos.z));
-                let max = min + DVec3::ONE;
-                self.players
-                    .iter()
-                    .filter(|(other, q)| other.as_str() != id && q.spawned)
-                    .all(|(_, q)| {
-                        let b = q.body.aabb(&self.physics);
-                        !(0..3).all(|a| b.max[a] > min[a] && b.min[a] < max[a])
-                    })
             }
+            for c in Self::area(m) {
+                if old.covers(c) {
+                    continue;
+                }
+                let e = self.coverage.entry(c).or_insert((rid, 0));
+                if e.1 == 0 {
+                    self.to_fill.push(c);
+                }
+                e.1 += 1;
+            }
+        }
+        let mut released = Vec::new();
+        uncovered.sort_by_key(|c| (c.x, c.z));
+        uncovered.dedup();
+        for c in uncovered {
+            let Some(&(rid, 0)) = self.coverage.get(&c) else {
+                continue; // covered again by another member
+            };
+            self.coverage.remove(&c);
+            if let Some(r) = self.regions.iter_mut().find(|r| r.id == rid)
+                && let Some(col) = r.map.remove_column(c)
+                && r.unsaved.remove(&c)
+            {
+                released.push(record(&col));
+            }
+        }
+        if !released.is_empty() {
+            let _ = self.storage.tx.send(Request::Save(released));
         }
     }
 
-    /// Accepted block edits so far (metrics and tests).
-    #[must_use]
-    pub fn edits(&self) -> u64 {
-        self.edit_count
+    /// Regions merged, split, appeared or a member joined or left: move
+    /// players and live columns to the new partition.
+    fn repartition(&mut self, members: &[Member], assigned: &[RegionId]) {
+        let wanted: BTreeMap<RegionId, ()> = assigned.iter().map(|&r| (r, ())).collect();
+        for &rid in wanted.keys() {
+            if !self.regions.iter().any(|r| r.id == rid) {
+                self.regions
+                    .push(Region::new(rid, Arc::clone(&self.registry), self.bounds));
+            }
+        }
+        // Players move (ECS entity → ECS entity, by stable ID).
+        for (m, &to) in members.iter().zip(assigned) {
+            if m.key == ANCHOR {
+                self.anchor_region = to;
+                continue;
+            }
+            let from = m.region.unwrap_or(to);
+            if from == to {
+                continue;
+            }
+            let p = self.region_mut(from).and_then(|r| r.take(&m.key));
+            if let (Some(p), Some(r)) = (p, self.region_mut(to)) {
+                r.insert(p);
+                self.owner.insert(m.key.clone(), to);
+            }
+        }
+        // The territory from scratch.
+        self.coverage.clear();
+        for (m, &to) in members.iter().zip(assigned) {
+            let m = Member {
+                region: Some(to),
+                ..m.clone()
+            };
+            for c in Self::area(&m) {
+                self.coverage.entry(c).or_insert((to, 0)).1 += 1;
+            }
+        }
+        // Live columns follow the territories.
+        let mut moving: Vec<(RegionId, Column, bool)> = Vec::new();
+        let mut released: Vec<ColumnRecord> = Vec::new();
+        for r in &mut self.regions {
+            let mut gone: Vec<ColumnPos> = r
+                .map
+                .column_positions()
+                .filter(|c| self.coverage.get(c).map(|e| e.0) != Some(r.id))
+                .collect();
+            gone.sort_by_key(|c| (c.x, c.z));
+            for c in gone {
+                let Some(col) = r.map.remove_column(c) else {
+                    continue;
+                };
+                let unsaved = r.unsaved.remove(&c);
+                match self.coverage.get(&c) {
+                    // Edited columns stay edited with their new owner.
+                    Some(&(to, _)) => moving.push((to, col, unsaved)),
+                    None if unsaved => released.push(record(&col)),
+                    None => {}
+                }
+            }
+        }
+        for (to, col, unsaved) in moving {
+            let pos = col.pos();
+            if let Some(r) = self.region_mut(to) {
+                let _ = r.map.insert_column(col);
+                if unsaved {
+                    r.unsaved.insert(pos);
+                }
+            }
+        }
+        if !released.is_empty() {
+            let _ = self.storage.tx.send(Request::Save(released));
+        }
+        // Regions with nobody (and not the spawn's) disappear.
+        let anchor = self.anchor_region;
+        self.regions
+            .retain(|r| r.id == anchor || !r.index.is_empty() || !r.map.is_empty());
+        self.regions.sort_by_key(|r| r.id);
+        let mut all: Vec<ColumnPos> = self.coverage.keys().copied().collect();
+        all.sort_by_key(|c| (c.x, c.z));
+        self.to_fill = all;
     }
 
-    /// Sends every spawned player this tick's datagram: their
-    /// reconciliation data and the deltas of the other players in view.
-    fn replicate(&mut self) {
-        self.snapshot = self.snapshot.wrapping_add(1).max(1);
-        let snapshot = self.snapshot;
-        let radius = f64::from(self.view * 16);
-        let everyone: Vec<(NetId, DVec3, EntityState)> = self
-            .players
-            .values()
-            .filter(|p| p.spawned)
-            .map(|p| {
-                let a = |r: f64| Angle8::from_radians(r as f32);
-                (
-                    p.net_id,
-                    p.body.pos,
-                    EntityState {
-                        kind: 0,
-                        pos: quantize(p.body.pos.to_array()),
-                        look: Look {
-                            yaw: a(p.yaw),
-                            pitch: a(p.pitch),
-                            head_yaw: a(p.yaw),
-                        },
-                        flags: flags(&p.body),
-                    },
-                )
+    /// Makes territory columns live: decoded from the cache (bounded per
+    /// tick) or requested from storage and generation.
+    fn fill_territories(&mut self) {
+        if self.to_fill.is_empty() {
+            return;
+        }
+        let list = std::mem::take(&mut self.to_fill);
+        let mut decoded = 0;
+        let mut wanted = Vec::new();
+        for c in list {
+            let Some(&(rid, _)) = self.coverage.get(&c) else {
+                continue; // no longer in any territory
+            };
+            let Some(r) = self.regions.iter_mut().find(|r| r.id == rid) else {
+                continue;
+            };
+            if r.map.column(c).is_some() {
+                continue;
+            }
+            if self.decoding.contains(&c) {
+                continue;
+            }
+            match self.cache.get(&c) {
+                Some(bytes) if decoded < MAX_DECODES_PER_TICK => {
+                    // Decoding takes ≈ 0.1–0.3 ms: on the job pool, not in the tick.
+                    let (bytes, registry) = (Arc::clone(bytes), Arc::clone(&self.registry));
+                    self.decoding.insert(c);
+                    self.jobs
+                        .submit(Priority::Visible, CancelToken::new(), move |_| {
+                            Job::Decoded(c, decode(&bytes, &registry))
+                        });
+                    decoded += 1;
+                }
+                // Over this tick's budget: next tick.
+                Some(_) => self.to_fill.push(c),
+                // It arrives through `receive_columns`, which makes it live.
+                None => wanted.push(c),
+            }
+        }
+        let left = self.request(wanted);
+        self.to_fill.extend(left);
+    }
+
+    /// Requests columns from storage (generation if never saved). Returns
+    /// those left over because too many are already in flight.
+    fn request(&mut self, columns: Vec<ColumnPos>) -> Vec<ColumnPos> {
+        let mut left = Vec::new();
+        for c in columns {
+            if self.cache.contains_key(&c) || self.pending.contains(&c) {
+                continue;
+            }
+            if self.pending.len() >= MAX_PENDING {
+                left.push(c);
+                continue;
+            }
+            self.pending.insert(c);
+            let _ = self.storage.tx.send(Request::Load(c));
+        }
+        left
+    }
+
+    fn exchange(&mut self) {
+        // Block changes for players of other regions, and fresh cache bytes
+        // of edited columns.
+        let mut all_changes: Vec<(RegionId, ColumnPos, BlockChange)> = Vec::new();
+        let mut edited: BTreeMap<ColumnPos, RegionId> = BTreeMap::new();
+        let mut needs: Vec<ColumnPos> = Vec::new();
+        for r in &mut self.regions {
+            self.corrections += r.out.corrections;
+            self.edit_count += r.out.changes.len() as u64;
+            for &(c, b) in &r.out.changes {
+                all_changes.push((r.id, c, b));
+                edited.insert(c, r.id);
+            }
+            needs.append(&mut r.out.needs);
+        }
+        for (&c, &rid) in &edited {
+            if let Some(r) = self.regions.iter().find(|r| r.id == rid)
+                && let Some(col) = r.map.column(c)
+                && let Ok(bytes) = encode(col)
+            {
+                self.cache.insert(c, bytes);
+            }
+        }
+        if !all_changes.is_empty() {
+            for r in &self.regions {
+                for id in r.player_ids() {
+                    let Some(p) = r.player(id) else { continue };
+                    let mine: Vec<BlockChange> = all_changes
+                        .iter()
+                        .filter(|(from, c, _)| *from != r.id && p.sent.contains(c))
+                        .map(|(_, _, b)| *b)
+                        .collect();
+                    for chunk in mine.chunks(MAX_BLOCK_CHANGES) {
+                        let _ = p
+                            .out
+                            .send(ToConn::Event(ServerEvent::BlockChanges(chunk.to_vec())));
+                    }
+                }
+            }
+        }
+        // Columns players should see, nearest first per region order.
+        needs.sort_by_key(|c| (c.x, c.z));
+        needs.dedup();
+        // Leftovers are asked for again next tick.
+        let _ = self.request(needs);
+        // The player snapshot for the next tick (other regions read it).
+        self.snapshot_players.clear();
+        for r in &self.regions {
+            for id in r.player_ids() {
+                if let Some(p) = r.player(id).filter(|p| p.spawned) {
+                    self.snapshot_players.push(PlayerSnapshot::of(p, r.id));
+                }
+            }
+        }
+        // Drop cached columns nobody can see (every second).
+        if self.ticks % u64::from(TICK_RATE) == 0 {
+            self.evict();
+        }
+    }
+
+    fn evict(&mut self) {
+        let keep = self.view + UNLOAD_MARGIN;
+        let centers: Vec<ColumnPos> = self
+            .regions
+            .iter()
+            .flat_map(|r| {
+                r.player_ids()
+                    .filter_map(|id| r.player(id))
+                    .map(Player::column)
             })
             .collect();
-        for p in self.players.values_mut().filter(|p| p.spawned) {
-            let me = p.body.pos;
-            let candidates = everyone
-                .iter()
-                .filter(|(id, _, _)| *id != p.net_id)
-                .filter_map(|&(id, pos, state)| {
-                    let d = (pos - me).length();
-                    let h = ((pos.x - me.x).powi(2) + (pos.z - me.z).powi(2)).sqrt();
-                    (h <= radius).then_some(Candidate {
-                        id,
-                        state,
-                        distance: d,
-                    })
+        let live: HashSet<ColumnPos> = self
+            .regions
+            .iter()
+            .flat_map(|r| r.map.column_positions())
+            .collect();
+        // Players hashed into cells of `keep + 1` columns: a cached column
+        // only checks the players of its own and the 8 neighboring cells.
+        let cell = keep + 1;
+        let key = |c: ColumnPos| (c.x.div_euclid(cell), c.z.div_euclid(cell));
+        let mut grid: HashMap<(i32, i32), Vec<ColumnPos>> = HashMap::new();
+        for p in centers {
+            grid.entry(key(p)).or_default().push(p);
+        }
+        self.cache.retain(|c, _| {
+            if live.contains(c) || chebyshev(*c, spawn_column()) <= SPAWN_KEEP {
+                return true;
+            }
+            let (gx, gz) = key(*c);
+            (-1..=1).any(|dx| {
+                (-1..=1).any(|dz| {
+                    grid.get(&(gx + dx, gz + dz))
+                        .is_some_and(|ps| ps.iter().any(|&p| chebyshev(*c, p) <= keep))
                 })
-                .collect();
-            let origin = BlockXyz {
-                x: me.x.floor() as i32,
-                y: me.y.floor() as i32,
-                z: me.z.floor() as i32,
-            };
-            let d = p
-                .replicator
-                .build(snapshot, origin, p.last_tick, p.correction, candidates);
-            if let Ok(bytes) = d.encode() {
-                let _ = p.out.send(ToConn::Datagram(bytes));
+            })
+        });
+    }
+
+    fn shutdown(&mut self) {
+        let mut records = Vec::new();
+        for r in &mut self.regions {
+            let ids: Vec<String> = r.player_ids().map(str::to_owned).collect();
+            for id in ids {
+                if let Some(p) = r.take(&id) {
+                    let _ = p.out.send(ToConn::Kick(
+                        KickReason::ShuttingDown,
+                        "The server is shutting down".into(),
+                    ));
+                    if p.spawned
+                        && let Err(e) = players::save(&self.dir, &id, &p.saved())
+                    {
+                        eprintln!("server: saving player {}: {e}", p.name);
+                    }
+                }
+            }
+            for &c in &r.unsaved {
+                if let Some(col) = r.map.column(c) {
+                    records.push(record(col));
+                }
             }
         }
+        if !records.is_empty() {
+            let _ = self.storage.tx.send(Request::Save(records));
+        }
+        self.storage.stop();
     }
 
     /// Corrections issued so far (metrics and tests).
@@ -792,85 +967,124 @@ impl World {
         self.corrections
     }
 
-    fn unload(&mut self) {
-        self.dirty.clear();
-        self.map.take_dirty(DirtyKind::Save, &mut self.dirty);
-        for s in &self.dirty {
-            self.unsaved.insert(ColumnPos::of_section(*s));
-        }
-        let centers: Vec<ColumnPos> = self.players.values().map(Player::column).collect();
-        let keep = self.view + UNLOAD_MARGIN;
-        let gone: Vec<ColumnPos> = self
-            .map
-            .column_positions()
-            .filter(|&c| {
-                chebyshev(c, spawn_column()) > SPAWN_KEEP
-                    && centers.iter().all(|&p| chebyshev(c, p) > keep)
-            })
-            .collect();
-        let mut records = Vec::new();
-        for c in gone {
-            self.encoded.remove(&c);
-            if let Some(col) = self.map.remove_column(c)
-                && self.unsaved.remove(&c)
-            {
-                records.push(record(&col));
-            }
-        }
-        if !records.is_empty() {
-            let _ = self.storage.tx.send(Request::Save(records));
-        }
-    }
-
-    fn shutdown(&mut self) {
-        for (id, p) in self.players.drain() {
-            let _ = p.out.send(ToConn::Kick(
-                KickReason::ShuttingDown,
-                "The server is shutting down".into(),
-            ));
-            if p.spawned
-                && let Err(e) = players::save(&self.dir, &id, &p.saved())
-            {
-                eprintln!("server: saving player {}: {e}", p.name);
-            }
-        }
-        let records: Vec<ColumnRecord> = self
-            .unsaved
-            .iter()
-            .filter_map(|&c| self.map.column(c))
-            .map(record)
-            .collect();
-        if !records.is_empty() {
-            let _ = self.storage.tx.send(Request::Save(records));
-        }
-        self.storage.stop();
-    }
-
-    /// Columns loaded on the server (tests and metrics).
+    /// Accepted block edits so far (metrics and tests).
     #[must_use]
-    pub fn loaded_columns(&self) -> usize {
-        self.map.len()
+    pub fn edits(&self) -> u64 {
+        self.edit_count
     }
-}
 
-fn record(col: &Column) -> ColumnRecord {
-    ColumnRecord {
-        pos: col.pos(),
-        bounds: col.bounds(),
-        sections: col.sections().to_vec(),
-        light: Vec::new(),
-        entities: Vec::new(),
+    /// Timing of the last tick.
+    #[must_use]
+    pub fn times(&self) -> TickTimes {
+        self.times
     }
-}
 
-fn encode(col: &Column) -> Result<Arc<[u8]>, protocol::ProtocolError> {
-    let payload = ColumnPayload::encode(&record(col))?;
-    Ok(ChunkStream::Column(payload).encode()?.into())
+    /// Regions with their sorted player IDs, by region ID.
+    #[must_use]
+    pub fn regions(&self) -> Vec<(RegionId, Vec<String>)> {
+        self.regions
+            .iter()
+            .map(|r| (r.id, r.player_ids().map(str::to_owned).collect()))
+            .collect()
+    }
+
+    /// Players across all regions.
+    #[must_use]
+    pub fn player_count(&self) -> usize {
+        self.regions.iter().map(|r| r.index.len()).sum()
+    }
+
+    /// Live columns across all regions and cached columns.
+    #[must_use]
+    pub fn columns(&self) -> (usize, usize) {
+        (
+            self.regions.iter().map(Region::live_columns).sum(),
+            self.cache.len(),
+        )
+    }
+
+    /// A hash of the partition and every player's simulated state
+    /// (reproducibility: same inputs and partitioning → same hash).
+    #[must_use]
+    pub fn state_hash(&self) -> u64 {
+        let mut h = 0xcbf2_9ce4_8422_2325u64;
+        let mut eat = |bytes: &[u8]| {
+            for &b in bytes {
+                h = (h ^ u64::from(b)).wrapping_mul(0x0100_0000_01b3);
+            }
+        };
+        for r in &self.regions {
+            eat(&r.id.0.to_le_bytes());
+            for id in r.player_ids() {
+                eat(id.as_bytes());
+                if let Some(p) = r.player(id) {
+                    for v in p.body.pos.to_array().iter().chain(&p.body.vel.to_array()) {
+                        eat(&v.to_bits().to_le_bytes());
+                    }
+                }
+            }
+        }
+        h
+    }
+
+    /// Adds a spawned player without a connection (tests and benchmarks).
+    #[doc(hidden)]
+    pub fn insert_player_for_test(&mut self, id: &str, pos: DVec3, out: UnboundedSender<ToConn>) {
+        let p = Player {
+            id: id.to_owned(),
+            name: id.to_owned(),
+            net_id: NetId(self.next_net_id),
+            correction: None,
+            replicator: Replicator::default(),
+            out,
+            body: PlayerBody {
+                pos,
+                ..PlayerBody::default()
+            },
+            yaw: 0.0,
+            pitch: 0.0,
+            fly_speed: 1.0,
+            spawned: true,
+            intents: VecDeque::new(),
+            last_tick: None,
+            sent: HashSet::new(),
+            in_flight: 0,
+            complete_at: None,
+        };
+        self.next_net_id += 1;
+        let anchor = self.anchor_region;
+        self.owner.insert(id.to_owned(), anchor);
+        if let Some(r) = self.region_mut(anchor) {
+            r.insert(p);
+        }
+    }
+
+    /// Moves a player without simulation (tests of the partition).
+    #[doc(hidden)]
+    pub fn teleport_for_test(&mut self, id: &str, pos: DVec3) {
+        if let Some(r) = self.player_region(id)
+            && let Some(mut p) = r.player_mut(id)
+        {
+            p.body.pos = pos;
+        }
+    }
+
+    /// Where a player is.
+    #[must_use]
+    pub fn player_pos(&self, id: &str) -> Option<DVec3> {
+        let rid = self.owner.get(id)?;
+        self.regions
+            .iter()
+            .find(|r| r.id == *rid)?
+            .player(id)
+            .map(|p| p.body.pos)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::region::columns_by_distance;
 
     #[test]
     fn columns_come_nearest_first() {
