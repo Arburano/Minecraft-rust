@@ -16,7 +16,7 @@ Status: Accepted (owner, 2026-11-27)
    - `movement`: the player movement profile (the `movement` slot of ADR-0013).
    - **one mod per world (dimension):** `overworld` now; `nether` and `end` are planned modules without content. A dimension mod owns its generation, its own blocks (under its namespace) and, later, its biomes, structures and portals.
    - `mobs`: creatures, their AI, spawning, limits and drops (planned, stage 4). Creatures that belong to one dimension may be split out (`mobs_nether`, …) so that a build without that dimension does not carry them.
-   - Later features are separate mods as well: moving structures with collision, space, roles and permissions (see `docs/modding/builds.md`, "Planned modules"). They are documented now and built later.
+   - Later features are separate mods as well: moving structures with collision, space, roles and permissions (see `docs/modding/builds.md`, "Planned builds" and "Other planned modules"; the engine features they need are capabilities, ADR-0018). They are documented now and built later.
 3. **How data from several mods is combined.**
    - *Merged:* blocks — every mod's `data/blocks` adds blocks under its own id; entity limits — every mod's `data/entities/limits.toml` adds kinds, a later mod may replace an entry.
    - *Provided:* a single file such as `worldgen/overworld.toml` or `player/physics.toml` comes from the last mod in load order that has it. A build without the owning mod gets a clear error ("no mod of this build provides …").

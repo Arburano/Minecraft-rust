@@ -19,6 +19,7 @@ This is not legal advice. It is a list of rules the team follows until a lawyer'
 - **Terralith** (Stardust Labs) is **not used**: its license forbids copying parts into other projects and any use in AI projects.
 
 **Other engines and servers (2026-11-26, [review](research/external-projects-review-2026-11-26.md)).** Licenses below are as reported, not yet verified: open the LICENSE file before porting anything, and record every port in `THIRD_PARTY.md`.
+- **Source-available, non-open licenses — ideas only, never code:** Sable (PolyForm Shield 1.0.0, the physics library of Create: Aeronautics) forbids competing uses; we do not read its source. Create: Aeronautics itself: ideas only until its license is checked. Rapier (Apache-2.0) is a normal dependency.
 - **GPL / LGPL projects — ideas only, never code:** Folia, Paper, Purpur, Pumpkin (GPL-3.0), Horizon (LGPL-3.0 after a switch from MIT; its public repository was reportedly removed and it was reportedly in a dispute over code copied from Iris), Iris (LGPL-3.0). Reading them to understand an approach is fine; copying or translating their code is not. Our engine is not GPL, so even a translated function would be a problem.
 - **OptiFine** — proprietary: ideas only.
 - **Shader packs written for Iris/OptiFine** belong to their authors. They never enter the repository, CI or builds, like any other player pack (ADR-0014).

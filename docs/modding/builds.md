@@ -87,24 +87,71 @@ A world module provides its dimension's `worldgen/<dimension>.toml`, which picks
 6. **State size and responsibility when adding a module:** a row in the catalogue above (owns, depends on, status, size, tick budget). Big assets (textures, sounds, models) are counted too: they decide the download of a build.
 7. **No module reads another module's files.** Modules see each other only through registry ids, the mod API and the merge rules above.
 
-## Planned modules (later)
+## Engine capabilities
 
-These are documented so that the engine work they need is not blocked by today's choices. None of them exists yet; each will get an ADR and tasks when its stage comes.
+Some features cannot be mods: they need engine speed or reach into physics, network and rendering. They are **capabilities** ([ADR-0018](../adr/0018-engine-capabilities-per-build.md), Proposed): a mod requires them in `mod.toml` (`[requires] capabilities = [...]`), and the engine starts only those that some mod of the build requires. A capability no mod asked for does not run (no threads, memory, tick systems, messages or render passes); heavy ones are also left out of the build's release binary by a cargo feature.
+
+| Capability | What it gives | Spec | Stage |
+| --- | --- | --- | --- |
+| `dimensions` | several worlds per server, travel between them, physics per dimension | [dimensions.md](../architecture/dimensions.md) | 4 |
+| `moving_grids` | moving block structures with rigid-body physics and collision | [ADR-0019](../adr/0019-moving-block-structures.md), [moving-structures.md](../architecture/moving-structures.md) | 4 |
+| `space` | vacuum, large coordinates, planets as dimensions, gravity sources | [dimensions.md](../architecture/dimensions.md), "Space" | 4–5 |
+| `zones` | named areas with rules (PvP, build rights, spawn tables, level ranges) | PRD §14 No. 11 | 4 |
+| `instances` | private copies of an area per party, created and dropped on demand | "RPG build" below | 4+ |
+| `progression` | server-stored per-player stats, levels and skills with a mod API | "RPG build" below | 4+ |
+
+## Planned builds
+
+Two large builds are planned besides `classic`. They share only the engine, `core` and `movement` (and may replace `movement` too). Everything else is their own modules, so neither carries the other's logic. Working titles.
+
+### Industrial mod pack
+
+Giant constructions that fly, sail and drive with real physics, machines, other planets and space.
+
+| Module | Owns | Capabilities |
+| --- | --- | --- |
+| `industrial_world` | its own overworld generation (its own engine settings or engine, biomes, resources for industry) | — |
+| `planets` | other planets as dimensions: generation, gravity, atmosphere, resources | `dimensions` |
+| `space` | the space dimension, gravity sources, travel to planets | `dimensions`, `space` |
+| `contraptions` | assembly blocks, bearings, propellers, balloons and burners, floating blocks, gyroscopes, seats and controls — like Create: Aeronautics ([review](../research/moving-structures-review-2026-11-27.md)) | `moving_grids` |
+| `machines` | power (rotation or energy), machines, pipes, belts, item transport | — |
+| `rocketry` | rocket and jet engines, fuel, thrust, heat; depends on `contraptions` | `moving_grids`, `space` |
+| `mobs_industrial` | its own creatures | — |
+
+### RPG build
+
+A giant world with zones, bosses, dungeons that appear and grow stronger, progression and skills.
+
+| Module | Owns | Capabilities |
+| --- | --- | --- |
+| `rpg_world` | its own world generation, for example the `map` engine (a painted map of regions) or a climate engine with its own biomes; zones by region | `zones` |
+| `dungeons` | dungeon sites, layouts, the life cycle below | `zones`, `instances` |
+| `progression` | levels, experience, attributes | `progression` |
+| `skills` | skills and classes, built on `progression` | `progression` |
+| `bosses` | bosses with phases and arenas | — |
+| `mobs_rpg` | creatures by zone and level | — |
+| `quests`, `npcs` | quests, traders, dialogue (later) | — |
+
+**Dungeons that appear and grow** (design notes for the `dungeons` module and the engine parts it needs):
+
+- **Reserved sites.** The world generator reserves dungeon sites when the terrain is generated: a footprint and an entrance, stored with the column, never built over by later generation. Players build around them, not into them (a zone rule).
+- **Content separate from terrain.** A dungeon's interior is a template instantiated into its site (or into an instance), with its own state record: level, layout id, cleared rooms, loot table, last reset. Upgrading or replacing a dungeon rewrites only its site from a new template, so nothing players built nearby is touched.
+- **Life cycle**, driven by the mod on a schedule or by player activity: a site wakes up (a new dungeon appears), levels up (harder layout, stronger mobs, better loot), resets after being cleared, or goes dormant.
+- **Instances** (capability `instances`): a party can enter a private copy, a temporary dimension holding only the dungeon, created from the template and dropped when the party leaves.
+
+## Other planned modules
 
 | Module | What it adds | Engine work it needs |
 | --- | --- | --- |
-| `contraptions` | large moving structures with collision: doors, lifts, trains, ships, aircraft built from blocks | moving block grids (a sub-world with its own transform), collision between the player and moving grids, replication of grid transforms, region hand-off of grids (ADR-0008) |
-| `space` | space as a dimension: orbit, planets, rockets, low gravity, vacuum | dimensions with their own physics parameters (gravity per dimension, through the movement profile), large-distance coordinates, travel between dimensions; depends on `contraptions` for rockets |
-| `roles` | role-play servers: roles, permissions, zones, chat channels | a server-side permission API for mods (who may break, place, enter, use commands), stored per world; ties to zones (stage 4) |
-| `machines` | power, machines, pipes (an engineering build) | block entities with ticking, batched mod systems (ADR-0006), item transport |
+| `roles` | role-play servers: roles, permissions, zones, chat channels | a server-side permission API for mods (who may break, place, enter, use commands), stored per world; capability `zones` |
 
 Example builds once these exist:
 
 | Build | Modules |
 | --- | --- |
 | classic | `core`, `movement`, `overworld`, `nether`, `end`, `mobs` |
-| high fantasy | `core`, `movement`, its own world module (instead of `overworld`), its own creatures, `roles` |
-| engineering / space | `core`, `movement`, `overworld`, `mobs`, `machines`, `contraptions`, `space` |
+| industrial mod pack | `core`, `movement`, `industrial_world`, `planets`, `space`, `contraptions`, `machines`, `rocketry`, `mobs_industrial` |
+| RPG | `core`, `movement`, `rpg_world`, `dungeons`, `progression`, `skills`, `bosses`, `mobs_rpg` |
 | role-play server | `core`, `movement`, `overworld`, `mobs`, `roles` |
 
 ## Not done yet
@@ -113,3 +160,4 @@ Example builds once these exist:
 - The server does not send its mod list to the client (`mod_manifest_hash` in `Welcome` is zero); both sides must run the same build.
 - The updater (ADR-0010) does not download per build.
 - `provides` and slot checks in `mod.toml` (T1-18).
+- `[requires] capabilities` (ADR-0018, waiting for the owner's decision).

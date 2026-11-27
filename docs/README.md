@@ -24,6 +24,8 @@ Reading order for a new developer or agent:
 | Simulation, physics, mob AI | [architecture/simulation-and-ai.md](architecture/simulation-and-ai.md) | `sim` |
 | Network protocol | [architecture/networking-protocol.md](architecture/networking-protocol.md) | `protocol`, `net` |
 | Server regions | [architecture/server-regions.md](architecture/server-regions.md) | `sim`, `server` |
+| Moving structures (grids, planned) | [architecture/moving-structures.md](architecture/moving-structures.md) | `sim`, `server`, `render` |
+| Dimensions and space (planned) | [architecture/dimensions.md](architecture/dimensions.md) | `server`, `worldgen`, `protocol` |
 | Sharding | [architecture/sharding.md](architecture/sharding.md) | `server` (+ future `gateway`) |
 | In-game launcher menu and updater | [architecture/client-menu-and-updater.md](architecture/client-menu-and-updater.md) | `client`, `updater` |
 | Login and assets | [architecture/auth-and-assets.md](architecture/auth-and-assets.md) | `auth`, `assets` |

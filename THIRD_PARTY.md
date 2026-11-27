@@ -4,6 +4,8 @@ Ideas, parameters or code taken from other projects, with their licenses. Add an
 
 | Project | Author | License | What we use | Where |
 | --- | --- | --- | --- | --- |
+| [Sable](https://github.com/ryanhcode/sable) | RyanHCode | PolyForm Shield 1.0.0 (not open source; **ideas only, no code**, source not read) | Reference for moving structures (ADR-0019): structures as small worlds with a pose ("sub-levels"), Rapier physics, per-block physics data, per-dimension physics, entities riding relative to a structure | design only |
+| [Create: Aeronautics (Simulated Project)](https://github.com/Creators-of-Aeronautics/Simulated-Project) | Creators of Aeronautics | not checked (ideas only until checked) | Reference for the gameplay of the industrial build: assembly, propellers, balloons, floating blocks | design only |
 | [Tectonic](https://modrinth.com/datapack/tectonic) | Apollo (`Apollounknowndev`) | MIT (declared on Modrinth; the source repository has no LICENSE file yet — copyright line to be confirmed before any verbatim copy) | Reference for the extended world generator (T1-17): terrain-shaping ideas and parameters | not ported yet |
 
 ## Fonts shipped in the client binary
