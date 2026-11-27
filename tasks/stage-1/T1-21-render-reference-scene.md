@@ -1,6 +1,6 @@
 # T1-21. Render reference scene and screenshot tests
 
-- **Status:** todo
+- **Status:** in-progress (cloud part done 2026-11-27; owner: look at the scene on the laptop)
 - **Depends on:** T1-11, T1-19
 - **Owner:** agent (cloud) + owner's laptop for the visual check
 
@@ -19,9 +19,9 @@ A fixed, generated test scene and golden-image tests, so that rendering changes 
 
 ## Acceptance criteria
 
-- [ ] The scene renders identically on B, Bi and C within the tolerance (software Vulkan).
-- [ ] The example shader pack (`docs/examples/shaderpacks/warm-glow`) has its own golden images.
-- [ ] A deliberate one-line change in the terrain shader makes the test fail with a readable diff.
+- [x] The scene renders identically on B, Bi and C within the tolerance (software Vulkan).
+- [x] The example shader pack (`docs/examples/shaderpacks/warm-glow`) has its own golden images.
+- [x] A deliberate one-line change in the terrain shader makes the test fail with a readable diff.
 - [ ] The owner looked at the scene on the laptop (Vega 10 and GTX 1660 Ti) and confirmed it matches the golden images.
 
 ## Out of scope

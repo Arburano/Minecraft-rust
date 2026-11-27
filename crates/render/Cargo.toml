@@ -22,6 +22,9 @@ naga = { workspace = true }
 
 [dev-dependencies]
 world = { path = "../world" }
+assets = { path = "../assets" }
+png = { workspace = true }
+toml = { workspace = true }
 
 [lints]
 workspace = true

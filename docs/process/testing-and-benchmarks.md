@@ -8,6 +8,7 @@
 | Property tests (`proptest`) | crate `tests/` | coordinates, palette, lighting, masks, region merging, serialization |
 | Reference comparisons | `tests/` | optimized implementation against a naive one (mesher, lighting, gather) |
 | Golden files | `tests/golden/` | disk and network formats, asset conversion |
+| Golden images | `crates/render/tests/golden/` | anything that changes what the terrain looks like (T1-21, below) |
 | Integration | `crates/<bin>/tests/` | server + bots, handshake, mods |
 | Mod scenario tests | `engine-cli test` | every mod in `mods/` |
 | Fuzzing | `fuzz/` (cargo-fuzz), later | network and disk decoders |
@@ -45,9 +46,36 @@ CI smoke test: `crates/client/tests/bots.rs` — 50 bots against an in-process s
 
 1. `cargo fmt --all --check`, `cargo clippy --workspace --all-targets`, `cargo test --workspace` — green.
 2. New logic — with tests. An optimization — with a before/after benchmark.
-3. If a disk/network format changed — updated golden files and the format version.
+3. If a disk/network format changed — updated golden files and the format version. If the picture changed on purpose — refreshed golden images, looked at before committing.
 4. If a specification changed — the updated document in `docs/`.
 
 ## Without a GPU
 
-CI has no GPU. Render code is split into pure logic (culling, packing, path selection by capabilities) with unit tests and a thin wgpu layer. Tests with a GPU are marked `#[ignore]` and run manually/on a separate runner.
+CI has no GPU. Render code is split into pure logic (culling, packing, path selection by capabilities) with unit tests and a thin wgpu layer. GPU tests run on **software Vulkan** (Mesa lavapipe, `mesa-vulkan-drivers`): CI installs it and sets `REQUIRE_GPU=1`, so a GPU test that finds no adapter fails there instead of skipping. Locally, without an adapter, they skip.
+
+## Render reference scene (T1-21)
+
+`crates/render/tests/reference_scene.rs` builds a fixed scene in code (no world file, no Mojang assets, fallback textures only), lights and meshes it with the real `light` and `mesh` code, and renders it offscreen at 320×180 from 7 fixed cameras at noon:
+
+| Camera | What a regression looks like there |
+| --- | --- |
+| `overview` | the whole scene from above: missing chunks, wrong batch placement |
+| `material_stand` | one block of every kind (all fallback textures, cutout glass and leaves, water): wrong texture layers, alpha |
+| `white_furnace` | a closed snow room lit by a glowstone grid: any seam, tint or unexpected step is a bug |
+| `light_ramp` | a corridor with glowstone at one end: block light 15 → 0 on the floor |
+| `sky_shaft` | a closed box with a 1×1 roof hole: sky light spreading from the spot |
+| `chunk_border` | a checker across x = 0 / z = 0, the mesh chunk and render batch borders: seams, gaps, flipped faces |
+| `underwater` | the camera inside a water pool |
+
+- **Golden images:** `crates/render/tests/golden/<camera>.png` (and `warm-glow-<camera>.png` for the example shader pack, `docs/examples/shaderpacks/warm-glow`, with its option defaults and its post pass). Paths B, Bi and C are all compared with the same images (written from Bi). On lavapipe B and Bi are bit-identical to them and C differs by at most a few levels on a handful of pixels.
+- **Comparison:** a pixel differs when a channel differs by more than 8; at most 0.5% of pixels may differ. On failure the test writes `target/render-diffs/<camera>-<path>-actual.png` and `-diff.png` (magenta = different, over the dimmed golden image); CI uploads them as the `render-diffs` artifact.
+- **Refreshing on purpose:** `UPDATE_GOLDEN=1 cargo test -p render --test reference_scene`, then **look** at the new images (e.g. side by side with the old ones in a diff viewer) before committing them. Never refresh to make a red test green without knowing why the picture changed.
+- **Self-test:** `a_one_line_shading_change_fails_the_comparison` renders the white room with a 30% darker surface shading and checks that the comparison fails with a readable message.
+- **New cameras** come with new features (water surface, shadows, PBR, model blocks; T1-22, T1-23): add a camera, generate its image, review it.
+
+### On the laptop: comparing GPUs and RenderDoc
+
+The golden images come from software Vulkan (the CI authority). On a hardware GPU the test reports mismatches as warnings and writes their images, but fails only with `REFERENCE_STRICT=1`, because rasterization rules allow tiny differences between GPUs.
+
+- **See the scene from a real GPU:** `REFERENCE_OUT=ref-vega ADAPTER_NAME=vega cargo test -p render --test reference_scene -- --nocapture` (PowerShell: `$env:REFERENCE_OUT="ref-vega"; $env:ADAPTER_NAME="vega"; cargo test ...`), the same with `1660`, then compare the folders with `crates/render/tests/golden/` side by side. `WGPU_BACKEND=vulkan|dx12` picks the backend. Every image is written, named `<camera>-<path>.png`.
+- **RenderDoc:** it captures frames at presentation, and the reference test has no window. To inspect a frame, capture the game client instead (`client --offline-name Dev`, RenderDoc → Launch Application with the client executable, F12 in game): the terrain pass, the `post` pass of a shader pack, the Texture Viewer for color and depth, the Mesh Viewer for a batch's quads and Pixel History on a wrong pixel. If a frame debug of the exact reference scene is needed, the scene can be shown in the client as a debug world (a follow-up, not done).

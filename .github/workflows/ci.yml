@@ -57,8 +57,20 @@ jobs:
         run: cargo fmt --all --check
       - name: Clippy
         run: cargo clippy --workspace --all-targets
+      - name: Software Vulkan (render golden images, T1-21)
+        run: sudo apt-get update && sudo apt-get install -y mesa-vulkan-drivers
       - name: Tests
         run: cargo test --workspace
+        env:
+          # The render reference scene must run, not skip (T1-21).
+          REQUIRE_GPU: "1"
+      - name: Render diff images
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: render-diffs
+          path: target/render-diffs/
+          if-no-files-found: ignore
       - name: Worldgen without the built-in overworld (T1-18)
         run: cargo check -p worldgen --no-default-features
       - name: Benches compile

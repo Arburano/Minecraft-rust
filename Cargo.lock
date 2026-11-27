@@ -4062,15 +4062,18 @@ name = "render"
 version = "0.0.1"
 dependencies = [
  "anyhow",
+ "assets",
  "bytemuck",
  "clap",
  "glam 0.34.3",
  "light",
  "mesh",
  "naga",
+ "png",
  "pollster",
  "serde",
  "serde_json",
+ "toml",
  "wgpu",
  "world",
 ]
