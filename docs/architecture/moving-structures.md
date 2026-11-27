@@ -1,6 +1,6 @@
 # Moving structures (grids)
 
-Decision: [ADR-0019](../adr/0019-moving-block-structures.md) (Proposed). Capability: `moving_grids` ([ADR-0018](../adr/0018-engine-capabilities-per-build.md)). Background: [review of Create: Aeronautics and Sable](../research/moving-structures-review-2026-11-27.md). Status: design; nothing implemented (stage 4).
+Decision: [ADR-0019](../adr/0019-moving-block-structures.md) (accepted 2026-11-27). Capability: `moving_grids` ([ADR-0018](../adr/0018-engine-capabilities-per-build.md)). Background: [review of Create: Aeronautics and Sable](../research/moving-structures-review-2026-11-27.md). Status: design; nothing implemented (stage 4).
 
 Goal: players build ships, aircraft, rockets and vehicles out of blocks; once assembled they fly, float, drive and crash with real physics, the machines on board keep working, and players walk on deck while they move.
 

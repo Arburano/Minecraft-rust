@@ -1,6 +1,6 @@
 # Dimensions and space
 
-Capabilities: `dimensions`, `space` ([ADR-0018](../adr/0018-engine-capabilities-per-build.md), Proposed). Status: design; today a server has one world, the overworld.
+Capabilities: `dimensions`, `space` ([ADR-0018](../adr/0018-engine-capabilities-per-build.md), accepted 2026-11-27). Status: design; today a server has one world, the overworld.
 
 ## Dimensions
 

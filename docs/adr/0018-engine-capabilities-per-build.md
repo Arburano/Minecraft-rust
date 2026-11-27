@@ -1,6 +1,6 @@
 # 0018. Engine capabilities activated by builds
 
-Status: Proposed (2026-11-27; owner decision needed)
+Status: Accepted (owner, 2026-11-27)
 
 ## Context
 

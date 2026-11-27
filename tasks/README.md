@@ -99,7 +99,7 @@ Wave 1 tasks touch different crates (`world`, `mesh`, `render`, `engine-core`, `
 - Replaceable movement and world generation ("gameplay slots") — [ADR-0013](../docs/adr/0013-replaceable-movement-and-worldgen.md), accepted by the owner 2026-11-22 → [T1-18](stage-1/T1-18-gameplay-slots.md).
 - External projects review (2026-11-26, [research](../docs/research/external-projects-review-2026-11-26.md)): "shader packs change everything, as Iris does" → [ADR-0015](../docs/adr/0015-programmable-render-graph.md) (accepted 2026-11-27) and T1-22; readiness for a non-cubic world → [ADR-0016](../docs/adr/0016-geometry-agnostic-meshing.md) (accepted 2026-11-27) and T1-23; visual checks → T1-21 (prerequisite for both); generation backpressure and lag-machine limits → T2-10.
 - Modular base game and builds (owner request 2026-11-27) → [ADR-0017](../docs/adr/0017-modular-base-game-and-builds.md) and T1-24 (done): `core`, `movement`, `overworld`, planned `nether`, `end`, `mobs`; later modules (moving structures with collision, space, roles and permissions) are documented in [builds](../docs/modding/builds.md).
-- Planned builds (owner, 2026-11-27): an industrial mod pack (giant flying constructions as in Create: Aeronautics, machines, planets, space, rockets) and an RPG build (giant world, zones, evolving dungeons, bosses, progression, skills) → [builds](../docs/modding/builds.md), [ADR-0018](../docs/adr/0018-engine-capabilities-per-build.md) (capabilities, proposed), [ADR-0019](../docs/adr/0019-moving-block-structures.md) (moving structures, proposed), [moving-structures](../docs/architecture/moving-structures.md), [dimensions](../docs/architecture/dimensions.md). Tasks come with stage 4 once the ADRs are accepted: `dimensions`, `moving_grids` (Rapier, grid storage, colliders, riding, network, rendering transform), `zones`, `instances`, `progression`.
+- Planned builds (owner, 2026-11-27): an industrial mod pack (giant flying constructions as in Create: Aeronautics, machines, planets, space, rockets) and an RPG build (giant world, zones, evolving dungeons, bosses, progression, skills) → [builds](../docs/modding/builds.md), [ADR-0018](../docs/adr/0018-engine-capabilities-per-build.md) (capabilities, accepted 2026-11-27), [ADR-0019](../docs/adr/0019-moving-block-structures.md) (moving structures, accepted 2026-11-27), [moving-structures](../docs/architecture/moving-structures.md), [dimensions](../docs/architecture/dimensions.md). Tasks: T4-01 … T4-10 (Stage 4 below).
 - T1-16 leftovers (the owner accepted both options, 2026-11-22): an ADR for persistent per-region light grids (≤ 100 µs per edit), and a cheaper pass for sky changes reaching below the snapshot (≈ 10 ms on the VM). Chained slabs are preferred because they are exact and have no visible delay; spreading over frames is the fallback.
 
 ## Stage 2: network and server
@@ -131,3 +131,22 @@ The owner decided on 2026-11-23 to start stage 2 while the T1-15 laptop runs are
 | 6 | T2-09 | everything above |
 
 Stage 1 work that continues in parallel: T1-15 laptop runs, T1-17, T1-18, the T1-19 laptop check, T1-21 (and T1-22, T1-23 once their ADRs are accepted), the T1-16 follow-ups, and gameplay polish (block highlight, hold to dig, transparent pass, block models, biome tints).
+
+## Stage 4: engine capabilities for the planned builds (early backlog)
+
+Engine work behind [ADR-0018](../docs/adr/0018-engine-capabilities-per-build.md) and [ADR-0019](../docs/adr/0019-moving-block-structures.md) (both accepted by the owner 2026-11-27, with the defaults of open questions 19–22). Gameplay modules (`contraptions`, `rocketry`, `machines`, `dungeons`, `skills`, …) are mods on top of these and get their own tasks with the mod API (stage 3). The rest of stage 4 (blocks, items, crafting, mobs) is planned later.
+
+| Task | Name | Depends on | Owner | Status |
+| --- | --- | --- | --- | --- |
+| [T4-01](stage-4/T4-01-capabilities.md) | Engine capabilities per build | T1-24 | agent (cloud) | todo |
+| [T4-02](stage-4/T4-02-dimensions.md) | Dimensions | T4-01, T2-06, T2-08 | agent (cloud) | todo |
+| [T4-03](stage-4/T4-03-moving-grids-physics.md) | Moving grids: storage and physics | T4-01, T4-02 | agent (cloud) | todo |
+| [T4-04](stage-4/T4-04-grid-assembly-and-api.md) | Grid assembly, disassembly, splitting and the grids mod API | T4-03 (WIT part: stage 3 mod API) | agent (cloud) | todo |
+| [T4-05](stage-4/T4-05-riding-grids-and-network.md) | Riding grids and grid replication | T4-03, T2-03, T2-07 | agent (cloud) + owner feel review | todo |
+| [T4-06](stage-4/T4-06-grid-rendering.md) | Grid rendering | T4-03, T1-22 | agent (cloud) + laptop | todo |
+| [T4-07](stage-4/T4-07-space.md) | Space and planets | T4-02, T4-03 | agent (cloud) | todo |
+| [T4-08](stage-4/T4-08-zones.md) | Zones | T4-01 | agent (cloud) | todo |
+| [T4-09](stage-4/T4-09-instances.md) | Instances | T4-02, T4-08 | agent (cloud) | todo |
+| [T4-10](stage-4/T4-10-progression.md) | Progression | T4-01, stage 3 mod API | agent (cloud) | todo |
+
+Order: T4-01 first (can start now); then T4-02; then T4-03 and T4-08 in parallel; then T4-04, T4-05, T4-06, T4-07, T4-09; T4-10 with the stage 3 mod API.

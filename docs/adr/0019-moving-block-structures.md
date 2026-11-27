@@ -1,6 +1,6 @@
 # 0019. Moving block structures: grids with rigid-body physics
 
-Status: Proposed (2026-11-27; owner decision needed). Capability `moving_grids` (ADR-0018).
+Status: Accepted (owner, 2026-11-27, with the start limits below). Capability `moving_grids` (ADR-0018).
 
 ## Context
 

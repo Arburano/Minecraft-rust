@@ -89,7 +89,7 @@ A world module provides its dimension's `worldgen/<dimension>.toml`, which picks
 
 ## Engine capabilities
 
-Some features cannot be mods: they need engine speed or reach into physics, network and rendering. They are **capabilities** ([ADR-0018](../adr/0018-engine-capabilities-per-build.md), Proposed): a mod requires them in `mod.toml` (`[requires] capabilities = [...]`), and the engine starts only those that some mod of the build requires. A capability no mod asked for does not run (no threads, memory, tick systems, messages or render passes); heavy ones are also left out of the build's release binary by a cargo feature.
+Some features cannot be mods: they need engine speed or reach into physics, network and rendering. They are **capabilities** ([ADR-0018](../adr/0018-engine-capabilities-per-build.md), accepted 2026-11-27): a mod requires them in `mod.toml` (`[requires] capabilities = [...]`), and the engine starts only those that some mod of the build requires. A capability no mod asked for does not run (no threads, memory, tick systems, messages or render passes); heavy ones are also left out of the build's release binary by a cargo feature.
 
 | Capability | What it gives | Spec | Stage |
 | --- | --- | --- | --- |
@@ -160,4 +160,4 @@ Example builds once these exist:
 - The server does not send its mod list to the client (`mod_manifest_hash` in `Welcome` is zero); both sides must run the same build.
 - The updater (ADR-0010) does not download per build.
 - `provides` and slot checks in `mod.toml` (T1-18).
-- `[requires] capabilities` (ADR-0018, waiting for the owner's decision).
+- `[requires] capabilities` (ADR-0018, accepted, T4-01).

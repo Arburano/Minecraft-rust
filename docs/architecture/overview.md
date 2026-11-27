@@ -53,7 +53,7 @@ The engine is a "voxel OS": the core (world, rendering, networking, scheduling, 
 
 Dependency rule: arrows only point down. `world` knows nothing about rendering, `sim` knows nothing about the network (the network feeds intents into `PreTick` and picks up deltas in `PostTick`). A new link between crates that violates the direction requires an ADR.
 
-Optional engine features (planned): a build starts only the **capabilities** its mods require — `dimensions`, `moving_grids`, `space`, `zones`, `instances`, `progression` ([ADR-0018](../adr/0018-engine-capabilities-per-build.md), proposed). Moving structures would live in `sim` (grids, Rapier behind the `moving_grids` feature), `server` (regions, network) and `render` (per-object transforms): [moving-structures.md](moving-structures.md), [dimensions.md](dimensions.md).
+Optional engine features (planned): a build starts only the **capabilities** its mods require — `dimensions`, `moving_grids`, `space`, `zones`, `instances`, `progression` ([ADR-0018](../adr/0018-engine-capabilities-per-build.md), accepted 2026-11-27). Moving structures would live in `sim` (grids, Rapier behind the `moving_grids` feature), `server` (regions, network) and `render` (per-object transforms): [moving-structures.md](moving-structures.md), [dimensions.md](dimensions.md).
 
 ## Threads
 

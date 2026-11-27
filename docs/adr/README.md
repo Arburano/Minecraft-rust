@@ -30,5 +30,5 @@ Template — [0000-template.md](0000-template.md).
 | [0015](0015-programmable-render-graph.md) | Programmable render graph for shader packs (hook version 2) | Accepted |
 | [0016](0016-geometry-agnostic-meshing.md) | Geometry-agnostic meshing and render buckets | Accepted |
 | [0017](0017-modular-base-game-and-builds.md) | Modular base game and builds | Accepted |
-| [0018](0018-engine-capabilities-per-build.md) | Engine capabilities activated by builds | Proposed |
-| [0019](0019-moving-block-structures.md) | Moving block structures: grids with rigid-body physics | Proposed |
+| [0018](0018-engine-capabilities-per-build.md) | Engine capabilities activated by builds | Accepted |
+| [0019](0019-moving-block-structures.md) | Moving block structures: grids with rigid-body physics | Accepted |
