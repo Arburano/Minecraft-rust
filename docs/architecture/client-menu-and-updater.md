@@ -68,7 +68,7 @@ Menu responsibilities (formerly the launcher's responsibilities):
   
   The menu appears before anything else loads; a world loads only after "Play".
 - **Screens:**
-  - title: the offline name field (required while Microsoft login is not available, T0-10), single-player, multiplayer (disabled until stage 2), settings, about, quit;
+  - title: the offline name field (required while Microsoft login is not available, T0-10), single-player, multiplayer (T2-08), settings, about, quit;
   - world list: play, delete with confirmation, create with a name and a seed (a number is used as is, text is hashed, empty is random);
   - settings: quality profile, FOV, mouse sensitivity, graphics API, GPU class, GPU name filter, autosave interval;
   - about: the `docs/legal.md` rule 4 notice, which is also on the title screen.
@@ -92,3 +92,11 @@ Menu responsibilities (formerly the launcher's responsibilities):
   - `--autoplay <world>` opens a world directly;
   - `--screenshot file.bmp:N` saves frame N (in a world, once it is playable) and exits. The last two are used for checks in the cloud under Xvfb with software Vulkan.
 
+
+## Multiplayer and the embedded server (T2-08)
+
+- **Multiplayer screen:** direct connect (`host`, `host:port`, `[v6]:port`; port 47777 by default; host names are resolved), a saved server list (name + address, kept in `settings.toml` as `servers`; add, join, remove), and **On this network**: servers heard on the LAN while the screen is open (joinable if they speak this build's protocol, otherwise marked "other game version"). Offline mode only, so only LAN and private servers (legal.md rule 7). `--connect HOST:PORT` still joins at start.
+- **LAN discovery:** an offline server bound to a private (RFC 1918 / IPv6 ULA), non-loopback address broadcasts `VXEN-LAN <protocol> <port> <name>` to UDP port 47778 every 2 s (`protocol::lan`); the client listens on that port only while the multiplayer screen is open and accepts announcements only from private, link-local or loopback senders. Servers on loopback, public or online servers never announce. A dedicated server on a LAN: `server --offline --bind 192.168.x.y`.
+- **Single-player is a client of an embedded server:** `Session::open` starts `server::Server` in the same process (offline, `127.0.0.1:<free port>`, view distance = render distance + 2, simulation distance ≤ 8, the settings' worker threads for generation, 2 region threads, no LAN announcement) and joins it like any server, with the offline name as the player. One code path for both modes: prediction, reconciliation, edits, saving and streaming are the multiplayer ones. The transport is QUIC over loopback rather than an in-memory channel (same code, no special case; loopback latency is well under a tick).
+- **Saving:** the server saves edited columns when they leave every territory, every 30 s (autosave) and on shutdown, and the player on leaving (after applying the intents it already sent) and in the autosave; `world.toml` keeps the menu's view (name, seed, last played, player). Closing a world waits (≤ 2 s) until the server has applied the last intents and answered the pending edits, then stops the embedded server.
+- **Old saves:** worlds from stage 1 keep the player only in `world.toml`; on first open it is copied to `players/<player id>.toml`, and the seed from `world.toml` is given to the server, which writes `server.toml`. Columns use the same T1-02 store. Tested (`crates/client/tests/session.rs`, `stage_1_saves_open_on_the_embedded_server`).

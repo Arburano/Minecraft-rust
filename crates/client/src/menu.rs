@@ -33,6 +33,8 @@ pub enum Screen {
     ResourcePacks,
     /// Shader pack (choose, options).
     ShaderPack,
+    /// Multiplayer: direct connect, the server list, LAN servers (T2-08).
+    Multiplayer,
 }
 
 /// What the player asked for.
@@ -41,6 +43,8 @@ pub enum MenuAction {
     None,
     /// Open a world.
     Play(PathBuf),
+    /// Join a server (`host[:port]`).
+    Join(String),
     /// Settings were changed and confirmed.
     SaveSettings(Settings),
     /// Pack choices changed: save and apply them now (also in a running world).
@@ -68,6 +72,10 @@ pub struct Menu {
     /// Screen to return to from the pack screens (settings, or the pause menu).
     pub packs_return: Option<Screen>,
     shader_cache: Option<(String, Result<ShaderPack, String>)>,
+    direct: String,
+    add_name: String,
+    add_address: String,
+    lan: Option<client::lan::LanListener>,
 }
 
 impl Menu {
@@ -91,6 +99,10 @@ impl Menu {
             confirm_delete: None,
             message: None,
             gpu_line: String::new(),
+            direct: String::new(),
+            add_name: String::new(),
+            add_address: String::new(),
+            lan: None,
         }
     }
 
@@ -126,6 +138,7 @@ impl Menu {
                         Screen::About => self.about(ui),
                         Screen::ResourcePacks => self.resource_packs(ui),
                         Screen::ShaderPack => self.shader_pack(ui),
+                        Screen::Multiplayer => self.multiplayer(ui, settings),
                     };
                 });
             });
@@ -159,10 +172,21 @@ impl Menu {
                 action = MenuAction::SaveSettings(s);
             }
         }
-        ui.add_enabled(
-            false,
-            egui::Button::new("Multiplayer (stage 2)").min_size([260.0, 36.0].into()),
-        );
+        if ui
+            .add_enabled_ui(valid, |ui| button(ui, "Multiplayer"))
+            .inner
+        {
+            self.message = None;
+            self.screen = Screen::Multiplayer;
+            // Listening for LAN servers only while this screen is open.
+            self.lan = client::lan::LanListener::start().ok();
+            if settings.offline_name.as_deref() != Some(self.name.trim()) {
+                let mut s = settings.clone();
+                s.offline_name = Some(self.name.trim().to_owned());
+                self.draft = s.clone();
+                action = MenuAction::SaveSettings(s);
+            }
+        }
         if button(ui, "Settings") {
             self.draft = settings.clone();
             self.message = None;
@@ -176,6 +200,122 @@ impl Menu {
         }
         ui.add_space(30.0);
         ui.small(LEGAL_NOTICE);
+        action
+    }
+
+    fn multiplayer(&mut self, ui: &mut Ui, settings: &Settings) -> MenuAction {
+        let mut action = MenuAction::None;
+        ui.label(RichText::new("Multiplayer").size(20.0));
+        ui.small("Offline mode: LAN and private servers only (docs/legal.md rule 7).");
+        ui.add_space(8.0);
+        ui.horizontal(|ui| {
+            ui.add_space(ui.available_width() / 2.0 - 220.0);
+            ui.label("Address");
+            ui.add_sized(
+                [240.0, 22.0],
+                egui::TextEdit::singleline(&mut self.direct).hint_text("host:47777"),
+            );
+            if ui.button("Join").clicked() {
+                action = MenuAction::Join(self.direct.trim().to_owned());
+            }
+        });
+        ui.add_space(12.0);
+        ui.label(RichText::new("Servers").size(18.0));
+        let mut remove = None;
+        egui::ScrollArea::vertical()
+            .id_salt("servers")
+            .max_height(160.0)
+            .show(ui, |ui| {
+                if settings.servers.is_empty() {
+                    ui.label("No saved servers.");
+                }
+                for (i, s) in settings.servers.iter().enumerate() {
+                    ui.horizontal(|ui| {
+                        ui.add_space(ui.available_width() / 2.0 - 220.0);
+                        ui.label(RichText::new(&s.name).strong());
+                        ui.small(&s.address);
+                        if ui.button("Join").clicked() {
+                            action = MenuAction::Join(s.address.clone());
+                        }
+                        if ui.button("Remove").clicked() {
+                            remove = Some(i);
+                        }
+                    });
+                }
+            });
+        egui::Grid::new("add_server").num_columns(2).show(ui, |ui| {
+            ui.label("Name");
+            ui.text_edit_singleline(&mut self.add_name);
+            ui.end_row();
+            ui.label("Address");
+            ui.text_edit_singleline(&mut self.add_address);
+            ui.end_row();
+        });
+        let mut add = false;
+        if ui.button("Add server").clicked() {
+            match client::lan::resolve(&self.add_address) {
+                Ok(_) => add = true,
+                Err(e) => self.message = Some(e),
+            }
+        }
+        if add || remove.is_some() {
+            let mut s = settings.clone();
+            if let Some(i) = remove {
+                s.servers.remove(i);
+            }
+            if add {
+                let name = if self.add_name.trim().is_empty() {
+                    self.add_address.trim().to_owned()
+                } else {
+                    self.add_name.trim().to_owned()
+                };
+                s.servers.push(client::settings::SavedServer {
+                    name,
+                    address: self.add_address.trim().to_owned(),
+                });
+                self.add_name.clear();
+                self.add_address.clear();
+            }
+            self.draft = s.clone();
+            action = MenuAction::SaveSettings(s);
+        }
+        ui.add_space(12.0);
+        ui.label(RichText::new("On this network").size(18.0));
+        match self.lan.as_mut() {
+            None => {
+                ui.small("LAN discovery is not available (the port is in use).");
+            }
+            Some(lan) => {
+                lan.poll();
+                let found = lan.servers();
+                if found.is_empty() {
+                    ui.small("Looking for servers…");
+                }
+                for s in found {
+                    ui.horizontal(|ui| {
+                        ui.add_space(ui.available_width() / 2.0 - 220.0);
+                        ui.label(RichText::new(&s.name).strong());
+                        ui.small(s.addr.to_string());
+                        if s.compatible {
+                            if ui.button("Join").clicked() {
+                                action = MenuAction::Join(s.addr.to_string());
+                            }
+                        } else {
+                            ui.small("other game version");
+                        }
+                    });
+                }
+                // Keep listening while the screen is open.
+                ui.ctx()
+                    .request_repaint_after(std::time::Duration::from_millis(500));
+            }
+        }
+        ui.add_space(16.0);
+        if ui.button("Back").clicked() {
+            self.message = None;
+            self.lan = None;
+            self.screen = Screen::Main;
+        }
         action
     }
 

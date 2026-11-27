@@ -295,6 +295,9 @@ impl App {
         config.radius = self.settings.quality.settings().render_distance as i32;
         config.threads = self.settings.threads();
         config.autosave = Duration::from_secs(u64::from(self.settings.autosave_seconds.max(5)));
+        if let Some(name) = &self.settings.offline_name {
+            config.player_name = name.clone();
+        }
         config
     }
 
@@ -355,7 +358,7 @@ impl App {
                 self.apply_shader_pack();
                 self.set_grab(true);
             }
-            Err(e) => self.menu.message = Some(format!("Could not open the world: {e}")),
+            Err(e) => self.menu.message = Some(format!("Could not join or open the world: {e}")),
         }
     }
 
@@ -788,6 +791,13 @@ impl App {
                 self.menu.message = None;
                 self.open_world(dir);
             }
+            MenuAction::Join(address) => match client::lan::resolve(&address) {
+                Ok(addr) => {
+                    self.menu.message = None;
+                    self.join_server(addr);
+                }
+                Err(e) => self.menu.message = Some(e),
+            },
             MenuAction::SaveSettings(s) => {
                 self.settings = s;
                 self.save_settings();

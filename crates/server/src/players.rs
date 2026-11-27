@@ -15,6 +15,9 @@ pub struct SavedPlayer {
     pub pitch: f64,
     /// Flying.
     pub flying: bool,
+    /// Fly speed multiplier (0 = ×1; older files have none).
+    #[serde(default)]
+    pub fly_speed: f64,
 }
 
 fn path(world: &Path, id: &str) -> PathBuf {
@@ -53,6 +56,7 @@ mod tests {
             yaw: 0.5,
             pitch: -0.1,
             flying: true,
+            fly_speed: 2.0,
         };
         save(&dir, "abc", &p).expect("save");
         assert_eq!(load(&dir, "abc"), Some(p));

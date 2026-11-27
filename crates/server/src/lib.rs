@@ -74,6 +74,11 @@ pub struct ServerConfig {
     pub sim_distance: i32,
     /// Test entities spawned around the world spawn at start (T2-07).
     pub test_walkers: usize,
+    /// Vertical extent of the world.
+    pub bounds: WorldBounds,
+    /// Announce the server on the LAN (only offline servers on a private
+    /// non-loopback address ever do; legal.md rule 7).
+    pub lan_announce: bool,
     /// Display name.
     pub server_name: String,
     /// Message of the day.
@@ -102,6 +107,8 @@ impl ServerConfig {
                 .map_or(2, |n| (n.get() * 4 / 5).max(1)),
             sim_distance: DEFAULT_SIM_DISTANCE,
             test_walkers: 0,
+            bounds: WorldBounds::default(),
+            lan_announce: true,
             server_name: "Voxel Engine server".into(), // OPEN-QUESTION: 15
             motd: String::new(),
         }
@@ -146,6 +153,41 @@ fn world_seed(config: &ServerConfig) -> Result<u64, ServerError> {
     Ok(seed)
 }
 
+/// A private LAN address (RFC 1918, IPv6 unique local) — not loopback: the
+/// address an offline server may announce on.
+fn lan_private(ip: std::net::IpAddr) -> bool {
+    match ip {
+        std::net::IpAddr::V4(v4) => v4.is_private(),
+        std::net::IpAddr::V6(v6) => (v6.segments()[0] & 0xfe00) == 0xfc00,
+    }
+}
+
+/// Broadcasts the LAN announcement every few seconds until `stop`.
+fn start_announcer(port: u16, name: String, stop: Arc<AtomicBool>) {
+    let packet = protocol::lan::LanAnnouncement {
+        protocol: protocol::PROTOCOL_VERSION,
+        port,
+        name,
+    }
+    .encode();
+    let _ = std::thread::Builder::new()
+        .name("lan-announce".into())
+        .spawn(move || {
+            let Ok(socket) = std::net::UdpSocket::bind("0.0.0.0:0") else {
+                return;
+            };
+            if socket.set_broadcast(true).is_err() {
+                return;
+            }
+            let target =
+                std::net::SocketAddr::from(([255, 255, 255, 255], protocol::lan::LAN_PORT));
+            while !stop.load(Ordering::Relaxed) {
+                let _ = socket.send_to(&packet, target);
+                std::thread::sleep(Duration::from_secs(protocol::lan::LAN_INTERVAL_SECS));
+            }
+        });
+}
+
 /// A running server. Dropping it without [`Server::shutdown`] stops it too,
 /// but without waiting for the save.
 pub struct Server {
@@ -177,7 +219,7 @@ impl Server {
         std::fs::create_dir_all(&config.world_dir)
             .map_err(|e| ServerError::World(e.to_string()))?;
         let seed = world_seed(&config)?;
-        let bounds = WorldBounds::default();
+        let bounds = config.bounds;
         let store = WorldStore::open(&config.world_dir, &registry, bounds)
             .map_err(|e| ServerError::World(e.to_string()))?;
         let storage = Storage::start(store, Arc::clone(&registry))
@@ -240,6 +282,9 @@ impl Server {
             }
         });
         let stop = Arc::new(AtomicBool::new(false));
+        if config.lan_announce && config.policy.allow_offline && lan_private(addr.ip()) {
+            start_announcer(addr.port(), config.server_name.clone(), Arc::clone(&stop));
+        }
         let world_stop = Arc::clone(&stop);
         let world = std::thread::Builder::new()
             .name("world".into())
@@ -291,5 +336,15 @@ impl Server {
 impl Drop for Server {
     fn drop(&mut self) {
         self.stop_now();
+    }
+}
+
+#[cfg(test)]
+mod seed_tests {
+    #[test]
+    fn big_seeds_survive_toml() {
+        let text = toml::to_string(&super::WorldMeta { seed: u64::MAX }).expect("encode");
+        let back: super::WorldMeta = toml::from_str(&text).expect("decode");
+        assert_eq!(back.seed, u64::MAX, "{text}");
     }
 }

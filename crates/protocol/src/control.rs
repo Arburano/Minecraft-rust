@@ -144,6 +144,8 @@ pub struct Spawn {
     pub section_count: u32,
     /// Whether the player starts flying.
     pub flying: bool,
+    /// Fly speed multiplier the player starts with.
+    pub fly_speed: f64,
     /// Column radius the server streams (≥ 8, PRD §14).
     pub view_distance: u8,
 }
@@ -242,6 +244,7 @@ impl Message for ServerControl {
             Self::Spawn(s) => {
                 check(s.position.iter().all(|v| v.is_finite()), "spawn position")?;
                 check(s.yaw.is_finite() && s.pitch.is_finite(), "spawn angles")?;
+                check(s.fly_speed.is_finite() && s.fly_speed > 0.0, "fly speed")?;
                 check(
                     (1..=4096).contains(&s.section_count)
                         && s.min_section_y

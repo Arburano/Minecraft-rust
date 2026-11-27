@@ -62,6 +62,8 @@ pub const UNLOAD_MARGIN: i32 = 2;
 const MAX_PENDING: usize = 128;
 /// Cached columns decoded into a region's live map per tick at most.
 const MAX_DECODES_PER_TICK: usize = 64;
+/// Seconds between autosaves.
+const AUTOSAVE_SECONDS: u64 = 30;
 /// Where a new player appears (x, z); the height comes from the terrain.
 const WORLD_SPAWN: [f64; 2] = [8.5, 8.5];
 /// Columns around the world spawn stay live even with nobody online, so a
@@ -478,6 +480,9 @@ impl World {
                     p.body.flying = s.flying;
                     p.yaw = s.yaw;
                     p.pitch = s.pitch;
+                    if s.fly_speed > 0.0 {
+                        p.fly_speed = s.fly_speed;
+                    }
                     Region::send_spawn(&mut p, self.bounds, self.view);
                 }
                 // A new player waits in the spawn region (its region's tick
@@ -543,8 +548,9 @@ impl World {
                 let Some(rid) = self.owner.remove(&id) else {
                     return;
                 };
+                let (physics, swim) = (self.physics.clone(), self.swim.clone());
                 if let Some(r) = self.region_mut(rid)
-                    && let Some(p) = r.take(&id)
+                    && let Some(p) = r.take_leaving(&id, &physics, &swim)
                     && p.spawned
                     && let Err(e) = players::save(&self.dir, &id, &p.saved())
                 {
@@ -1084,6 +1090,10 @@ impl World {
                     .push(PlayerSnapshot::of_walker(w, r.id));
             }
         }
+        // Autosave (players and edited columns stay loaded).
+        if self.ticks > 0 && self.ticks % (AUTOSAVE_SECONDS * u64::from(TICK_RATE)) == 0 {
+            self.autosave();
+        }
         // Drop cached columns nobody can see (every second).
         if self.ticks % u64::from(TICK_RATE) == 0 {
             self.evict();
@@ -1128,12 +1138,35 @@ impl World {
         });
     }
 
+    /// Writes edited live columns and every player (they stay loaded).
+    fn autosave(&mut self) {
+        let mut records = Vec::new();
+        for r in &mut self.regions {
+            for c in r.unsaved.drain() {
+                if let Some(col) = r.map.column(c) {
+                    records.push(record(col));
+                }
+            }
+            for id in r.player_ids() {
+                if let Some(p) = r.player(id).filter(|p| p.spawned)
+                    && let Err(e) = players::save(&self.dir, id, &p.saved())
+                {
+                    eprintln!("server: saving player {}: {e}", p.name);
+                }
+            }
+        }
+        if !records.is_empty() {
+            let _ = self.storage.tx.send(Request::Save(records));
+        }
+    }
+
     fn shutdown(&mut self) {
         let mut records = Vec::new();
+        let (physics, swim) = (self.physics.clone(), self.swim.clone());
         for r in &mut self.regions {
             let ids: Vec<String> = r.player_ids().map(str::to_owned).collect();
             for id in ids {
-                if let Some(p) = r.take(&id) {
+                if let Some(p) = r.take_leaving(&id, &physics, &swim) {
                     let _ = p.out.send(ToConn::Kick(
                         KickReason::ShuttingDown,
                         "The server is shutting down".into(),

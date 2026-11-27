@@ -84,6 +84,7 @@ impl Player {
             yaw: self.yaw,
             pitch: self.pitch,
             flying: self.body.flying,
+            fly_speed: self.fly_speed,
         }
     }
 }
@@ -298,6 +299,37 @@ impl Region {
         p
     }
 
+    /// Removes a leaving player after applying the intents it already sent
+    /// (they arrived before its `Leave`), so the saved position is the one
+    /// the client ended at.
+    pub fn take_leaving(
+        &mut self,
+        id: &str,
+        physics: &PhysicsConfig,
+        swim: &[BlockStateId],
+    ) -> Option<Player> {
+        let mut p = self.take(id)?;
+        if p.spawned {
+            let world = MapBlocks {
+                map: &self.map,
+                swim,
+            };
+            while let Some(i) = p.intents.pop_front() {
+                p.fly_speed =
+                    apply_fly_steps(p.fly_speed, i.fly_speed_steps, physics.fly_speed_range);
+                step(
+                    &mut p.body,
+                    &physics_input(&i, p.fly_speed),
+                    physics,
+                    &world,
+                );
+                p.yaw = wire_yaw(&i);
+                p.pitch = f64::from(i.pitch.to_signed_radians());
+            }
+        }
+        Some(p)
+    }
+
     /// A player, read-only.
     #[must_use]
     pub fn player(&self, id: &str) -> Option<&Player> {
@@ -321,6 +353,7 @@ impl Region {
             min_section_y: bounds.min_section_y,
             section_count: bounds.section_count,
             flying: p.body.flying,
+            fly_speed: p.fly_speed,
             view_distance: view.clamp(2, 255) as u8,
         }));
     }

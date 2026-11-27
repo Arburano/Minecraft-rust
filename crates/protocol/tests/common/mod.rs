@@ -46,6 +46,7 @@ pub fn spawn() -> ServerControl {
         min_section_y: -4,
         section_count: 24,
         flying: false,
+        fly_speed: 1.0,
         view_distance: 12,
     })
 }

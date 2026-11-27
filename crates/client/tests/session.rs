@@ -23,7 +23,9 @@ fn config() -> SessionConfig {
     }
 }
 
-/// Frames at 60 Hz with a 20 TPS tick every third frame, until `done`.
+/// Frames with a 20 TPS tick every third frame, until `done`. Ticks run at
+/// the real rate: single-player runs on the embedded server (T2-08), which
+/// applies a client's intents at 20 TPS.
 fn run(s: &mut Session, input: PlayerInput, mut done: impl FnMut(&Session, u32) -> bool) {
     let start = Instant::now();
     let mut frame = 0u32;
@@ -34,7 +36,7 @@ fn run(s: &mut Session, input: PlayerInput, mut done: impl FnMut(&Session, u32) 
         }
         frame += 1;
         assert!(start.elapsed() < Duration::from_secs(120), "timed out");
-        std::thread::sleep(Duration::from_millis(1));
+        std::thread::sleep(Duration::from_micros(16_667));
     }
 }
 
@@ -64,15 +66,22 @@ fn create_play_quit_load_returns_the_same_world() {
         ..PlayerInput::default()
     };
     run(&mut s, walk, |_, f| f >= 120);
-    s.look(0.0, 1.0); // forward and a little down
+    // Place against whatever is in reach: sweep the view around and down.
     for id in [dirt, glass] {
-        if let Some(hit) = s.target() {
-            let at = hit.place_pos();
-            if s.place(id) {
-                changed.push(at);
+        'aim: for turn in 0..8 {
+            s.look(0.8, 0.0);
+            for pitch in [0.3, -0.2, -0.6, -1.0, -1.4] {
+                s.look(0.0, pitch - s.view_dir().y.asin());
+                if let Some(hit) = s.target() {
+                    let at = hit.place_pos();
+                    if s.place(id) {
+                        changed.push(at);
+                        let _ = turn;
+                        break 'aim;
+                    }
+                }
             }
         }
-        s.look(0.0, -0.4);
     }
     assert!(changed.len() >= 3, "edits made: {changed:?}");
     let before: Vec<(BlockPos, Option<BlockStateId>)> =
@@ -82,6 +91,10 @@ fn create_play_quit_load_returns_the_same_world() {
         .iter()
         .map(|&c| s.map().column(c).expect("loaded").sections().to_vec())
         .collect();
+    // Single-player runs on the embedded server (T2-08): digging under the
+    // feet is predicted at once and applied by the server a tick later, so
+    // the server may correct the position. Stand still until it agrees.
+    run(&mut s, PlayerInput::default(), |_, f| f >= 90);
     let player = s.player().pos;
     s.close().expect("save and close");
 
@@ -197,5 +210,79 @@ fn unloaded_columns_are_reported_for_the_renderer() {
         );
     }
     s.close().expect("close");
+    let _ = std::fs::remove_dir_all(root);
+}
+
+/// T2-08: a world saved by the stage 1 client (player in `world.toml`,
+/// columns written straight by `WorldStore`, no `server.toml`, no player
+/// file) opens through the embedded server where it was left.
+#[test]
+fn stage_1_saves_open_on_the_embedded_server() {
+    use world::storage::{ColumnRecord, WorldStore};
+    use world::{RegistryBuilder, Section, registry::blocks_from_dir};
+
+    let root = std::env::temp_dir().join(format!("client-migrate-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    let dir = worlds::create(&root, "Old world", 11).expect("create");
+    let bounds = config().bounds;
+    // A column at (3, 3) that is solid glass up to y = 40: not what the
+    // generator makes, so seeing it proves the save was read.
+    let data = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../mods/core/data");
+    let mut b = RegistryBuilder::new();
+    b.add_mod(
+        "core",
+        blocks_from_dir(&data.join("blocks")).expect("blocks"),
+    );
+    let reg = b.build().expect("registry");
+    let glass = reg.state_id("core:glass").expect("glass");
+    {
+        let mut store = WorldStore::open(&dir, &reg, bounds).expect("store");
+        let sections = (0..bounds.section_count)
+            .map(|i| {
+                if i < 3 {
+                    Section::uniform(glass)
+                } else {
+                    Section::new()
+                }
+            })
+            .collect();
+        store
+            .save(&ColumnRecord {
+                pos: ColumnPos { x: 3, z: 3 },
+                bounds,
+                sections,
+                light: Vec::new(),
+                entities: Vec::new(),
+            })
+            .expect("save");
+    }
+    let mut info = worlds::WorldInfo::load(&dir).expect("info");
+    info.player.pos = Some([56.5, 48.0, 56.5]);
+    info.player.flying = true;
+    info.player.fly_speed = 2.0;
+    info.save(&dir).expect("save info");
+    assert!(!dir.join("server.toml").exists());
+
+    let mut s = Session::open(&dir, config()).expect("open");
+    run(&mut s, PlayerInput::default(), |s, _| s.is_playing());
+    assert_eq!(
+        s.player().pos,
+        glam::DVec3::new(56.5, 48.0, 56.5),
+        "the saved position"
+    );
+    assert!(s.is_flying());
+    assert!((s.fly_speed() - 2.0).abs() < 1e-12);
+    assert_eq!(
+        s.map().get_block(BlockPos::new(50, 20, 50)),
+        Some(glass),
+        "the saved column"
+    );
+    s.close().expect("close");
+    assert!(
+        dir.join("server.toml").exists(),
+        "the server keeps its seed now"
+    );
+    let text = std::fs::read_to_string(dir.join("server.toml")).expect("server.toml");
+    assert!(text.contains("seed = 11"), "{text}");
     let _ = std::fs::remove_dir_all(root);
 }

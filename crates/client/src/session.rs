@@ -22,12 +22,14 @@ use sim::raycast::RayHit;
 use world::coords::{BlockPos, SectionPos};
 use world::map::DirtyKind;
 use world::registry::blocks_from_dir;
-use world::storage::{ColumnRecord, StorageError, WorldStore};
+use world::storage::StorageError;
 use world::{BlockStateId, Column, ColumnPos, Registry, RegistryBuilder, WorldBounds, WorldMap};
 use worldgen::{GenContext, Pipeline, WorldgenConfig};
 
+use auth::AdmissionPolicy;
 use protocol::{Correction, InputDatagram, Intent};
 use server::input::{apply_fly_steps, corrected, intent, physics_input, state_hash};
+use server::{Server, ServerConfig};
 
 use crate::edit::{BatchSync, Editor, Placer, dig, pick, place};
 use crate::loading::{LoadConfig, Loader, Viewer};
@@ -58,6 +60,9 @@ pub struct SessionConfig {
     pub headless: bool,
     /// Network runtime shared with other sessions (bots); `None`: a private one.
     pub runtime: Option<tokio::runtime::Handle>,
+    /// The player's name in single-player (offline identity; its ID names
+    /// the player file of the embedded server).
+    pub player_name: String,
 }
 
 impl SessionConfig {
@@ -73,6 +78,7 @@ impl SessionConfig {
             light_sections_per_frame: 2,
             headless: false,
             runtime: None,
+            player_name: "Player".into(),
         }
     }
 }
@@ -169,21 +175,18 @@ struct Link {
     focus: Option<Arc<Focus>>,
     /// Headless: columns received outside the focus, still compressed.
     packed: HashMap<ColumnPos, protocol::ColumnPayload>,
+    /// The newest intent tick the server has applied.
+    acked_tick: Option<u32>,
 }
 
-/// Where the world comes from.
-enum Backend {
-    /// Single-player: generate and save locally.
-    Local { store: WorldStore, dir: PathBuf },
-    /// A server.
-    Remote(Box<Link>),
-}
-
-/// A running single-player world.
+/// A running game: a client of a dedicated server, or of the server
+/// embedded in this process for single-player (one code path, T2-08).
 pub struct Session {
     registry: Arc<Registry>,
     info: WorldInfo,
-    backend: Backend,
+    link: Box<Link>,
+    /// Single-player: the embedded server and the world folder.
+    embedded: Option<(Server, PathBuf)>,
     map: WorldMap,
     light: WorldLight,
     loader: Loader,
@@ -211,23 +214,34 @@ pub struct Session {
 impl Session {
     /// Opens the world in `dir` (created with [`crate::worlds::create`]).
     pub fn open(dir: &Path, config: SessionConfig) -> Result<Self, SessionError> {
-        let data = ModData::load(&config.data)?;
         let info = WorldInfo::load(dir)?;
-        let store = WorldStore::open(dir, &data.registry, config.bounds)?;
-        let bounds = config.bounds;
-        let radius = config.radius;
-        Self::build(
-            data,
-            info,
-            Backend::Local {
-                store,
-                dir: dir.to_owned(),
+        let name = config.player_name.clone();
+        migrate_world(dir, &info, &name)?;
+        let view = config.radius + 2;
+        let mut sc = ServerConfig::new(
+            "127.0.0.1:0"
+                .parse()
+                .map_err(|e| SessionError::Data(format!("{e}")))?,
+            AdmissionPolicy {
+                allow_offline: true,
             },
-            bounds,
-            radius,
-            true,
-            config,
-        )
+            dir.to_owned(),
+            config.data.clone(),
+        );
+        sc.seed = Some(info.seed);
+        sc.view_distance = view;
+        sc.sim_distance = view.min(server::DEFAULT_SIM_DISTANCE);
+        sc.threads = config.threads.max(1);
+        sc.region_threads = 2;
+        sc.bounds = config.bounds;
+        sc.lan_announce = false;
+        sc.server_name = info.name.clone();
+        let server = Server::start(sc).map_err(|e| SessionError::Data(e.to_string()))?;
+        let addr = server.local_addr();
+        let mut session = Self::connect(addr, &name, config)?;
+        session.info = info;
+        session.embedded = Some((server, dir.to_owned()));
+        Ok(session)
     }
 
     /// Joins the server at `addr` as `name` (offline mode; development and
@@ -268,12 +282,13 @@ impl Session {
                 yaw: f64::from(spawn.yaw),
                 pitch: f64::from(spawn.pitch),
                 flying: spawn.flying,
-                fly_speed: 1.0,
+                fly_speed: spawn.fly_speed,
             },
         };
         // The server streams 2 columns beyond what the client renders (light
-        // and meshing of the border need them); never render below 8.
-        let radius = config.radius.min(i32::from(spawn.view_distance) - 2).max(8);
+        // and meshing of the border need them). The settings keep the render
+        // distance ≥ 8 (PRD §14).
+        let radius = config.radius.min(i32::from(spawn.view_distance) - 2).max(1);
         let link = Link {
             remote,
             incoming: HashMap::new(),
@@ -294,11 +309,12 @@ impl Session {
             late: HashMap::new(),
             focus,
             packed: HashMap::new(),
+            acked_tick: None,
         };
         Self::build(
             data,
             info,
-            Backend::Remote(Box::new(link)),
+            Box::new(link),
             spawn.bounds(),
             radius,
             false,
@@ -309,7 +325,7 @@ impl Session {
     fn build(
         data: ModData,
         info: WorldInfo,
-        backend: Backend,
+        link: Box<Link>,
         bounds: WorldBounds,
         radius: i32,
         generate: bool,
@@ -371,7 +387,8 @@ impl Session {
         };
         Ok(Self {
             registry,
-            backend,
+            link,
+            embedded: None,
             yaw: info.player.yaw,
             fly_speed: if info.player.fly_speed > 0.0 {
                 info.player.fly_speed
@@ -446,7 +463,7 @@ impl Session {
     /// Whether this session plays on a server.
     #[must_use]
     pub fn is_remote(&self) -> bool {
-        matches!(self.backend, Backend::Remote(_))
+        self.embedded.is_none()
     }
 
     fn ready_around(&self, p: DVec3) -> bool {
@@ -483,181 +500,63 @@ impl Session {
             pos: self.body.pos.to_array(),
             velocity: (self.body.vel * 20.0).to_array(),
         };
-        match &mut self.backend {
-            Backend::Local { store, .. } => {
-                let registry = &self.registry;
-                let mut source = |c: ColumnPos| {
-                    store
-                        .load_column(c, registry)
-                        .ok()
-                        .flatten()
-                        .map(|(col, _)| col)
-                };
-                if let Some(pool) = &self.pool {
-                    self.loader.tick_with_source(
-                        &viewer,
-                        &mut self.map,
-                        &mut self.light,
-                        pool,
-                        Some(&mut source),
-                    );
-                }
-            }
-            Backend::Remote(link) => {
-                let now = Instant::now();
-                let dt = now.duration_since(link.last_frame);
-                link.last_frame = now;
-                link.offset *= (-dt.as_secs_f64() / SMOOTHING.as_secs_f64()).exp();
-                let mut corrections: Vec<Correction> = Vec::new();
-                for e in link.remote.poll() {
-                    match e {
-                        RemoteEvent::Datagram(d) => {
-                            link.others.apply(&d, now);
-                            if let Some(c) = d.correction {
-                                corrections.push(c);
-                            }
+        {
+            let link = &mut self.link;
+            let now = Instant::now();
+            let dt = now.duration_since(link.last_frame);
+            link.last_frame = now;
+            link.offset *= (-dt.as_secs_f64() / SMOOTHING.as_secs_f64()).exp();
+            let mut corrections: Vec<Correction> = Vec::new();
+            for e in link.remote.poll() {
+                match e {
+                    RemoteEvent::Datagram(d) => {
+                        if let Some(t) = d.ack_tick {
+                            link.acked_tick = Some(link.acked_tick.map_or(t, |a| a.max(t)));
                         }
-                        RemoteEvent::Column(mut c) => {
-                            link.stats.columns += 1;
-                            // Changes that arrived before their column.
-                            for (pos, id) in link.late.remove(&c.pos()).unwrap_or_default() {
-                                c.set(
-                                    pos.x.rem_euclid(16) as usize,
-                                    pos.y,
-                                    pos.z.rem_euclid(16) as usize,
-                                    id,
-                                    &self.registry,
-                                );
-                            }
-                            link.forgotten.remove(&c.pos());
-                            link.incoming.insert(c.pos(), c);
+                        link.others.apply(&d, now);
+                        if let Some(c) = d.correction {
+                            corrections.push(c);
                         }
-                        RemoteEvent::Packed(pos, payload) => {
-                            link.stats.columns += 1;
-                            link.forgotten.remove(&pos);
-                            link.packed.insert(pos, payload);
+                    }
+                    RemoteEvent::Column(mut c) => {
+                        link.stats.columns += 1;
+                        // Changes that arrived before their column.
+                        for (pos, id) in link.late.remove(&c.pos()).unwrap_or_default() {
+                            c.set(
+                                pos.x.rem_euclid(16) as usize,
+                                pos.y,
+                                pos.z.rem_euclid(16) as usize,
+                                id,
+                                &self.registry,
+                            );
                         }
-                        RemoteEvent::Blocks(changes) => {
-                            for (pos, id) in changes {
-                                if let Some(truth) = link.shadow.get_mut(&pos) {
-                                    // Our own edit is pending here: remember the
-                                    // server's state for when it resolves.
-                                    truth.0 = id;
-                                    continue;
-                                }
-                                let c = ColumnPos::of_block(pos);
-                                if self.map.column(c).is_some() {
-                                    if self.map.get_block(pos) != Some(id) {
-                                        let _ = self.editor.set_block(
-                                            &mut self.map,
-                                            &mut self.loader,
-                                            pos,
-                                            id,
-                                        );
-                                    }
-                                } else if let Some(col) = link.incoming.get_mut(&c) {
-                                    col.set(
-                                        pos.x.rem_euclid(16) as usize,
-                                        pos.y,
-                                        pos.z.rem_euclid(16) as usize,
-                                        id,
-                                        &self.registry,
-                                    );
-                                } else {
-                                    let list = link.late.entry(c).or_default();
-                                    if list.len() < LATE_CHANGES_PER_COLUMN {
-                                        list.push((pos, id));
-                                    }
-                                }
-                            }
-                        }
-                        RemoteEvent::EditAck { seq, accepted } => {
-                            let Some(pos) = link.pending.remove(&seq) else {
+                        link.forgotten.remove(&c.pos());
+                        link.incoming.insert(c.pos(), c);
+                    }
+                    RemoteEvent::Packed(pos, payload) => {
+                        link.stats.columns += 1;
+                        link.forgotten.remove(&pos);
+                        link.packed.insert(pos, payload);
+                    }
+                    RemoteEvent::Blocks(changes) => {
+                        for (pos, id) in changes {
+                            if let Some(truth) = link.shadow.get_mut(&pos) {
+                                // Our own edit is pending here: remember the
+                                // server's state for when it resolves.
+                                truth.0 = id;
                                 continue;
-                            };
-                            if !accepted {
-                                link.stats.rejected_edits += 1;
                             }
-                            let resolved = match link.shadow.get_mut(&pos) {
-                                Some(t) => {
-                                    t.1 = t.1.saturating_sub(1);
-                                    (t.1 == 0).then_some(t.0)
-                                }
-                                None => None,
-                            };
-                            if let Some(truth) = resolved {
-                                link.shadow.remove(&pos);
-                                // The server's state wins: this keeps an accepted
-                                // edit and rolls back a refused one.
-                                if self.map.get_block(pos).is_some_and(|b| b != truth) {
+                            let c = ColumnPos::of_block(pos);
+                            if self.map.column(c).is_some() {
+                                if self.map.get_block(pos) != Some(id) {
                                     let _ = self.editor.set_block(
                                         &mut self.map,
                                         &mut self.loader,
                                         pos,
-                                        truth,
+                                        id,
                                     );
                                 }
-                            }
-                        }
-                        RemoteEvent::Forget(c) => {
-                            link.packed.remove(&c);
-                            link.late.remove(&c);
-                            link.incoming.remove(&c);
-                            if self.map.column(c).is_some() {
-                                link.forgotten.insert(c);
-                            }
-                        }
-                        RemoteEvent::Ended(m) => link.ended = Some(m),
-                    }
-                }
-                if let Some(m) = &link.ended {
-                    return Err(SessionError::Disconnected(m.clone()));
-                }
-                for c in corrections {
-                    reconcile(
-                        link,
-                        &c,
-                        &mut self.body,
-                        &mut self.prev,
-                        &mut self.fly_speed,
-                        &self.physics,
-                        &MapBlocks {
-                            map: &self.map,
-                            swim: &self.swim,
-                        },
-                    );
-                }
-                link.stats.offset = link.offset.length();
-                link.stats.others = link.others.len();
-                if let Some(focus) = &link.focus {
-                    // Headless: columns near the player go straight into the
-                    // map; no light, meshes or loader.
-                    let center = ColumnPos {
-                        x: (self.body.pos.x / 16.0).floor() as i32,
-                        z: (self.body.pos.z / 16.0).floor() as i32,
-                    };
-                    focus.set(center);
-                    let near = |c: ColumnPos| {
-                        (c.x - center.x).abs() <= HEADLESS_RADIUS + 1
-                            && (c.z - center.z).abs() <= HEADLESS_RADIUS + 1
-                    };
-                    for (_, col) in link.incoming.drain() {
-                        if near(col.pos()) {
-                            let _ = self.map.insert_column(col);
-                        }
-                    }
-                    // Columns the player walked up to: decode them now.
-                    let wanted: Vec<ColumnPos> = link
-                        .packed
-                        .keys()
-                        .copied()
-                        .filter(|&c| near(c) && self.map.column(c).is_none())
-                        .collect();
-                    for c in wanted {
-                        if let Some(p) = link.packed.remove(&c)
-                            && let Some(mut col) = link.remote.unpack(&p)
-                        {
-                            for (pos, id) in link.late.remove(&c).unwrap_or_default() {
+                            } else if let Some(col) = link.incoming.get_mut(&c) {
                                 col.set(
                                     pos.x.rem_euclid(16) as usize,
                                     pos.y,
@@ -665,32 +564,133 @@ impl Session {
                                     id,
                                     &self.registry,
                                 );
+                            } else {
+                                let list = link.late.entry(c).or_default();
+                                if list.len() < LATE_CHANGES_PER_COLUMN {
+                                    list.push((pos, id));
+                                }
                             }
-                            let _ = self.map.insert_column(col);
                         }
                     }
-                    // Decoded columns stay until the server forgets them
-                    // (bounded by its view radius).
-                    let far: Vec<ColumnPos> = self
-                        .map
-                        .column_positions()
-                        .filter(|&c| link.forgotten.contains(&c))
-                        .collect();
-                    for c in far {
-                        self.map.remove_column(c);
-                        link.forgotten.remove(&c);
+                    RemoteEvent::EditAck { seq, accepted } => {
+                        let Some(pos) = link.pending.remove(&seq) else {
+                            continue;
+                        };
+                        if !accepted {
+                            link.stats.rejected_edits += 1;
+                        }
+                        let resolved = match link.shadow.get_mut(&pos) {
+                            Some(t) => {
+                                t.1 = t.1.saturating_sub(1);
+                                (t.1 == 0).then_some(t.0)
+                            }
+                            None => None,
+                        };
+                        if let Some(truth) = resolved {
+                            link.shadow.remove(&pos);
+                            // The server's state wins: this keeps an accepted
+                            // edit and rolls back a refused one.
+                            if self.map.get_block(pos).is_some_and(|b| b != truth) {
+                                let _ = self.editor.set_block(
+                                    &mut self.map,
+                                    &mut self.loader,
+                                    pos,
+                                    truth,
+                                );
+                            }
+                        }
                     }
-                } else if let Some(pool) = &self.pool {
-                    let incoming = &mut link.incoming;
-                    let mut source = |c: ColumnPos| incoming.remove(&c);
-                    self.loader.tick_with_source(
-                        &viewer,
-                        &mut self.map,
-                        &mut self.light,
-                        pool,
-                        Some(&mut source),
-                    );
+                    RemoteEvent::Forget(c) => {
+                        link.packed.remove(&c);
+                        link.late.remove(&c);
+                        link.incoming.remove(&c);
+                        if self.map.column(c).is_some() {
+                            link.forgotten.insert(c);
+                        }
+                    }
+                    RemoteEvent::Ended(m) => link.ended = Some(m),
                 }
+            }
+            if let Some(m) = &link.ended {
+                return Err(SessionError::Disconnected(m.clone()));
+            }
+            for c in corrections {
+                reconcile(
+                    link,
+                    &c,
+                    &mut self.body,
+                    &mut self.prev,
+                    &mut self.fly_speed,
+                    &self.physics,
+                    &MapBlocks {
+                        map: &self.map,
+                        swim: &self.swim,
+                    },
+                );
+            }
+            link.stats.offset = link.offset.length();
+            link.stats.others = link.others.len();
+            if let Some(focus) = &link.focus {
+                // Headless: columns near the player go straight into the
+                // map; no light, meshes or loader.
+                let center = ColumnPos {
+                    x: (self.body.pos.x / 16.0).floor() as i32,
+                    z: (self.body.pos.z / 16.0).floor() as i32,
+                };
+                focus.set(center);
+                let near = |c: ColumnPos| {
+                    (c.x - center.x).abs() <= HEADLESS_RADIUS + 1
+                        && (c.z - center.z).abs() <= HEADLESS_RADIUS + 1
+                };
+                for (_, col) in link.incoming.drain() {
+                    if near(col.pos()) {
+                        let _ = self.map.insert_column(col);
+                    }
+                }
+                // Columns the player walked up to: decode them now.
+                let wanted: Vec<ColumnPos> = link
+                    .packed
+                    .keys()
+                    .copied()
+                    .filter(|&c| near(c) && self.map.column(c).is_none())
+                    .collect();
+                for c in wanted {
+                    if let Some(p) = link.packed.remove(&c)
+                        && let Some(mut col) = link.remote.unpack(&p)
+                    {
+                        for (pos, id) in link.late.remove(&c).unwrap_or_default() {
+                            col.set(
+                                pos.x.rem_euclid(16) as usize,
+                                pos.y,
+                                pos.z.rem_euclid(16) as usize,
+                                id,
+                                &self.registry,
+                            );
+                        }
+                        let _ = self.map.insert_column(col);
+                    }
+                }
+                // Decoded columns stay until the server forgets them
+                // (bounded by its view radius).
+                let far: Vec<ColumnPos> = self
+                    .map
+                    .column_positions()
+                    .filter(|&c| link.forgotten.contains(&c))
+                    .collect();
+                for c in far {
+                    self.map.remove_column(c);
+                    link.forgotten.remove(&c);
+                }
+            } else if let Some(pool) = &self.pool {
+                let incoming = &mut link.incoming;
+                let mut source = |c: ColumnPos| incoming.remove(&c);
+                self.loader.tick_with_source(
+                    &viewer,
+                    &mut self.map,
+                    &mut self.light,
+                    pool,
+                    Some(&mut source),
+                );
             }
         }
         if !self.spawned
@@ -710,7 +710,7 @@ impl Session {
             )
             .ok();
         self.track_saves()?;
-        if self.last_save.elapsed() >= self.config.autosave && !self.is_remote() {
+        if self.last_save.elapsed() >= self.config.autosave && self.embedded.is_some() {
             self.save()?;
         }
         Ok(())
@@ -725,7 +725,8 @@ impl Session {
         }
         self.unloaded.clear();
         self.loader.take_unloaded(&mut self.unloaded);
-        if let Backend::Remote(link) = &mut self.backend {
+        {
+            let link = &mut self.link;
             // A column the server still keeps for us is kept for when the
             // player comes back; the server never resends it otherwise.
             for col in self.unloaded.drain(..) {
@@ -735,25 +736,6 @@ impl Session {
                 }
             }
             self.unsaved.clear();
-            return Ok(());
-        }
-        let mut records = Vec::new();
-        for col in &self.unloaded {
-            self.gone.push(col.pos());
-            if self.unsaved.remove(&col.pos()) {
-                records.push(ColumnRecord {
-                    pos: col.pos(),
-                    bounds: col.bounds(),
-                    sections: col.sections().to_vec(),
-                    light: Vec::new(),
-                    entities: Vec::new(),
-                });
-            }
-        }
-        if !records.is_empty()
-            && let Backend::Local { store, .. } = &mut self.backend
-        {
-            store.save_all(&records)?;
         }
         Ok(())
     }
@@ -769,7 +751,8 @@ impl Session {
             map: &self.map,
             swim: &self.swim,
         };
-        if let Backend::Remote(link) = &mut self.backend {
+        {
+            let link = &mut self.link;
             // Simulate exactly what the server will: the intent as it goes
             // on the wire (quantized yaw, wheel steps applied at the tick).
             let mut i = intent(link.tick, input, self.yaw, self.pitch, link.fly_steps);
@@ -803,14 +786,7 @@ impl Session {
                 intents: link.recent.iter().copied().collect(),
             });
             link.tick = link.tick.wrapping_add(1);
-            return;
         }
-        let input = PlayerInput {
-            yaw: self.yaw,
-            fly_speed: self.fly_speed,
-            ..*input
-        };
-        step(&mut self.body, &input, &self.physics, &world);
     }
 
     /// Whether the player is flying.
@@ -819,31 +795,30 @@ impl Session {
         self.body.flying
     }
 
-    /// The fly speed multiplier.
+    /// The fly speed multiplier, including wheel notches not yet sent (the
+    /// server applies them with the next tick's intent, the same way).
     #[must_use]
     pub fn fly_speed(&self) -> f64 {
-        self.fly_speed
+        apply_fly_steps(
+            self.fly_speed,
+            self.link.fly_steps.clamp(-128, 127) as i8,
+            self.physics.fly_speed_range,
+        )
     }
 
-    /// Sets the fly speed multiplier (clamped to the profile's range).
+    /// Sets the fly speed multiplier as close as whole wheel notches
+    /// (×1.25 each) get, within the movement profile's range.
     pub fn set_fly_speed(&mut self, speed: f64) {
-        if self.is_remote() {
-            return; // the server would not know; use the wheel
-        }
         let [lo, hi] = self.physics.fly_speed_range;
-        self.fly_speed = speed.clamp(lo, hi);
+        let target = speed.clamp(lo, hi);
+        let steps = (target / self.fly_speed()).ln() / 1.25f64.ln();
+        self.adjust_fly_speed(steps.round() as i32);
     }
 
     /// Changes the fly speed by mouse-wheel notches (×1.25 per notch), within
-    /// the movement profile's range.
+    /// the movement profile's range. Applied at the next tick, on both sides.
     pub fn adjust_fly_speed(&mut self, notches: i32) {
-        if let Backend::Remote(link) = &mut self.backend {
-            // Applied at the next tick, on both sides.
-            link.fly_steps += notches;
-            return;
-        }
-        let [lo, hi] = self.physics.fly_speed_range;
-        self.fly_speed = (self.fly_speed * 1.25f64.powi(notches)).clamp(lo, hi);
+        self.link.fly_steps = (self.link.fly_steps + notches).clamp(-128, 127);
     }
 
     /// Turns the view (radians); pitch is clamped to straight up/down.
@@ -855,23 +830,18 @@ impl Session {
     /// Other players on a server, as drawn now (empty in single-player).
     #[must_use]
     pub fn others(&self) -> Vec<OtherEntity> {
-        match &self.backend {
-            Backend::Remote(link) => link.others.at(Instant::now()).collect(),
-            Backend::Local { .. } => Vec::new(),
-        }
+        self.link.others.at(Instant::now()).collect()
     }
 
     /// Reconciliation counters on a server.
     #[must_use]
     pub fn net_stats(&self) -> Option<NetStats> {
-        match &self.backend {
-            Backend::Remote(link) => Some(NetStats {
-                bytes: link.remote.bytes(),
-                pending_edits: link.pending.len(),
-                ..link.stats
-            }),
-            Backend::Local { .. } => None,
-        }
+        let link = &self.link;
+        Some(NetStats {
+            bytes: link.remote.bytes(),
+            pending_edits: link.pending.len(),
+            ..link.stats
+        })
     }
 
     /// Moves the predicted player without telling the server, to test
@@ -885,10 +855,7 @@ impl Session {
     /// and the view direction. On a server, corrections are smoothed out.
     #[must_use]
     pub fn camera(&self, alpha: f64) -> (DVec3, DVec3) {
-        let offset = match &self.backend {
-            Backend::Remote(link) => link.offset,
-            Backend::Local { .. } => DVec3::ZERO,
-        };
+        let offset = self.link.offset;
         let feet = interpolate(&self.prev, &self.body, alpha) + offset;
         let eye = feet + DVec3::new(0.0, self.physics.eye_height, 0.0);
         (eye, self.view_dir())
@@ -933,9 +900,7 @@ impl Session {
     /// Sends a predicted edit to the server (single-player: nothing to do).
     /// `state` is `None` for digging.
     fn predicted(&mut self, pos: BlockPos, old: BlockStateId, state: Option<BlockStateId>) {
-        let Backend::Remote(link) = &mut self.backend else {
-            return;
-        };
+        let link = &mut self.link;
         let event = match state {
             None => Some(protocol::ClientEvent::Dig {
                 seq: link.next_seq,
@@ -1063,31 +1028,17 @@ impl Session {
     /// Writes edited columns that are still loaded and `world.toml`.
     pub fn save(&mut self) -> Result<(), SessionError> {
         self.track_saves()?;
-        let Backend::Local { store, dir } = &mut self.backend else {
-            return Ok(()); // the server saves its world
+        let Some((_, dir)) = &self.embedded else {
+            return Ok(()); // a dedicated server saves its world
         };
-        let records: Vec<ColumnRecord> = self
-            .unsaved
-            .iter()
-            .filter_map(|&c| self.map.column(c))
-            .map(|col| ColumnRecord {
-                pos: col.pos(),
-                bounds: col.bounds(),
-                sections: col.sections().to_vec(),
-                light: Vec::new(),
-                entities: Vec::new(),
-            })
-            .collect();
-        if !records.is_empty() {
-            store.save_all(&records)?;
-        }
-        self.unsaved.clear();
+        // The embedded server saves blocks and the player (autosave, leave,
+        // shutdown); `world.toml` keeps the menu's view of the world.
         if self.spawned {
             self.info.player.pos = Some(self.body.pos.to_array());
         }
         self.info.player.yaw = self.yaw;
         self.info.player.flying = self.body.flying;
-        self.info.player.fly_speed = self.fly_speed;
+        self.info.player.fly_speed = self.fly_speed();
         self.info.player.pitch = self.pitch;
         self.info.last_played = now();
         self.info.save(dir)?;
@@ -1095,11 +1046,30 @@ impl Session {
         Ok(())
     }
 
-    /// Saves and closes (on a server: leaves it).
+    /// Saves and closes: leaves the server; in single-player the embedded
+    /// server then saves the world and stops.
     pub fn close(mut self) -> Result<(), SessionError> {
+        // Let the server apply the intents and answer the edits already
+        // sent (else the last steps or a block placed just before quitting
+        // could be lost), at most a moment.
+        let deadline = Instant::now() + Duration::from_secs(2);
+        let last_sent = self.link.tick.checked_sub(1);
+        while (!self.link.pending.is_empty()
+            || last_sent.is_some_and(|t| self.link.acked_tick.is_none_or(|a| a < t)))
+            && self.link.ended.is_none()
+            && Instant::now() < deadline
+        {
+            if self.update().is_err() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(2));
+        }
         self.save()?;
-        if let Backend::Remote(link) = self.backend {
-            link.remote.leave();
+        let embedded = self.embedded.take();
+        let Self { link, .. } = self;
+        link.remote.leave();
+        if let Some((server, _)) = embedded {
+            server.shutdown();
         }
         Ok(())
     }
@@ -1151,6 +1121,35 @@ fn reconcile(
     *body = b;
     *prev = last_prev;
     *fly_speed = fly;
+}
+
+/// Worlds saved before T2-08 keep the player in `world.toml`; the embedded
+/// server reads `players/<player id>.toml`. Copy it over once, so a
+/// single-player world opens where it was left (the seed is passed to the
+/// server, which writes its own `server.toml`).
+fn migrate_world(dir: &Path, info: &WorldInfo, name: &str) -> Result<(), SessionError> {
+    let id = auth::Identity::offline(name)
+        .map_err(|e| SessionError::Data(e.to_string()))?
+        .id()
+        .to_string();
+    if server::players::load(dir, &id).is_some() {
+        return Ok(());
+    }
+    if let Some(pos) = info.player.pos {
+        server::players::save(
+            dir,
+            &id,
+            &server::players::SavedPlayer {
+                pos,
+                yaw: info.player.yaw,
+                pitch: info.player.pitch,
+                flying: info.player.flying,
+                fly_speed: info.player.fly_speed,
+            },
+        )
+        .map_err(|e| SessionError::Data(format!("player file: {e}")))?;
+    }
+    Ok(())
 }
 
 /// The `core` mod's data a session needs.

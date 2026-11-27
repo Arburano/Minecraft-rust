@@ -5,6 +5,7 @@
 
 pub mod bots;
 pub mod edit;
+pub mod lan;
 pub mod loading;
 pub mod others;
 pub mod packs;

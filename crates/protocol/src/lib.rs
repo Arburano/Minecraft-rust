@@ -29,6 +29,7 @@ mod entities;
 mod events;
 mod frame;
 mod input;
+pub mod lan;
 mod wire;
 
 pub use chunks::{ChunkStream, ColumnPayload, MAX_COLUMN_COMPRESSED, MAX_COLUMN_RAW};
@@ -44,7 +45,7 @@ pub use wire::{Angle8, Angle16, BlockXyz, ColumnXz, NetId, RelPos};
 
 /// Version of the message layouts. Any change to a message type that an older
 /// build cannot decode raises it (and the golden files in `tests/golden/`).
-pub const PROTOCOL_VERSION: u32 = 2;
+pub const PROTOCOL_VERSION: u32 = 3;
 
 /// QUIC ALPN of this protocol family (`networking-protocol.md`).
 pub const ALPN: &[u8] = b"vxl/1";

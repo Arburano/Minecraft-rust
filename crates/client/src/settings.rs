@@ -32,6 +32,17 @@ pub struct Settings {
     pub shader_pack: Option<String>,
     /// Shader pack option values: pack id → option id → value.
     pub shader_options: std::collections::BTreeMap<String, std::collections::BTreeMap<String, f32>>,
+    /// The multiplayer server list (T2-08).
+    pub servers: Vec<SavedServer>,
+}
+
+/// A server in the multiplayer list.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SavedServer {
+    /// Display name.
+    pub name: String,
+    /// `host[:port]`.
+    pub address: String,
 }
 
 /// Where the player's own licensed installation is (read locally only).
@@ -83,6 +94,7 @@ impl Default for Settings {
             resource_packs: Vec::new(),
             shader_pack: None,
             shader_options: std::collections::BTreeMap::new(),
+            servers: Vec::new(),
         }
     }
 }
