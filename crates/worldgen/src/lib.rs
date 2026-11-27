@@ -10,6 +10,7 @@
 
 pub mod config;
 pub mod pipeline;
+#[cfg(feature = "builtin-overworld")]
 pub mod stages;
 pub mod test_corpus;
 

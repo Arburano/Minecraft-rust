@@ -91,7 +91,7 @@ Implementation (T2-03, `server::replication`, protocol version 2):
 - The server keeps, per client, the last 64 snapshots **as the client will see them**: entities that do not fit the datagram, or are far and not due, keep their baseline state, so a delta is always exact against what the client has. The client (`Reconstructor`) rebuilds full snapshots and drops a datagram whose baseline it lacks; the next one is relative to an older acknowledged snapshot.
 - An update carries only what changed: a known entity's movement as `Step8` (i8 × 3 in 1/32 block, ±4 blocks), a full `RelPos` only for new entities or longer moves, the look and flags only when they change. Entities that stop cost nothing.
 - Interest: other players within the view radius; within 48 blocks every tick (20 Hz), farther every 4th tick (5 Hz). Over-full datagrams keep the nearest updates; the rest follow in later snapshots.
-- Measured sizes (deterministic): 20 known entities moving and turning **168 B** (26.9 kbit/s payload at 20 Hz), 20 appearing 265 B, an ack-only datagram 17 B, a correction +63 B; 96 appearing entities fit one datagram.
+- Measured sizes (deterministic): 20 known entities moving and turning **168 B** (26.9 kbit/s payload at 20 Hz), 20 appearing 265 B, an ack-only datagram 17 B, a correction +63 B (protocol 4 with the ability state, T1-18: +68 B when it is all zero, up to ≈ 32 B more with active abilities); 96 appearing entities fit one datagram.
 - Measured on the wire (cloud VM, loopback, `crates/client/tests/replication.rs`): an observer with 20 bots walking circles nearby receives **27.4 kbit/s** of QUIC UDP payload in steady state (sends 15.7 kbit/s); UDP/IP headers add ≈ 28 B per packet.
 
 ## Traffic estimates (from PRD §8)

@@ -63,7 +63,7 @@ fn scripted_route_matches_the_golden_hash() {
         WorldgenConfig::from_toml(&gen_src, &registry).expect("gen"),
         WorldBounds::default(),
     );
-    let physics = PhysicsConfig::from_toml(&mods.read("player/physics.toml").expect("physics"))
+    let physics = PhysicsConfig::from_toml(&mods.read("movement/profile.toml").expect("physics"))
         .expect("physics");
     let swim = physics.swim_ids(&registry).expect("swim");
     let mut map = WorldMap::new(Arc::clone(&registry), WorldBounds::default());

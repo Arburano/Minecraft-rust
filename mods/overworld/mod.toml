@@ -8,6 +8,7 @@ api = "^0.1"
 side = "both"
 authors = ["project team"]
 description = "The overworld dimension: terrain, caves, biomes, ores, trees"
+provides = ["worldgen:overworld"]
 
 [dependencies]
 core = "^0.1"

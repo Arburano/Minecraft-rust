@@ -108,7 +108,13 @@ pub struct Correction {
     pub flags: u8,
     /// Fly speed multiplier.
     pub fly_speed: f64,
+    /// Movement-ability state (cooldowns, charges, box; `sim::abilities`,
+    /// T1-18), zero-padded; all zero when the profile has no abilities.
+    pub abilities: [u8; ABILITY_STATE_BYTES],
 }
+
+/// Bytes reserved for [`Correction::abilities`].
+pub const ABILITY_STATE_BYTES: usize = 32;
 
 /// One server datagram to one client.
 #[derive(Encode, Decode, Clone, Debug, Default, PartialEq)]

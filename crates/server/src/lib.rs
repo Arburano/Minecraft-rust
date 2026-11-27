@@ -138,21 +138,44 @@ struct WorldMeta {
     /// `overworld:classic` (absent in worlds made before engines existed).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     generator: Option<String>,
+    /// Gameplay slot → provider (`mod@version`) the world was last opened
+    /// with (ADR-0013, T1-18).
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    slots: std::collections::BTreeMap<String, String>,
 }
 
-/// The overworld generator of a build: the mod that provides the
-/// generation file and its engine.
+/// The overworld generator of a build: the mod that fills the overworld's
+/// generation slot and its engine.
 fn generator_id(mods: &ModSet, engine: &worldgen::Engine) -> String {
     let provider = mods
-        .provider("worldgen/overworld.toml")
+        .slot(&world::modset::worldgen_slot("overworld"))
         .map_or("unknown", |m| m.id.as_str());
     format!("{provider}:{}", engine.name())
 }
 
-/// Reads or creates `server.toml`: the seed, and the generator, which must
+/// The slot choices of a build, as stored in `server.toml`.
+fn slot_choices(mods: &ModSet) -> std::collections::BTreeMap<String, String> {
+    mods.mods()
+        .iter()
+        .flat_map(|m| {
+            m.provides
+                .iter()
+                .map(move |s| (s.clone(), format!("{}@{}", m.id, m.version)))
+        })
+        .collect()
+}
+
+/// Reads or creates `server.toml`: the seed, the generator, which must
 /// match the build's (new terrain from another generator would not fit the
-/// saved terrain at the borders).
-fn world_seed(config: &ServerConfig, generator: &str) -> Result<u64, ServerError> {
+/// saved terrain at the borders), and the slot choices. A changed movement
+/// provider is allowed (nothing in the world depends on it) and reported in
+/// `notices`.
+fn world_seed(
+    config: &ServerConfig,
+    generator: &str,
+    notices: &mut Vec<String>,
+) -> Result<u64, ServerError> {
+    let slots = slot_choices(&config.mods);
     let path = config.world_dir.join("server.toml");
     let write = |meta: &WorldMeta| {
         let text = toml::to_string(meta).map_err(|e| ServerError::World(e.to_string()))?;
@@ -170,10 +193,20 @@ fn world_seed(config: &ServerConfig, generator: &str) -> Result<u64, ServerError
                 )));
             }
             Some(_) => {}
-            None => {
-                meta.generator = Some(generator.to_owned());
-                write(&meta)?;
+            None => meta.generator = Some(generator.to_owned()),
+        }
+        for (slot, now) in &slots {
+            if let Some(before) = meta.slots.get(slot)
+                && before != now
+            {
+                notices.push(format!(
+                    "slot {slot}: this world was last opened with {before}, now {now}"
+                ));
             }
+        }
+        if meta.slots != slots || meta.generator.as_deref() != Some(generator) {
+            meta.slots = slots;
+            write(&meta)?;
         }
         return Ok(meta.seed);
     }
@@ -185,6 +218,7 @@ fn world_seed(config: &ServerConfig, generator: &str) -> Result<u64, ServerError
     write(&WorldMeta {
         seed,
         generator: Some(generator.to_owned()),
+        slots,
     })?;
     Ok(seed)
 }
@@ -233,6 +267,7 @@ pub struct Server {
     world: Option<JoinHandle<()>>,
     endpoint: quinn::Endpoint,
     runtime: Option<tokio::runtime::Runtime>,
+    notices: Vec<String>,
 }
 
 impl Server {
@@ -242,15 +277,28 @@ impl Server {
         let mods = &config.mods;
         let b = mods.registry_builder().map_err(|e| data(&e))?;
         let registry = Arc::new(b.build().map_err(|e| data(&e))?);
-        // The only dimension so far; more come with the `nether`/`end` mods.
-        let src = mods.read("worldgen/overworld.toml").map_err(|e| data(&e))?;
+        // Slots (ADR-0013): each file comes from the one mod that fills the
+        // slot. The only dimension so far is the overworld.
+        let src = mods
+            .read_slot(
+                &world::modset::worldgen_slot("overworld"),
+                "worldgen/overworld.toml",
+            )
+            .map_err(|e| data(&e))?;
         let gen_config = WorldgenConfig::from_toml(&src, &registry).map_err(|e| data(&e))?;
-        let physics_src = mods.read("player/physics.toml").map_err(|e| data(&e))?;
+        let physics_src = mods
+            .read_slot(world::modset::MOVEMENT_SLOT, "movement/profile.toml")
+            .map_err(|e| data(&e))?;
         let physics = PhysicsConfig::from_toml(&physics_src).map_err(|e| data(&e))?;
 
         std::fs::create_dir_all(&config.world_dir)
             .map_err(|e| ServerError::World(e.to_string()))?;
-        let seed = world_seed(&config, &generator_id(mods, &gen_config.engine))?;
+        let mut notices = Vec::new();
+        let seed = world_seed(
+            &config,
+            &generator_id(mods, &gen_config.engine),
+            &mut notices,
+        )?;
         let bounds = config.bounds;
         let store = WorldStore::open(&config.world_dir, &registry, bounds)
             .map_err(|e| ServerError::World(e.to_string()))?;
@@ -331,7 +379,15 @@ impl Server {
             world: Some(world),
             endpoint,
             runtime: Some(runtime),
+            notices,
         })
+    }
+
+    /// Things worth telling the operator about the world at start (a slot
+    /// provider changed since the last run).
+    #[must_use]
+    pub fn notices(&self) -> &[String] {
+        &self.notices
     }
 
     /// Tick records of the world thread (metrics).
@@ -380,6 +436,7 @@ mod seed_tests {
         let text = toml::to_string(&super::WorldMeta {
             seed: u64::MAX,
             generator: None,
+            slots: Default::default(),
         })
         .expect("encode");
         let back: super::WorldMeta = toml::from_str(&text).expect("decode");

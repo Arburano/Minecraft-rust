@@ -40,7 +40,7 @@ fn world(tag: &str, view: i32, sim: i32, region_threads: usize) -> (World, PathB
         WorldgenConfig::from_toml(&gen_src, &registry).expect("gen"),
         WorldBounds::default(),
     ));
-    let physics = PhysicsConfig::from_toml(&mods.read("player/physics.toml").expect("physics"))
+    let physics = PhysicsConfig::from_toml(&mods.read("movement/profile.toml").expect("physics"))
         .expect("physics");
     let store = WorldStore::open(&dir, &registry, WorldBounds::default()).expect("store");
     let storage = Storage::start(store, Arc::clone(&registry)).expect("storage");

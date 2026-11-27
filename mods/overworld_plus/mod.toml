@@ -10,6 +10,7 @@ api = "^0.1"
 side = "both"
 authors = ["project team"]
 description = "Advanced overworld: climate engine, mountains, oceans, more biomes and trees"
+provides = ["worldgen:overworld"]
 
 [dependencies]
 core = "^0.1"

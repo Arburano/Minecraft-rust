@@ -37,7 +37,9 @@ pub use control::{
     ClientControl, HandshakeHeader, Hello, KickReason, MAX_NAME_LEN, MAX_TEXT_LEN, RegistrySync,
     ServerControl, Spawn, Welcome,
 };
-pub use entities::{Correction, EntityDatagram, EntityUpdate, Look, MAX_ENTITY_UPDATES, Step8};
+pub use entities::{
+    ABILITY_STATE_BYTES, Correction, EntityDatagram, EntityUpdate, Look, MAX_ENTITY_UPDATES, Step8,
+};
 pub use events::{BlockChange, ClientEvent, MAX_BLOCK_CHANGES, MAX_CHAT_LEN, ServerEvent};
 pub use frame::{FRAME_HEADER_LEN, MAX_FRAME, encode_frame, split_frame};
 pub use input::{Buttons, InputDatagram, Intent, MAX_INTENTS};
@@ -45,7 +47,7 @@ pub use wire::{Angle8, Angle16, BlockXyz, ColumnXz, NetId, RelPos};
 
 /// Version of the message layouts. Any change to a message type that an older
 /// build cannot decode raises it (and the golden files in `tests/golden/`).
-pub const PROTOCOL_VERSION: u32 = 3;
+pub const PROTOCOL_VERSION: u32 = 4;
 
 /// QUIC ALPN of this protocol family (`networking-protocol.md`).
 pub const ALPN: &[u8] = b"vxl/1";

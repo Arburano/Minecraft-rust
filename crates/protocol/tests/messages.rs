@@ -159,7 +159,7 @@ fn golden(name: &str, bytes: &[u8]) {
 
 #[test]
 fn handshake_bytes_match_golden_files() {
-    assert_eq!(PROTOCOL_VERSION, 3, "a version bump needs new golden files");
+    assert_eq!(PROTOCOL_VERSION, 4, "a version bump needs new golden files");
     golden("header.bin", &HandshakeHeader::current().encode());
     golden("hello.bin", &hello().encode().expect("hello"));
     golden("welcome.bin", &welcome().encode().expect("welcome"));

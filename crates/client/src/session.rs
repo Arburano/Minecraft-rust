@@ -1191,10 +1191,15 @@ impl ModData {
         let b = mods.registry_builder().map_err(|e| data_err(&e))?;
         let registry = Arc::new(b.build().map_err(|e| data_err(&e))?);
         let src = mods
-            .read("worldgen/overworld.toml")
+            .read_slot(
+                &world::modset::worldgen_slot("overworld"),
+                "worldgen/overworld.toml",
+            )
             .map_err(|e| data_err(&e))?;
         let gen_config = WorldgenConfig::from_toml(&src, &registry).map_err(|e| data_err(&e))?;
-        let physics_src = mods.read("player/physics.toml").map_err(|e| data_err(&e))?;
+        let physics_src = mods
+            .read_slot(world::modset::MOVEMENT_SLOT, "movement/profile.toml")
+            .map_err(|e| data_err(&e))?;
         let physics = PhysicsConfig::from_toml(&physics_src).map_err(|e| data_err(&e))?;
         let swim = physics.swim_ids(&registry).map_err(|e| data_err(&e))?;
         Ok(Self {

@@ -14,6 +14,7 @@ use noise::{NoiseFn, Perlin};
 use world::{BlockStateId, Column, ColumnPos, Registry, SECTION_VOLUME, Section, WorldBounds};
 
 use crate::config::{Climate, Engine, WorldgenConfig};
+#[cfg(feature = "builtin-overworld")]
 use crate::stages;
 
 /// Shared, read-only generation context.
@@ -27,6 +28,7 @@ pub struct GenContext {
     pub(crate) hills: Perlin,
     pub(crate) detail: Perlin,
     pub(crate) temperature: Perlin,
+    #[cfg_attr(not(feature = "builtin-overworld"), allow(dead_code))]
     pub(crate) caves: Perlin,
     pub(crate) continents: Perlin,
     pub(crate) erosion: Perlin,
@@ -340,8 +342,15 @@ pub struct Pipeline {
 }
 
 impl Pipeline {
+    /// A pipeline of the given stages, in order.
+    #[must_use]
+    pub fn new(stages: Vec<Box<dyn Stage>>) -> Self {
+        Self { stages }
+    }
+
     /// The built-in overworld pipeline: surface (heightmap + biomes) → terrain →
     /// caves → ores → trees.
+    #[cfg(feature = "builtin-overworld")]
     #[must_use]
     pub fn overworld() -> Self {
         Self {

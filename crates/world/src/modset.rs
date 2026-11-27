@@ -55,6 +55,20 @@ pub enum ModSetError {
     NotProvided(String),
     /// A block file of a mod is invalid.
     Blocks(String),
+    /// Two mods of the build fill the same gameplay slot (ADR-0013).
+    SlotConflict {
+        /// The slot (`movement`, `worldgen:overworld`).
+        slot: String,
+        /// The two providers.
+        mods: [String; 2],
+    },
+    /// No mod of the build fills a slot the game needs.
+    SlotMissing {
+        /// The slot.
+        slot: String,
+        /// The build.
+        build: String,
+    },
 }
 
 impl fmt::Display for ModSetError {
@@ -76,6 +90,15 @@ impl fmt::Display for ModSetError {
                 "no mod of this build provides data/{file} (is the mod that owns it in the build?)"
             ),
             Self::Blocks(e) => write!(f, "{e}"),
+            Self::SlotConflict { slot, mods } => write!(
+                f,
+                "mods {} and {} both provide {slot:?}; a build takes one provider per slot",
+                mods[0], mods[1]
+            ),
+            Self::SlotMissing { slot, build } => write!(
+                f,
+                "build {build} has no mod that provides {slot:?} (add one, e.g. a movement or world module)"
+            ),
         }
     }
 }
@@ -126,6 +149,8 @@ struct RawModInfo {
     version: String,
     #[serde(default)]
     description: String,
+    #[serde(default)]
+    provides: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -163,6 +188,27 @@ pub struct ModInfo {
     pub dir: PathBuf,
     /// Declared dependencies.
     pub dependencies: Vec<Dependency>,
+    /// Gameplay slots this mod fills (`movement`, `worldgen:<dimension>`).
+    pub provides: Vec<String>,
+}
+
+/// The slot of a dimension's world generator.
+#[must_use]
+pub fn worldgen_slot(dimension: &str) -> String {
+    format!("worldgen:{dimension}")
+}
+
+/// The slot of the player movement profile.
+pub const MOVEMENT_SLOT: &str = "movement";
+
+/// Whether a slot name is known: `movement` or `worldgen:<dimension>`.
+fn valid_slot(slot: &str) -> bool {
+    slot == MOVEMENT_SLOT
+        || slot.strip_prefix("worldgen:").is_some_and(|d| {
+            !d.is_empty()
+                && d.bytes()
+                    .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_')
+        })
 }
 
 impl ModInfo {
@@ -189,12 +235,19 @@ impl ModInfo {
                 },
             })
             .collect();
+        if let Some(bad) = raw.info.provides.iter().find(|s| !valid_slot(s)) {
+            return Err(ModSetError::Parse(format!(
+                "{}: unknown slot {bad:?} (known: \"movement\", \"worldgen:<dimension>\")",
+                path.display()
+            )));
+        }
         Ok(Self {
             id: raw.info.id,
             version: raw.info.version,
             description: raw.info.description,
             dir: dir.to_path_buf(),
             dependencies,
+            provides: raw.info.provides,
         })
     }
 
@@ -273,6 +326,18 @@ impl ModSet {
             }
         }
         let mods = topological(&chosen)?;
+        // One provider per slot.
+        let mut slots: BTreeMap<&str, &str> = BTreeMap::new();
+        for m in &mods {
+            for slot in &m.provides {
+                if let Some(other) = slots.insert(slot, &m.id) {
+                    return Err(ModSetError::SlotConflict {
+                        slot: slot.clone(),
+                        mods: [other.to_owned(), m.id.clone()],
+                    });
+                }
+            }
+        }
         Ok(Self {
             build: build.to_owned(),
             mods,
@@ -324,6 +389,32 @@ impl ModSet {
             .rev()
             .map(|m| m.data_dir().join(file))
             .find(|p| p.is_file())
+    }
+
+    /// The mod that fills a gameplay slot, if any (at most one: checked when
+    /// the set is resolved).
+    #[must_use]
+    pub fn slot(&self, slot: &str) -> Option<&ModInfo> {
+        self.mods
+            .iter()
+            .find(|m| m.provides.iter().any(|s| s == slot))
+    }
+
+    /// The mod that fills a slot the game needs.
+    pub fn require_slot(&self, slot: &str) -> Result<&ModInfo, ModSetError> {
+        self.slot(slot).ok_or_else(|| ModSetError::SlotMissing {
+            slot: slot.to_owned(),
+            build: self.build.clone(),
+        })
+    }
+
+    /// Reads `data/<file>` of the mod that fills `slot` (not of any other
+    /// mod: the slot's provider owns the file).
+    pub fn read_slot(&self, slot: &str, file: &str) -> Result<String, ModSetError> {
+        let m = self.require_slot(slot)?;
+        let path = m.data_dir().join(file);
+        std::fs::read_to_string(&path)
+            .map_err(|e| ModSetError::Io(format!("{} (slot {slot}): {e}", path.display())))
     }
 
     /// The mod that provides `data/<file>` ([`ModSet::find`]).
@@ -619,6 +710,44 @@ mod tests {
     }
 
     #[test]
+    fn slots_have_one_provider() {
+        let root = temp("slots");
+        let with = |id: &str, provides: &str| {
+            format!(
+                "[mod]\nid = \"{id}\"\nversion = \"0.1.0\"\nprovides = [{provides}]\n\n[dependencies]\ncore = \"^0.1\"\n"
+            )
+        };
+        write_mod(&root, "core", &manifest("core", "0.1.0", ""));
+        write_mod(&root, "walk", &with("walk", "\"movement\""));
+        write_mod(&root, "parkour", &with("parkour", "\"movement\""));
+        write_mod(&root, "land", &with("land", "\"worldgen:overworld\""));
+        std::fs::create_dir_all(root.join("land/data/worldgen")).expect("mkdir");
+        std::fs::write(root.join("land/data/worldgen/overworld.toml"), "land").expect("w");
+        let set = ModSet::resolve("t", &["walk", "land"], &root).expect("set");
+        assert_eq!(set.slot(MOVEMENT_SLOT).map(|m| m.id.as_str()), Some("walk"));
+        assert_eq!(
+            set.read_slot(&worldgen_slot("overworld"), "worldgen/overworld.toml")
+                .expect("read"),
+            "land"
+        );
+        let err = ModSet::resolve("t", &["walk", "parkour"], &root).expect_err("two");
+        assert!(matches!(err, ModSetError::SlotConflict { .. }), "{err}");
+        assert!(err.to_string().contains("parkour") && err.to_string().contains("walk"));
+        let only_land = ModSet::resolve("t", &["land"], &root).expect("set");
+        let err = only_land.require_slot(MOVEMENT_SLOT).expect_err("missing");
+        assert_eq!(
+            err.to_string(),
+            "build t has no mod that provides \"movement\" (add one, e.g. a movement or world module)"
+        );
+        write_mod(&root, "odd", &with("odd", "\"weather\""));
+        assert!(matches!(
+            ModSet::resolve("t", &["land"], &root),
+            Err(ModSetError::Parse(_))
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
     fn shipped_builds_resolve() {
         let (mods, builds) = source_tree();
         let mut files: Vec<_> = std::fs::read_dir(&builds)
@@ -640,6 +769,15 @@ mod tests {
         let classic = source_build(DEFAULT_BUILD).expect("classic");
         assert!(classic.contains("core") && classic.contains("overworld"));
         assert!(classic.find("worldgen/overworld.toml").is_some());
-        assert!(classic.find("player/physics.toml").is_some());
+        assert!(classic.find("movement/profile.toml").is_some());
+        assert!(classic.require_slot(MOVEMENT_SLOT).is_ok());
+        assert!(classic.require_slot(&worldgen_slot("overworld")).is_ok());
+        // A build with another movement provider carries only that one.
+        let agile = source_build("classic_agile").expect("agile");
+        assert_eq!(
+            agile.require_slot(MOVEMENT_SLOT).map(|m| m.id.as_str()),
+            Ok("movement_agile")
+        );
+        assert!(!agile.contains("movement"));
     }
 }

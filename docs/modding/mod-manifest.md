@@ -7,6 +7,7 @@ version = "0.3.1"            # semver
 api = "^0.1"                 # engine:api version (WIT package)
 side = "both"                # server | client | both
 authors = ["Hi"]
+provides = ["movement"]      # gameplay slots this mod fills (ADR-0013): "movement", "worldgen:<dimension>"
 description = "Copper pipes for fluids"
 license = "MIT"
 

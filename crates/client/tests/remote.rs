@@ -18,6 +18,10 @@ fn data() -> world::ModSet {
 }
 
 fn start(tag: &str) -> (Server, PathBuf) {
+    start_build(tag, data())
+}
+
+fn start_build(tag: &str, mods: world::ModSet) -> (Server, PathBuf) {
     let dir = std::env::temp_dir().join(format!("client-remote-{tag}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     let mut config = ServerConfig::new(
@@ -26,7 +30,7 @@ fn start(tag: &str) -> (Server, PathBuf) {
             allow_offline: true,
         },
         dir.clone(),
-        data(),
+        mods,
     );
     config.seed = Some(7);
     config.view_distance = 10;
@@ -184,6 +188,89 @@ fn nearest_columns_are_controllable_under_loss() {
     s.close().expect("leave");
     rt.block_on(async { relay.abort() });
     drop(rt);
+    server.shutdown();
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+/// T1-18: with a movement profile that has abilities (the `classic_agile`
+/// build), the client's prediction and the server's simulation agree: dash,
+/// double jump, glide and crawl cause no corrections.
+#[test]
+fn abilities_predict_without_corrections() {
+    let agile = world::modset::source_build("classic_agile").expect("build");
+    let (server, dir) = start_build("agile", agile.clone());
+    let mut config = session_config();
+    config.mods = agile;
+    let mut s = Session::connect(server.local_addr(), "Agile", config).expect("join");
+    run(
+        &mut s,
+        Duration::from_secs(60),
+        &PlayerInput::default(),
+        |s| s.is_playing(),
+    )
+    .expect("playable");
+    // Settle on the ground.
+    run(
+        &mut s,
+        Duration::from_secs(2),
+        &PlayerInput::default(),
+        |_| false,
+    );
+    let walk = PlayerInput {
+        forward: 1.0,
+        ..PlayerInput::default()
+    };
+    let crouch = PlayerInput {
+        descend: true,
+        ..PlayerInput::default()
+    };
+    let script: [(PlayerInput, u64); 11] = [
+        (crouch, 500), // crawl box on the spawn
+        (PlayerInput::default(), 300),
+        (walk, 600),
+        (
+            PlayerInput {
+                sprint: true,
+                ..walk
+            },
+            150,
+        ), // dash
+        (walk, 400),
+        (PlayerInput { jump: true, ..walk }, 150), // jump
+        (walk, 150),
+        (PlayerInput { jump: true, ..walk }, 150), // double jump
+        (
+            PlayerInput {
+                descend: true,
+                ..walk
+            },
+            600,
+        ), // glide, then crawl
+        (walk, 600),
+        (PlayerInput::default(), 1000),
+    ];
+    let start = s.player().pos;
+    let mut fired = 0u8;
+    for (input, ms) in script {
+        run(&mut s, Duration::from_millis(ms), &input, |s| {
+            fired |= s.player().abilities.active;
+            false
+        });
+    }
+    println!("abilities that fired: {fired:#07b}");
+    // dash (bit 0), double jump (bit 1), crawl (bit 3) at least.
+    assert_eq!(fired & 0b1011, 0b1011, "{fired:#07b}");
+    let end = s.player().pos;
+    let stats = s.net_stats().expect("remote");
+    println!(
+        "moved {:.1} blocks; corrections {} (max {:.4})",
+        (end - start).length(),
+        stats.corrections,
+        stats.max_correction
+    );
+    assert!((end - start).length() > 3.0, "the player moved");
+    assert_eq!(stats.corrections, 0, "prediction matched the server");
+    s.close().expect("leave");
     server.shutdown();
     let _ = std::fs::remove_dir_all(dir);
 }

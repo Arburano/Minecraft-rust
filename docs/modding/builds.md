@@ -42,7 +42,7 @@ cargo run -p client --bin bots -- --embedded /tmp/w --build classic
 | --- | --- | --- |
 | `data/blocks/*.toml` | merged: each mod adds blocks under its own id | `core:stone`, later `nether:netherrack` |
 | `data/entities/limits.toml` | merged: each mod adds kinds; a later mod replaces an entry or `[default]` | `mobs` adds its creatures to the core defaults |
-| other files (`worldgen/<dimension>.toml`, `player/physics.toml`) | provided: the last mod in load order that has the file | `overworld` provides `worldgen/overworld.toml` |
+| other files (`worldgen/<dimension>.toml`, `movement/profile.toml`) | provided: the last mod in load order that has the file | `overworld` provides `worldgen/overworld.toml` |
 
 Load order: dependencies first, ties by id. A missing mod, a version mismatch, a cycle or a file no mod provides is a clear error at start (`world::ModSetError`).
 
@@ -68,6 +68,7 @@ The engine's test entity (`test:walker`, T2-07) is not gameplay; its limit sits 
 | --- | --- | --- |
 | `classic` | `core`, `movement`, `overworld` | the current game: the overworld, no mobs yet |
 | `classic_plus` | `core`, `movement`, `overworld_plus` | the same game with the advanced overworld engine |
+| `classic_agile` | `core`, `movement_agile`, `overworld` | the classic world with dash, double jump, wall slide, crawl and glide (example movement module) |
 
 A world remembers the generator that made it (`server.toml`), so it opens only with a build that has the same overworld module and engine.
 
@@ -75,7 +76,7 @@ A world remembers the generator that made it (`server.toml`), so it opens only w
 
 ## World-generation modules
 
-A world module provides its dimension's `worldgen/<dimension>.toml`, which picks a landscape engine (`worldgen.md`, "Engines") and names every block it places. A module that replaces only the generation (like `overworld_plus`) brings just its engine settings, biomes, tree kinds and the blocks they need; everything else in the build stays. A build lists one module per dimension; if it lists two that provide the same file, the later one in load order wins (slot checks that make this an error come with T1-18).
+A world module provides its dimension's `worldgen/<dimension>.toml`, which picks a landscape engine (`worldgen.md`, "Engines") and names every block it places. A module that replaces only the generation (like `overworld_plus`) brings just its engine settings, biomes, tree kinds and the blocks they need; everything else in the build stays. A world module declares `provides = ["worldgen:<dimension>"]`; a build with two providers for one slot fails at load, and one without a provider for the overworld fails at start (slots, ADR-0013, T1-18). The movement profile is a slot too (`movement`): [movement-profiles.md](movement-profiles.md).
 
 ## Rules for cutting modules
 
@@ -159,5 +160,4 @@ Example builds once these exist:
 - The build id is not stored in the world, and opening a world with a different build is not checked (with T1-18's slot checks).
 - The server does not send its mod list to the client (`mod_manifest_hash` in `Welcome` is zero); both sides must run the same build.
 - The updater (ADR-0010) does not download per build.
-- `provides` and slot checks in `mod.toml` (T1-18).
 - `[requires] capabilities` (ADR-0018, accepted, T4-01).

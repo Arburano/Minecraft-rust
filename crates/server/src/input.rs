@@ -58,6 +58,11 @@ pub fn state_hash(body: &PlayerBody, fly_speed: f64) -> u32 {
     }
     eat(&[flags(body)]);
     eat(&fly_speed.to_bits().to_le_bytes());
+    // Ability state only when there is some: profiles without abilities hash
+    // exactly as before (T1-18).
+    if !body.abilities.is_empty() {
+        eat(&body.abilities.to_bytes());
+    }
     h
 }
 
@@ -86,6 +91,11 @@ pub fn correction(tick: u32, body: &PlayerBody, fly_speed: f64) -> Correction {
         vel: body.vel.to_array(),
         flags: flags(body),
         fly_speed,
+        abilities: {
+            let mut out = [0u8; protocol::ABILITY_STATE_BYTES];
+            out[..sim::abilities::STATE_BYTES].copy_from_slice(&body.abilities.to_bytes());
+            out
+        },
     }
 }
 
@@ -99,6 +109,10 @@ pub fn corrected(c: &Correction) -> (PlayerBody, f64) {
             on_ground: c.flags & EntityUpdate::ON_GROUND != 0,
             flying: c.flags & EntityUpdate::FLYING != 0,
             in_fluid: c.flags & EntityUpdate::IN_FLUID != 0,
+            abilities: sim::abilities::AbilityState::from_bytes(
+                &c.abilities[..sim::abilities::STATE_BYTES],
+            )
+            .unwrap_or_default(),
         },
         c.fly_speed,
     )
@@ -174,6 +188,7 @@ mod tests {
             on_ground: true,
             in_fluid: false,
             flying: false,
+            abilities: Default::default(),
         };
         let c = correction(9, &body, 1.25);
         let (back, fly) = corrected(&c);
@@ -185,5 +200,13 @@ mod tests {
         let mut flying = body;
         flying.flying = true;
         assert_ne!(state_hash(&flying, 1.25), state_hash(&body, 1.25));
+        // Ability state travels and is hashed.
+        let mut dashing = body;
+        dashing.abilities.cooldown[0] = 17;
+        dashing.abilities.box_from = 2;
+        let c = correction(9, &dashing, 1.25);
+        assert_eq!(corrected(&c).0, dashing);
+        assert_ne!(state_hash(&dashing, 1.25), state_hash(&body, 1.25));
+        assert!(correction(9, &body, 1.25).abilities.iter().all(|&b| b == 0));
     }
 }

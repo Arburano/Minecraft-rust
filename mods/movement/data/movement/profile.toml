@@ -1,4 +1,6 @@
-# Player movement, per 20 TPS tick (blocks, blocks/tick, blocks/tick²).
+# The movement profile (ADR-0013, docs/modding/movement-profiles.md): base
+# numbers per 20 TPS tick (blocks, blocks/tick, blocks/tick²), then
+# [[abilities]] built from engine primitives (none in the classic feel).
 # Tuned to the classic feel: walk ≈ 4.3 blocks/s, sprint ≈ 5.6 blocks/s,
 # jump ≈ 1.25 blocks. The engine has no built-in numbers; mods may override.
 width = 0.6

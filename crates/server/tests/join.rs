@@ -377,6 +377,21 @@ fn a_world_keeps_its_generator() {
         .expect("another generator is refused");
     assert!(err.to_string().contains("overworld:classic"), "{err}");
     let server = open("classic").expect("the same build opens it");
+    assert!(server.notices().is_empty());
     server.shutdown();
+    // Another movement provider may open it (nothing saved depends on it),
+    // and the change is reported.
+    let server = open("classic_agile").expect("movement may change");
+    assert!(
+        server
+            .notices()
+            .iter()
+            .any(|n| n.contains("movement@0.1.0") && n.contains("movement_agile@0.1.0")),
+        "{:?}",
+        server.notices()
+    );
+    server.shutdown();
+    let meta = std::fs::read_to_string(dir.join("server.toml")).expect("meta");
+    assert!(meta.contains("movement_agile@0.1.0"), "{meta}");
     let _ = std::fs::remove_dir_all(dir);
 }

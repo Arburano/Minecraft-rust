@@ -129,6 +129,9 @@ fn main() -> ExitCode {
         "server: listening on {} (QUIC); press Enter or Ctrl+D to stop",
         server.local_addr()
     );
+    for notice in server.notices() {
+        println!("server: note: {notice}");
+    }
     let log = server.tick_log();
     let started = std::time::Instant::now();
     let reporter = {

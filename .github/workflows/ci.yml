@@ -59,5 +59,7 @@ jobs:
         run: cargo clippy --workspace --all-targets
       - name: Tests
         run: cargo test --workspace
+      - name: Worldgen without the built-in overworld (T1-18)
+        run: cargo check -p worldgen --no-default-features
       - name: Benches compile
         run: cargo bench --workspace --no-run

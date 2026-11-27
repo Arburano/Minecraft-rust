@@ -159,6 +159,7 @@ pub fn corrected() -> EntityDatagram {
             vel: [0.1, -0.0784, 0.0],
             flags: EntityUpdate::ON_GROUND,
             fly_speed: 1.0,
+            abilities: [0; protocol::ABILITY_STATE_BYTES],
         }),
         ..moving(2)
     }

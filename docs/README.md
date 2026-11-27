@@ -31,6 +31,7 @@ Reading order for a new developer or agent:
 | Login and assets | [architecture/auth-and-assets.md](architecture/auth-and-assets.md) | `auth`, `assets` |
 | Mods: overview | [modding/overview.md](modding/overview.md) | `modhost`, `mod-sdk` |
 | Builds and base-game modules | [modding/builds.md](modding/builds.md) | `world::modset`, `server`, `client` |
+| Movement profiles and abilities | [modding/movement-profiles.md](modding/movement-profiles.md) | `sim` |
 | Mod manifest | [modding/mod-manifest.md](modding/mod-manifest.md) | `modhost` |
 | Datapacks | [modding/datapacks.md](modding/datapacks.md) | `modhost`, `world` |
 | WASM API | [modding/wasm-api.md](modding/wasm-api.md), [`../wit/engine-api.wit`](../wit/engine-api.wit) | `modhost`, `mod-sdk` |

@@ -1,0 +1,7 @@
+# The classic world with the agile movement module (T1-18 example): the same
+# mods as `classic`, but `movement_agile` fills the movement slot.
+[build]
+id = "classic_agile"
+name = "Classic (agile movement)"
+description = "The overworld with dash, double jump, wall slide, crawl and glide"
+mods = ["core", "movement_agile", "overworld"]
