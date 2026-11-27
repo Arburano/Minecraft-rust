@@ -1,0 +1,7 @@
+stage 1 exit route: 486697 frames over 1800 s, GPU: AMD Radeon(TM) RX Vega 10 Graphics (Dx12), path PullingIndexed, profile High (16 chunks)
+average FPS 270.4 (target 60)
+1% low FPS 74.0 (target >= 45)
+frame time p50 3.42 ms, p99 7.93 ms, max 116.47 ms
+frames > 33 ms: 161 (target 0)
+process memory peak 345 MiB, average 321 MiB (target <= 1536 MiB; internal budget 1024 MiB)
+route: 9983 blocks flown at ≈ 5.5 blocks/s; 1797 memory samples

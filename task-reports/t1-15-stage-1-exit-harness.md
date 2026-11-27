@@ -32,7 +32,6 @@
 
 ## Issues encountered
 
-- **The exit numbers themselves are not measured yet.** They need the owner's laptop (Vega 10, GTX 1660 Ti); the Client RAM row stays Hypothesis until then.
-- **Start-to-menu is timed by hand** (3 launches); an automated timer can come later if needed.
+- **Laptop exit numbers recorded (2026-11-27):** see [docs/research/stage-1-exit-2026-11-27/summary.md](../docs/research/stage-1-exit-2026-11-27/summary.md). Start-to-menu (1.31–1.67 s), FPS (257.9–295.8 avg / 50.9–103.0 1% low on Vega 10, `High` 16 chunks), and RAM (peak 324–346 MiB) all meet their targets; frames > 33 ms had 36–189 spikes on Vega 10 and 98 on GTX 1660 Ti (target 0).
 - **GTX 1050 targets stay unverified** (open question 12).
 - **The owner decided to start stage 2 before these runs.** The stage 1 exit review is T1-20.

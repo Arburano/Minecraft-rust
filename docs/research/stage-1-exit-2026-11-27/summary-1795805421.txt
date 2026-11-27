@@ -1,0 +1,7 @@
+stage 1 exit route: 586111 frames over 1800 s, GPU: NVIDIA GeForce GTX 1660 Ti (Dx12), path PullingIndexed, profile High (16 chunks)
+average FPS 325.6 (target 60)
+1% low FPS 93.8 (target >= 45)
+frame time p50 2.91 ms, p99 6.90 ms, max 94.55 ms
+frames > 33 ms: 98 (target 0)
+process memory peak 346 MiB, average 325 MiB (target <= 1536 MiB; internal budget 1024 MiB)
+route: 9983 blocks flown at ≈ 5.5 blocks/s; 1797 memory samples
