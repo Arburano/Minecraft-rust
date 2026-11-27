@@ -69,12 +69,14 @@ pub fn input(n: usize) -> InputDatagram {
                 yaw: Angle16(12_345u16.wrapping_add(i as u16 * 77)),
                 pitch: Angle16::from_radians(-0.3),
                 fly_speed_steps: 0,
+                state_hash: 0x9e37_79b9u32.wrapping_mul(i + 1),
             })
             .collect(),
     }
 }
 
-/// `n` moving entities, every field set (the worst case for a delta).
+/// `n` entities appearing (kind, absolute position, look, flags): the
+/// largest form, sent once per entity.
 pub fn entities(n: usize) -> EntityDatagram {
     let origin = BlockXyz {
         x: 1000,
@@ -84,11 +86,13 @@ pub fn entities(n: usize) -> EntityDatagram {
     EntityDatagram {
         snapshot: 4001,
         baseline: 4000,
+        ack_tick: Some(9_990),
+        correction: None,
         origin,
         updates: (0..n as u64)
             .map(|i| EntityUpdate {
                 id: NetId(100_000 + i * 3),
-                kind: None,
+                kind: Some(0),
                 pos: RelPos::quantize(
                     [
                         1000.0 + (i as f64 * 7.31) % 90.0 - 45.0,
@@ -97,6 +101,7 @@ pub fn entities(n: usize) -> EntityDatagram {
                     ],
                     origin,
                 ),
+                moved: None,
                 look: Some(Look {
                     yaw: Angle8((i * 37) as u8),
                     pitch: Angle8((i * 11) as u8),
@@ -106,6 +111,55 @@ pub fn entities(n: usize) -> EntityDatagram {
             })
             .collect(),
         removed: vec![NetId(5)],
+    }
+}
+
+/// `n` known entities moving and turning (the steady state at 20 Hz:
+/// ≈ 0.2–0.3 blocks per tick, i.e. a step of up to ±10 in 1/32 block).
+pub fn moving(n: usize) -> EntityDatagram {
+    EntityDatagram {
+        snapshot: 4001,
+        baseline: 4000,
+        ack_tick: Some(9_990),
+        correction: None,
+        origin: BlockXyz {
+            x: 1000,
+            y: 64,
+            z: -2000,
+        },
+        updates: (0..n as u64)
+            .map(|i| EntityUpdate {
+                id: NetId(100_000 + i * 3),
+                kind: None,
+                pos: None,
+                moved: Some(Step8 {
+                    x: ((i * 7) % 21) as i8 - 10,
+                    y: 0,
+                    z: ((i * 5) % 21) as i8 - 10,
+                }),
+                look: Some(Look {
+                    yaw: Angle8((i * 37) as u8),
+                    pitch: Angle8((i * 11) as u8),
+                    head_yaw: Angle8((i * 41) as u8),
+                }),
+                flags: None,
+            })
+            .collect(),
+        removed: Vec::new(),
+    }
+}
+
+/// A datagram with a correction (the rare case).
+pub fn corrected() -> EntityDatagram {
+    EntityDatagram {
+        correction: Some(Correction {
+            tick: 9_990,
+            pos: [1000.123, 70.0, -1999.5],
+            vel: [0.1, -0.0784, 0.0],
+            flags: EntityUpdate::ON_GROUND,
+            fly_speed: 1.0,
+        }),
+        ..moving(2)
     }
 }
 

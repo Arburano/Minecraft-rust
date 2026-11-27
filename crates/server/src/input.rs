@@ -5,11 +5,12 @@
 //! own yaw exactly as the server will see it, and both sides end up with
 //! bit-identical positions as long as they see the same blocks.
 
-use protocol::{Angle16, Buttons, Intent};
-use sim::physics::PlayerInput;
+use protocol::{Angle16, Buttons, Correction, EntityUpdate, Intent};
+use sim::physics::{PlayerBody, PlayerInput};
 
 /// The intent the client sends for one tick. `fly_speed_steps` are the
-/// mouse-wheel notches since the previous tick.
+/// mouse-wheel notches since the previous tick. `state_hash` is filled in by
+/// the client after it simulated the tick ([`state_hash`]).
 #[must_use]
 pub fn intent(
     tick: u32,
@@ -38,7 +39,69 @@ pub fn intent(
         yaw: Angle16::from_radians(yaw as f32),
         pitch: Angle16::from_radians(pitch as f32),
         fly_speed_steps: fly_speed_steps.clamp(-128, 127) as i8,
+        state_hash: 0,
     }
+}
+
+/// FNV-1a over the exact simulated state: client and server compare these
+/// after every tick; a mismatch makes the server send a [`Correction`].
+#[must_use]
+pub fn state_hash(body: &PlayerBody, fly_speed: f64) -> u32 {
+    let mut h = 0x811c_9dc5u32;
+    let mut eat = |bytes: &[u8]| {
+        for &b in bytes {
+            h = (h ^ u32::from(b)).wrapping_mul(0x0100_0193);
+        }
+    };
+    for v in body.pos.to_array().iter().chain(&body.vel.to_array()) {
+        eat(&v.to_bits().to_le_bytes());
+    }
+    eat(&[flags(body)]);
+    eat(&fly_speed.to_bits().to_le_bytes());
+    h
+}
+
+/// The state bits of a body ([`EntityUpdate`] flags).
+#[must_use]
+pub fn flags(body: &PlayerBody) -> u8 {
+    let mut f = 0;
+    if body.on_ground {
+        f |= EntityUpdate::ON_GROUND;
+    }
+    if body.flying {
+        f |= EntityUpdate::FLYING;
+    }
+    if body.in_fluid {
+        f |= EntityUpdate::IN_FLUID;
+    }
+    f
+}
+
+/// A correction carrying `body` after `tick`.
+#[must_use]
+pub fn correction(tick: u32, body: &PlayerBody, fly_speed: f64) -> Correction {
+    Correction {
+        tick,
+        pos: body.pos.to_array(),
+        vel: body.vel.to_array(),
+        flags: flags(body),
+        fly_speed,
+    }
+}
+
+/// The body and fly speed a correction describes.
+#[must_use]
+pub fn corrected(c: &Correction) -> (PlayerBody, f64) {
+    (
+        PlayerBody {
+            pos: glam::DVec3::from_array(c.pos),
+            vel: glam::DVec3::from_array(c.vel),
+            on_ground: c.flags & EntityUpdate::ON_GROUND != 0,
+            flying: c.flags & EntityUpdate::FLYING != 0,
+            in_fluid: c.flags & EntityUpdate::IN_FLUID != 0,
+        },
+        c.fly_speed,
+    )
 }
 
 /// The yaw both sides simulate with: the wire value.
@@ -101,5 +164,26 @@ mod tests {
         assert_eq!(i.fly_speed_steps, 2);
         assert_eq!(apply_fly_steps(1.0, 2, [0.25, 8.0]), 1.5625);
         assert_eq!(apply_fly_steps(4.0, 10, [0.25, 8.0]), 8.0);
+    }
+
+    #[test]
+    fn corrections_round_trip_and_hashes_see_every_bit() {
+        let body = PlayerBody {
+            pos: glam::DVec3::new(1.5, 70.25, -3.0),
+            vel: glam::DVec3::new(0.1, -0.0784, 0.0),
+            on_ground: true,
+            in_fluid: false,
+            flying: false,
+        };
+        let c = correction(9, &body, 1.25);
+        let (back, fly) = corrected(&c);
+        assert_eq!(back, body);
+        assert_eq!(state_hash(&back, fly), state_hash(&body, 1.25));
+        let mut nudged = body;
+        nudged.pos.x = f64::from_bits(body.pos.x.to_bits() + 1);
+        assert_ne!(state_hash(&nudged, 1.25), state_hash(&body, 1.25));
+        let mut flying = body;
+        flying.flying = true;
+        assert_ne!(state_hash(&flying, 1.25), state_hash(&body, 1.25));
     }
 }

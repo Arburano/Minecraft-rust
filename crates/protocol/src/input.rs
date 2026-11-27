@@ -56,6 +56,10 @@ pub struct Intent {
     /// Mouse-wheel notches while flying: the fly speed multiplier steps
     /// (`simulation-and-ai.md`, flight).
     pub fly_speed_steps: i8,
+    /// Hash of the client's predicted player state after this intent. The
+    /// server compares it with its own and sends a `Correction` on mismatch,
+    /// so agreeing states cost no bandwidth (T2-03).
+    pub state_hash: u32,
 }
 
 /// One input datagram.

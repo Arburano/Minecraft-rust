@@ -69,7 +69,7 @@ stage 1 carry-over in `tasks/README.md`.
 | Entity-delta latency while columns stream (2% loss, RTT 100 ms) | not blocked by chunk streams | Measured (VM, T0-11 spike, BBR: p95 52–58 ms ≈ the 50 ms one-way path delay; [details](../research/net-quic-spike-2026-11-19.md)) |
 | Nearest 3×3 **controllable** after connecting (received, lit, meshed) at 2% loss, RTT 100 ms | ≤ 1 s | Measured (cloud VM, release, T2-02, 10 seeds): 0.51–0.74 s for 9 seeds, **1.28 s for 1** (tail loss in the login burst). Mostly met; see [networking-protocol.md](../architecture/networking-protocol.md#server-and-client-t2-02) |
 | Login to control over LAN | ≤ 5 s | Not measured on the laptop yet (owner); loopback without loss on the VM: 0.52 s |
-| Traffic per player, steady state | ≤ 50 kbit/s (≤ 20 moving entities nearby) | Target. First data (T2-01, message sizes, deterministic): a delta of 20 entities with every field changed is 252 B, 40.3 kbit/s at 20 Hz **payload only**; with QUIC/UDP/IP overhead (≈ 60–80 B per datagram, estimate) ≈ 50–53 kbit/s — at the limit, so the reduced rate for distant entities is needed. Measured on the wire in T2-05/T2-09 |
+| Traffic per player, steady state | ≤ 50 kbit/s (≤ 20 moving entities nearby) | Measured (T2-03, cloud VM, loopback, 10 s after warm-up): an observer with 20 bots walking nearby receives **27.4 kbit/s** of QUIC UDP payload, sends 15.7 kbit/s; UDP/IP headers add ≈ 28 B per packet (≈ 4–5 kbit/s). Met. The 200-bot figure comes with T2-05/T2-09 |
 | Node RAM, 500 scattered players | ≤ 16 GB | Hypothesis |
 
 ### T0-09 measurements (2026-11-20)

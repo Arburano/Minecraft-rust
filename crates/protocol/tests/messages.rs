@@ -36,6 +36,8 @@ fn every_message_round_trips() {
     }
     round_trip(&entities(0));
     round_trip(&entities(20));
+    round_trip(&moving(20));
+    round_trip(&corrected());
     for e in client_events() {
         round_trip(&e);
     }
@@ -114,6 +116,11 @@ fn invalid_values_are_refused_on_both_sides() {
     let mut e = entities(1);
     e.baseline = e.snapshot;
     assert!(e.encode().is_err());
+    let mut c = corrected();
+    if let Some(k) = c.correction.as_mut() {
+        k.pos[1] = f64::NAN;
+    }
+    assert!(c.encode().is_err());
     assert!(entities(MAX_ENTITY_UPDATES + 1).encode().is_err());
 
     let long = ClientEvent::Chat {
@@ -152,7 +159,7 @@ fn golden(name: &str, bytes: &[u8]) {
 
 #[test]
 fn handshake_bytes_match_golden_files() {
-    assert_eq!(PROTOCOL_VERSION, 1, "a version bump needs new golden files");
+    assert_eq!(PROTOCOL_VERSION, 2, "a version bump needs new golden files");
     golden("header.bin", &HandshakeHeader::current().encode());
     golden("hello.bin", &hello().encode().expect("hello"));
     golden("welcome.bin", &welcome().encode().expect("welcome"));

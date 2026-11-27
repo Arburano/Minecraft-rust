@@ -13,8 +13,8 @@ use std::time::Duration;
 
 use net::messages::{StreamError, read_header, read_message, write_header, write_message};
 use protocol::{
-    ChunkStream, ClientControl, Hello, InputDatagram, Message, ServerControl, ServerEvent, Spawn,
-    Welcome,
+    ChunkStream, ClientControl, EntityDatagram, Hello, InputDatagram, Message, ServerControl,
+    ServerEvent, Spawn, Welcome,
 };
 use quinn::Connection;
 use tokio::sync::mpsc::{UnboundedSender, unbounded_channel};
@@ -56,6 +56,8 @@ pub enum RemoteEvent {
     Column(Column),
     /// The server will not keep this column up to date any more.
     Forget(ColumnPos),
+    /// This tick's server datagram (reconciliation and entity deltas).
+    Datagram(EntityDatagram),
     /// The session ended; the text is for the player.
     Ended(String),
 }
@@ -70,6 +72,7 @@ pub struct Remote {
     runtime: Option<tokio::runtime::Runtime>,
     events: Receiver<RemoteEvent>,
     commands: UnboundedSender<Command>,
+    conn: Connection,
     /// The server's greeting.
     pub welcome: Welcome,
     /// Where the player starts.
@@ -112,12 +115,19 @@ impl Remote {
             spawn.bounds(),
         ));
         runtime.spawn(receive_events(conn.clone(), events_tx.clone()));
+        runtime.spawn(receive_datagrams(conn.clone(), events_tx.clone()));
         runtime.spawn(receive_control(ctrl_recv, events_tx.clone()));
-        runtime.spawn(send_commands(conn, ctrl_send, commands_rx, events_tx));
+        runtime.spawn(send_commands(
+            conn.clone(),
+            ctrl_send,
+            commands_rx,
+            events_tx,
+        ));
         Ok(Self {
             runtime: Some(runtime),
             events,
             commands,
+            conn,
             welcome,
             spawn,
         })
@@ -126,6 +136,14 @@ impl Remote {
     /// Everything that arrived since the last call.
     pub fn poll(&self) -> impl Iterator<Item = RemoteEvent> + '_ {
         self.events.try_iter()
+    }
+
+    /// UDP bytes received and sent on this connection so far (QUIC, UDP
+    /// payload: everything except the UDP/IP headers).
+    #[must_use]
+    pub fn bytes(&self) -> (u64, u64) {
+        let s = self.conn.stats();
+        (s.udp_rx.bytes, s.udp_tx.bytes)
     }
 
     /// Sends an input datagram (dropped silently if the connection is gone:
@@ -267,6 +285,17 @@ async fn receive_events(conn: Connection, events: Sender<RemoteEvent>) {
                 }
             }
         });
+    }
+}
+
+async fn receive_datagrams(conn: Connection, events: Sender<RemoteEvent>) {
+    while let Ok(bytes) = conn.read_datagram().await {
+        // A malformed datagram is dropped; the next tick brings a new one.
+        if let Ok(d) = EntityDatagram::decode(&bytes)
+            && events.send(RemoteEvent::Datagram(d)).is_err()
+        {
+            return;
+        }
     }
 }
 

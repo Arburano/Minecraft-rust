@@ -1,16 +1,22 @@
-//! The entities channel: per-client entity deltas as datagrams
-//! (`networking-protocol.md`, "Entity deltas").
+//! The entities channel: per-client server datagrams (`networking-protocol.md`,
+//! "Entity deltas"), sent every server tick.
 //!
-//! The server keeps, per client, the newest snapshot the client acknowledged
-//! (`InputDatagram::ack_snapshot`) and sends only what changed since then.
-//! Positions are 1/32 block relative to `origin`, angles 8 bits.
+//! Each datagram carries:
+//! - **the local player's reconciliation data**: the newest intent tick the
+//!   server applied, and — only when the client's predicted state hash did
+//!   not match the server's — the authoritative state to roll back to
+//!   ([`Correction`]);
+//! - **entity deltas**: the server keeps, per client, the newest snapshot the
+//!   client acknowledged (`InputDatagram::ack_snapshot`) and sends only what
+//!   changed since then. A known entity's movement is a small [`Step8`]; a new
+//!   or far-moved one gets a full [`RelPos`] relative to `origin`.
 
 use bitcode::{Decode, Encode};
 
 use crate::{Angle8, BlockXyz, MAX_DATAGRAM, Message, NetId, ProtocolError, RelPos, check};
 
-/// Most entity updates in one datagram. The server splits larger deltas over
-/// several datagrams with the same `snapshot`.
+/// Most entity updates in one datagram. When more changed, the server sends
+/// the nearest ones; the rest follow in later snapshots.
 pub const MAX_ENTITY_UPDATES: usize = 128;
 
 /// Body orientation of an entity.
@@ -24,31 +30,98 @@ pub struct Look {
     pub head_yaw: Angle8,
 }
 
-/// What changed about one entity. `None` fields did not change since the
-/// baseline; a new entity (or a full snapshot) has every field set.
+/// A movement since the baseline in 1/32 block, ±4 blocks per axis.
+#[derive(Encode, Decode, Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub struct Step8 {
+    /// Δx in 1/32 block.
+    pub x: i8,
+    /// Δy in 1/32 block.
+    pub y: i8,
+    /// Δz in 1/32 block.
+    pub z: i8,
+}
+
+impl Step8 {
+    /// The step between two absolute quantized positions, if it fits.
+    #[must_use]
+    pub fn between(from: [i32; 3], to: [i32; 3]) -> Option<Self> {
+        let d = |i: usize| i8::try_from(i64::from(to[i]) - i64::from(from[i])).ok();
+        Some(Self {
+            x: d(0)?,
+            y: d(1)?,
+            z: d(2)?,
+        })
+    }
+
+    /// `from` moved by this step.
+    #[must_use]
+    pub fn apply(self, from: [i32; 3]) -> [i32; 3] {
+        [
+            from[0].saturating_add(i32::from(self.x)),
+            from[1].saturating_add(i32::from(self.y)),
+            from[2].saturating_add(i32::from(self.z)),
+        ]
+    }
+}
+
+/// What changed about one entity since the baseline. `None` fields did not
+/// change; a new entity has `kind`, `pos` and `look` set.
 #[derive(Encode, Decode, Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub struct EntityUpdate {
     /// Which entity.
     pub id: NetId,
-    /// Entity type, as a number in the server's entity table (stage 4; mods
-    /// define types). Set when the entity first appears to this client.
+    /// Entity type (0 = player; mod-defined types come in stage 4). Set when
+    /// the entity first appears to this client.
     pub kind: Option<u16>,
-    /// Position relative to the datagram's origin.
+    /// Absolute position relative to the datagram's origin (new entities and
+    /// moves too large for `moved`).
     pub pos: Option<RelPos>,
+    /// Movement since the baseline position.
+    pub moved: Option<Step8>,
     /// Orientation.
     pub look: Option<Look>,
-    /// State bits (on ground, sneaking, flying…), defined with the entity types.
+    /// State bits (see [`EntityUpdate::FLYING`] …).
     pub flags: Option<u8>,
 }
 
-/// One entity datagram.
-#[derive(Encode, Decode, Clone, Debug, Default, PartialEq, Eq)]
+impl EntityUpdate {
+    /// Flag: standing on the ground.
+    pub const ON_GROUND: u8 = 1 << 0;
+    /// Flag: flying.
+    pub const FLYING: u8 = 1 << 1;
+    /// Flag: in a fluid.
+    pub const IN_FLUID: u8 = 1 << 2;
+}
+
+/// The authoritative state of the local player after `tick`, sent when the
+/// client's prediction for that tick differed (exact `f64` values, so the
+/// client can replay its later intents bit for bit).
+#[derive(Encode, Decode, Clone, Copy, Debug, Default, PartialEq)]
+pub struct Correction {
+    /// The intent tick this state follows.
+    pub tick: u32,
+    /// Feet position.
+    pub pos: [f64; 3],
+    /// Velocity, blocks per tick.
+    pub vel: [f64; 3],
+    /// [`EntityUpdate::ON_GROUND`], [`EntityUpdate::FLYING`], [`EntityUpdate::IN_FLUID`].
+    pub flags: u8,
+    /// Fly speed multiplier.
+    pub fly_speed: f64,
+}
+
+/// One server datagram to one client.
+#[derive(Encode, Decode, Clone, Debug, Default, PartialEq)]
 pub struct EntityDatagram {
     /// Server tick of this snapshot.
     pub snapshot: u32,
-    /// The acknowledged snapshot these changes are relative to; 0 = full state.
+    /// The acknowledged snapshot these changes are relative to; 0 = none.
     pub baseline: u32,
-    /// Origin of the relative positions (near the receiving player).
+    /// The newest intent tick of this client the server has applied.
+    pub ack_tick: Option<u32>,
+    /// Set when the client's prediction diverged.
+    pub correction: Option<Correction>,
+    /// Origin of the absolute positions (near the receiving player).
     pub origin: BlockXyz,
     /// Changed or new entities.
     pub updates: Vec<EntityUpdate>,
@@ -68,6 +141,13 @@ impl Message for EntityDatagram {
         check(
             self.updates.len() + self.removed.len() <= MAX_ENTITY_UPDATES,
             "too many entity updates",
-        )
+        )?;
+        if let Some(c) = &self.correction {
+            check(
+                c.pos.iter().chain(&c.vel).all(|v| v.is_finite()) && c.fly_speed.is_finite(),
+                "correction values",
+            )?;
+        }
+        Ok(())
     }
 }

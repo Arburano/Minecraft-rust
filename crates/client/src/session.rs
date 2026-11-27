@@ -26,11 +26,12 @@ use world::storage::{ColumnRecord, StorageError, WorldStore};
 use world::{BlockStateId, Column, ColumnPos, Registry, RegistryBuilder, WorldBounds, WorldMap};
 use worldgen::{GenContext, Pipeline, WorldgenConfig};
 
-use protocol::{InputDatagram, Intent};
-use server::input::{apply_fly_steps, intent, physics_input};
+use protocol::{Correction, InputDatagram, Intent};
+use server::input::{apply_fly_steps, corrected, intent, physics_input, state_hash};
 
 use crate::edit::{BatchSync, Editor, Placer, dig, pick, place};
 use crate::loading::{LoadConfig, Loader, Viewer};
+use crate::others::{OtherEntity, Others};
 use crate::remote::{Remote, RemoteError, RemoteEvent};
 use crate::worlds::{WorldInfo, WorldsError, now};
 
@@ -88,6 +89,35 @@ pub enum SessionError {
 
 /// Intents repeated in each input datagram against loss.
 const INTENT_COPIES: usize = 3;
+/// Predicted ticks kept for replay after a correction (6.4 s).
+const PREDICTION_HISTORY: usize = 128;
+/// A correction moving the player farther than this (blocks) is applied at
+/// once (a teleport); smaller ones are smoothed out.
+const SNAP_DISTANCE: f64 = 2.0;
+/// Time constant of the correction smoothing.
+const SMOOTHING: Duration = Duration::from_millis(100);
+
+/// One predicted tick: the intent sent and the state after it.
+struct Predicted {
+    intent: Intent,
+    after: PlayerBody,
+    fly_after: f64,
+}
+
+/// Reconciliation counters (tests, debug overlay).
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct NetStats {
+    /// Corrections that changed the predicted state.
+    pub corrections: u64,
+    /// The largest correction, in blocks (before smoothing).
+    pub max_correction: f64,
+    /// The visual offset still being smoothed out, in blocks.
+    pub offset: f64,
+    /// Other entities known.
+    pub others: usize,
+    /// UDP payload bytes received and sent so far.
+    pub bytes: (u64, u64),
+}
 
 /// A server session's state.
 struct Link {
@@ -102,6 +132,13 @@ struct Link {
     recent: VecDeque<Intent>,
     fly_steps: i32,
     ended: Option<String>,
+    history: VecDeque<Predicted>,
+    last_correction: Option<u32>,
+    /// Drawn position minus simulated position, decaying to zero.
+    offset: DVec3,
+    last_frame: Instant,
+    others: Others,
+    stats: NetStats,
 }
 
 /// Where the world comes from.
@@ -198,6 +235,12 @@ impl Session {
             recent: VecDeque::new(),
             fly_steps: 0,
             ended: None,
+            history: VecDeque::new(),
+            last_correction: None,
+            offset: DVec3::ZERO,
+            last_frame: Instant::now(),
+            others: Others::default(),
+            stats: NetStats::default(),
         };
         Self::build(
             data,
@@ -388,8 +431,19 @@ impl Session {
                 );
             }
             Backend::Remote(link) => {
+                let now = Instant::now();
+                let dt = now.duration_since(link.last_frame);
+                link.last_frame = now;
+                link.offset *= (-dt.as_secs_f64() / SMOOTHING.as_secs_f64()).exp();
+                let mut corrections: Vec<Correction> = Vec::new();
                 for e in link.remote.poll() {
                     match e {
+                        RemoteEvent::Datagram(d) => {
+                            link.others.apply(&d, now);
+                            if let Some(c) = d.correction {
+                                corrections.push(c);
+                            }
+                        }
                         RemoteEvent::Column(c) => {
                             link.forgotten.remove(&c.pos());
                             link.incoming.insert(c.pos(), c);
@@ -406,6 +460,22 @@ impl Session {
                 if let Some(m) = &link.ended {
                     return Err(SessionError::Disconnected(m.clone()));
                 }
+                for c in corrections {
+                    reconcile(
+                        link,
+                        &c,
+                        &mut self.body,
+                        &mut self.prev,
+                        &mut self.fly_speed,
+                        &self.physics,
+                        &MapBlocks {
+                            map: &self.map,
+                            swim: &self.swim,
+                        },
+                    );
+                }
+                link.stats.offset = link.offset.length();
+                link.stats.others = link.others.len();
                 let incoming = &mut link.incoming;
                 let mut source = |c: ColumnPos| incoming.remove(&c);
                 self.loader.tick_with_source(
@@ -496,7 +566,7 @@ impl Session {
         if let Backend::Remote(link) = &mut self.backend {
             // Simulate exactly what the server will: the intent as it goes
             // on the wire (quantized yaw, wheel steps applied at the tick).
-            let i = intent(link.tick, input, self.yaw, self.pitch, link.fly_steps);
+            let mut i = intent(link.tick, input, self.yaw, self.pitch, link.fly_steps);
             link.fly_steps = 0;
             self.fly_speed = apply_fly_steps(
                 self.fly_speed,
@@ -509,12 +579,21 @@ impl Session {
                 &self.physics,
                 &world,
             );
+            i.state_hash = state_hash(&self.body, self.fly_speed);
+            link.history.push_back(Predicted {
+                intent: i,
+                after: self.body,
+                fly_after: self.fly_speed,
+            });
+            while link.history.len() > PREDICTION_HISTORY {
+                link.history.pop_front();
+            }
             link.recent.push_back(i);
             while link.recent.len() > INTENT_COPIES {
                 link.recent.pop_front();
             }
             link.remote.send_input(InputDatagram {
-                ack_snapshot: 0,
+                ack_snapshot: link.others.latest(),
                 intents: link.recent.iter().copied().collect(),
             });
             link.tick = link.tick.wrapping_add(1);
@@ -567,11 +646,43 @@ impl Session {
         self.pitch = (self.pitch + dpitch).clamp(-1.55, 1.55);
     }
 
+    /// Other players on a server, as drawn now (empty in single-player).
+    #[must_use]
+    pub fn others(&self) -> Vec<OtherEntity> {
+        match &self.backend {
+            Backend::Remote(link) => link.others.at(Instant::now()).collect(),
+            Backend::Local { .. } => Vec::new(),
+        }
+    }
+
+    /// Reconciliation counters on a server.
+    #[must_use]
+    pub fn net_stats(&self) -> Option<NetStats> {
+        match &self.backend {
+            Backend::Remote(link) => Some(NetStats {
+                bytes: link.remote.bytes(),
+                ..link.stats
+            }),
+            Backend::Local { .. } => None,
+        }
+    }
+
+    /// Moves the predicted player without telling the server, to test
+    /// reconciliation (a forced divergence).
+    #[doc(hidden)]
+    pub fn nudge_for_test(&mut self, by: DVec3) {
+        self.body.pos += by;
+    }
+
     /// Eye position interpolated `alpha` of the way into the current tick,
-    /// and the view direction.
+    /// and the view direction. On a server, corrections are smoothed out.
     #[must_use]
     pub fn camera(&self, alpha: f64) -> (DVec3, DVec3) {
-        let feet = interpolate(&self.prev, &self.body, alpha);
+        let offset = match &self.backend {
+            Backend::Remote(link) => link.offset,
+            Backend::Local { .. } => DVec3::ZERO,
+        };
+        let feet = interpolate(&self.prev, &self.body, alpha) + offset;
         let eye = feet + DVec3::new(0.0, self.physics.eye_height, 0.0);
         (eye, self.view_dir())
     }
@@ -715,6 +826,54 @@ impl Session {
         }
         Ok(())
     }
+}
+
+/// Applies a server correction: back to the server's state after
+/// `c.tick`, then the intents predicted since are replayed. The change in the
+/// drawn position is smoothed out unless it is a teleport.
+fn reconcile(
+    link: &mut Link,
+    c: &Correction,
+    body: &mut PlayerBody,
+    prev: &mut PlayerBody,
+    fly_speed: &mut f64,
+    physics: &PhysicsConfig,
+    world: &MapBlocks<'_>,
+) {
+    if link.last_correction.is_some_and(|t| c.tick <= t) {
+        return; // a repeat of one already applied
+    }
+    let (mut b, mut fly) = corrected(c);
+    let at = link.history.iter().position(|p| p.intent.tick == c.tick);
+    if let Some(i) = at
+        && state_hash(&link.history[i].after, link.history[i].fly_after) == state_hash(&b, fly)
+    {
+        return; // the prediction already agrees (a repeated correction)
+    }
+    link.last_correction = Some(c.tick);
+    let before = body.pos;
+    let mut last_prev = b;
+    if let Some(i) = at {
+        link.history[i].after = b;
+        link.history[i].fly_after = fly;
+        for p in link.history.iter_mut().skip(i + 1) {
+            last_prev = b;
+            fly = apply_fly_steps(fly, p.intent.fly_speed_steps, physics.fly_speed_range);
+            step(&mut b, &physics_input(&p.intent, fly), physics, world);
+            p.after = b;
+            p.fly_after = fly;
+        }
+    }
+    let jump = before - b.pos;
+    link.stats.corrections += 1;
+    link.stats.max_correction = link.stats.max_correction.max(jump.length());
+    link.offset += jump;
+    if link.offset.length() > SNAP_DISTANCE {
+        link.offset = DVec3::ZERO;
+    }
+    *body = b;
+    *prev = last_prev;
+    *fly_speed = fly;
 }
 
 /// The `core` mod's data a session needs.

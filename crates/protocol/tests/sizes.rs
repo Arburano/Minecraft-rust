@@ -23,20 +23,34 @@ fn datagrams_fit_and_sizes_are_reported() {
     let len = input(MAX_INTENTS).encode().expect("input").len();
     println!("input datagram, {MAX_INTENTS} intents (max): {len} B");
 
-    let twenty = entities(20).encode().expect("entities").len();
-    println!("entity delta, 20 entities (position + look + flags each): {twenty} B");
+    let twenty = moving(20).encode().expect("entities").len();
+    println!("entity delta, 20 known entities moving and turning (steady state): {twenty} B");
     assert!(twenty <= MAX_DATAGRAM);
     let kbit = twenty as f64 * 8.0 * 20.0 / 1000.0;
     println!("  at 20 Hz: {kbit:.1} kbit/s (payload only, without QUIC/UDP/IP headers)");
+    let new20 = entities(20).encode().expect("entities").len();
+    println!("entity delta, 20 entities appearing (kind + position + look + flags): {new20} B");
+    let c = corrected().encode().expect("c").len() - moving(2).encode().expect("m").len();
+    println!("a correction adds {c} B");
+    let ack = EntityDatagram {
+        snapshot: 2,
+        baseline: 1,
+        ack_tick: Some(1000),
+        ..EntityDatagram::default()
+    };
+    println!(
+        "empty datagram (ack only): {} B",
+        ack.encode().expect("ack").len()
+    );
 
-    // The most moving entities that fit one datagram.
+    // The most appearing entities that fit one datagram.
     let mut fit = 0;
     for n in 1..=MAX_ENTITY_UPDATES {
         if entities(n).encode().is_ok() {
             fit = n;
         }
     }
-    println!("entity delta: up to {fit} fully-changed entities per datagram");
+    println!("entity delta: up to {fit} appearing entities per datagram");
     assert!(fit >= 40);
 }
 

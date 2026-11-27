@@ -6,6 +6,7 @@ use std::collections::{HashMap, HashSet};
 use client::session::Session;
 use client::textures::BlockTextures;
 use glam::{IVec3, Vec3};
+use render::entities::{BoxCamera, BoxInstance, BoxRenderer, player_boxes};
 use render::terrain::camera::{look_to, perspective};
 use render::terrain::culling::{Frustum, cave_visible};
 use render::terrain::profiles::RenderSettings;
@@ -22,6 +23,8 @@ pub const SKY: [f32; 3] = [0.55, 0.72, 0.95];
 /// GPU state of the world being played.
 pub struct WorldView {
     terrain: TerrainRenderer,
+    boxes: BoxRenderer,
+    box_list: Vec<BoxInstance>,
     visible: HashSet<IVec3>,
     upload_errors: u32,
 }
@@ -59,6 +62,8 @@ impl WorldView {
         );
         Self {
             terrain,
+            boxes: BoxRenderer::new(device, format),
+            box_list: Vec::new(),
             visible: HashSet::new(),
             upload_errors: 0,
         }
@@ -167,12 +172,34 @@ impl WorldView {
         } else {
             None
         };
+        // Other players on a server, as boxes until models exist.
+        self.box_list.clear();
+        for o in session.others() {
+            let h = (o.id.0.wrapping_mul(0x9e37_79b9_7f4a_7c15) >> 40) as u32;
+            let hue = |shift: u32| 0.25 + f32::from(((h >> shift) & 0xff) as u8) / 255.0 * 0.6;
+            self.box_list.extend(player_boxes(
+                o.pos.as_vec3(),
+                o.yaw,
+                [hue(0), hue(8), hue(16)],
+            ));
+        }
+        self.boxes.prepare(
+            queue,
+            &BoxCamera {
+                view_proj,
+                eye,
+                fog: camera.fog,
+                sky: SKY,
+            },
+            &self.box_list,
+        );
         self.terrain.prepare(queue, &camera, visible)
     }
 
     /// Records the terrain into a pass with the renderer's depth format.
     pub fn render(&self, pass: &mut wgpu::RenderPass<'_>) {
         self.terrain.render(pass);
+        self.boxes.render(pass);
     }
 
     /// Batches or light sections that did not fit (shown in the debug overlay).

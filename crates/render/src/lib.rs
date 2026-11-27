@@ -1,5 +1,6 @@
 //! GPU capability reporting and stage 0–1 rendering path selection.
 
+pub mod entities;
 pub mod selection;
 pub mod terrain;
 

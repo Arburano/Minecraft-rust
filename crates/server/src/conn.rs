@@ -198,6 +198,10 @@ async fn play(
                         let _ = world.send(ToWorld::Delivered { id, pos, ok });
                     });
                 }
+                Some(ToConn::Datagram(bytes)) => {
+                    // Unreliable by design: the next tick's datagram supersedes it.
+                    let _ = conn.send_datagram(bytes.into());
+                }
                 Some(ToConn::Forget(c)) => {
                     let msg = ServerEvent::ForgetColumn(c.into());
                     if events.is_none() {
@@ -235,7 +239,11 @@ async fn play(
                     tokens -= 1.0;
                     match InputDatagram::decode(&bytes) {
                         Ok(d) => {
-                            let _ = ctx.world.send(ToWorld::Intents { id: id.clone(), intents: d.intents });
+                            let _ = ctx.world.send(ToWorld::Intents {
+                                id: id.clone(),
+                                intents: d.intents,
+                                ack_snapshot: d.ack_snapshot,
+                            });
                         }
                         Err(_) => {
                             bad += 1;

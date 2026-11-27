@@ -13,6 +13,7 @@ pub mod conn;
 pub mod game;
 pub mod input;
 pub mod players;
+pub mod replication;
 pub mod storage;
 
 use std::net::SocketAddr;

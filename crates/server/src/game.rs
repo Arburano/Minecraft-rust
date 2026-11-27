@@ -16,7 +16,10 @@ use std::time::{Duration, Instant};
 use crossbeam_channel::Receiver;
 use engine_core::jobs::{CancelToken, JobPool, Priority};
 use glam::DVec3;
-use protocol::{ChunkStream, ColumnPayload, Intent, KickReason, Message, Spawn};
+use protocol::{
+    Angle8, BlockXyz, ChunkStream, ColumnPayload, Correction, Intent, KickReason, Look, Message,
+    NetId, Spawn,
+};
 use sim::physics::{MapBlocks, PhysicsConfig, PlayerBody, step};
 use tokio::sync::mpsc::UnboundedSender;
 use world::map::DirtyKind;
@@ -24,8 +27,9 @@ use world::storage::ColumnRecord;
 use world::{Column, ColumnPos, Registry, WorldMap};
 use worldgen::{GenContext, Pipeline};
 
-use crate::input::{apply_fly_steps, physics_input, wire_yaw};
+use crate::input::{apply_fly_steps, correction, flags, physics_input, state_hash, wire_yaw};
 use crate::players::{self, SavedPlayer};
+use crate::replication::{Candidate, EntityState, Replicator, quantize};
 use crate::storage::{Reply, Request, Storage};
 
 /// Simulation rate.
@@ -74,6 +78,8 @@ pub enum ToWorld {
         id: String,
         /// Newest last.
         intents: Vec<Intent>,
+        /// The newest entity snapshot the client reconstructed.
+        ack_snapshot: u32,
     },
     /// A column stream finished (`ok`) or failed (resend it).
     Delivered {
@@ -106,6 +112,8 @@ pub enum ToConn {
     },
     /// Tell the client to drop a column.
     Forget(ColumnPos),
+    /// An encoded `EntityDatagram` (sent as a QUIC datagram).
+    Datagram(Vec<u8>),
     /// End the session.
     Kick(KickReason, String),
 }
@@ -128,6 +136,10 @@ pub struct WorldSetup {
 
 struct Player {
     name: String,
+    net_id: NetId,
+    /// Pending correction: resent every tick until the client's hashes agree.
+    correction: Option<Correction>,
+    replicator: Replicator,
     out: UnboundedSender<ToConn>,
     body: PlayerBody,
     yaw: f64,
@@ -203,6 +215,9 @@ pub struct World {
     players: HashMap<String, Player>,
     unsaved: HashSet<ColumnPos>,
     dirty: Vec<world::coords::SectionPos>,
+    next_net_id: u64,
+    snapshot: u32,
+    corrections: u64,
 }
 
 impl World {
@@ -230,6 +245,9 @@ impl World {
             players: HashMap::new(),
             unsaved: HashSet::new(),
             dirty: Vec::new(),
+            next_net_id: 1,
+            snapshot: 0,
+            corrections: 0,
         })
     }
 
@@ -267,6 +285,7 @@ impl World {
         self.move_players();
         self.request_columns();
         self.stream();
+        self.replicate();
         self.unload();
         true
     }
@@ -282,8 +301,13 @@ impl World {
                     return;
                 }
                 let saved = players::load(&self.dir, &id);
+                let net_id = NetId(self.next_net_id);
+                self.next_net_id += 1;
                 let mut p = Player {
                     name,
+                    net_id,
+                    correction: None,
+                    replicator: Replicator::default(),
                     out,
                     body: PlayerBody {
                         pos: DVec3::new(WORLD_SPAWN[0], 0.0, WORLD_SPAWN[1]),
@@ -313,10 +337,15 @@ impl World {
                 }
                 self.players.insert(id, p);
             }
-            ToWorld::Intents { id, intents } => {
+            ToWorld::Intents {
+                id,
+                intents,
+                ack_snapshot,
+            } => {
                 if let Some(p) = self.players.get_mut(&id)
                     && p.spawned
                 {
+                    p.replicator.ack(ack_snapshot);
                     for i in intents {
                         let newer = p.last_tick.is_none_or(|t| i.tick > t)
                             && p.intents.back().is_none_or(|b| i.tick > b.tick);
@@ -450,6 +479,17 @@ impl World {
                     apply_fly_steps(p.fly_speed, i.fly_speed_steps, self.physics.fly_speed_range);
                 let input = physics_input(&i, p.fly_speed);
                 step(&mut p.body, &input, &self.physics, &world);
+                // Reconciliation: a correction only when the prediction differs.
+                if state_hash(&p.body, p.fly_speed) == i.state_hash {
+                    if p.correction.is_some_and(|c| i.tick > c.tick) {
+                        p.correction = None; // the client has applied it
+                    }
+                } else {
+                    if p.correction.is_none() {
+                        self.corrections += 1;
+                    }
+                    p.correction = Some(correction(i.tick, &p.body, p.fly_speed));
+                }
                 p.yaw = wire_yaw(&i);
                 p.pitch = f64::from(i.pitch.to_signed_radians());
                 p.last_tick = Some(i.tick);
@@ -540,6 +580,69 @@ impl World {
                 }
             }
         }
+    }
+
+    /// Sends every spawned player this tick's datagram: their
+    /// reconciliation data and the deltas of the other players in view.
+    fn replicate(&mut self) {
+        self.snapshot = self.snapshot.wrapping_add(1).max(1);
+        let snapshot = self.snapshot;
+        let radius = f64::from(self.view * 16);
+        let everyone: Vec<(NetId, DVec3, EntityState)> = self
+            .players
+            .values()
+            .filter(|p| p.spawned)
+            .map(|p| {
+                let a = |r: f64| Angle8::from_radians(r as f32);
+                (
+                    p.net_id,
+                    p.body.pos,
+                    EntityState {
+                        kind: 0,
+                        pos: quantize(p.body.pos.to_array()),
+                        look: Look {
+                            yaw: a(p.yaw),
+                            pitch: a(p.pitch),
+                            head_yaw: a(p.yaw),
+                        },
+                        flags: flags(&p.body),
+                    },
+                )
+            })
+            .collect();
+        for p in self.players.values_mut().filter(|p| p.spawned) {
+            let me = p.body.pos;
+            let candidates = everyone
+                .iter()
+                .filter(|(id, _, _)| *id != p.net_id)
+                .filter_map(|&(id, pos, state)| {
+                    let d = (pos - me).length();
+                    let h = ((pos.x - me.x).powi(2) + (pos.z - me.z).powi(2)).sqrt();
+                    (h <= radius).then_some(Candidate {
+                        id,
+                        state,
+                        distance: d,
+                    })
+                })
+                .collect();
+            let origin = BlockXyz {
+                x: me.x.floor() as i32,
+                y: me.y.floor() as i32,
+                z: me.z.floor() as i32,
+            };
+            let d = p
+                .replicator
+                .build(snapshot, origin, p.last_tick, p.correction, candidates);
+            if let Ok(bytes) = d.encode() {
+                let _ = p.out.send(ToConn::Datagram(bytes));
+            }
+        }
+    }
+
+    /// Corrections issued so far (metrics and tests).
+    #[must_use]
+    pub fn corrections(&self) -> u64 {
+        self.corrections
     }
 
     fn unload(&mut self) {

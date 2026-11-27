@@ -904,7 +904,12 @@ fn debug_text(g: &Game, gpu_line: &str) -> String {
         g.session.loader().meshes().len(),
         l.submitted,
         g.view.upload_errors(),
-    )
+    ) + &g.session.net_stats().map_or(String::new(), |n| {
+        format!(
+            "\nserver: {} players in view, {} corrections (max {:.2} blocks)",
+            n.others, n.corrections, n.max_correction
+        )
+    })
 }
 
 /// Copies the frame for a screenshot (the surface allows `COPY_SRC`).

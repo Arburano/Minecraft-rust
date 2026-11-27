@@ -217,6 +217,7 @@ fn streaming_follows_the_player_and_forgets_behind() {
                 yaw: protocol::Angle16(0),
                 pitch: protocol::Angle16(0),
                 fly_speed_steps: steps,
+                state_hash: 0,
             });
             if recent.len() > 3 {
                 recent.remove(0);

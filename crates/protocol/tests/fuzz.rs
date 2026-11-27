@@ -38,6 +38,8 @@ fn valid_samples() -> Vec<Vec<u8>> {
         kick().encode().expect("e"),
         input(3).encode().expect("e"),
         entities(20).encode().expect("e"),
+        moving(20).encode().expect("e"),
+        corrected().encode().expect("e"),
         ChunkStream::Column(ColumnPayload::encode(&small_record()).expect("e"))
             .encode()
             .expect("e"),

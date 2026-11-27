@@ -58,8 +58,8 @@ Measured sizes (`cargo test -p protocol --release --test sizes -- --nocapture`; 
 
 | Message | Size |
 | --- | --- |
-| Input datagram, 1 / 3 / 8 intents | 14 / 32 / 48 B |
-| Entity delta, 20 entities, every field changed | 252 B → 40.3 kbit/s at 20 Hz, payload only |
+| Input datagram, 1 / 3 / 8 intents | 14 / 32 / 48 B (protocol v1; v2 with the state hash: 19 / 45 / 81 B) |
+| Entity delta, 20 entities, every field changed | 252 B → 40.3 kbit/s at 20 Hz, payload only (v1; v2 steady state: 168 B, see "Entity deltas") |
 | Fully-changed entities per 1,200-byte datagram | 99 |
 | Generated column (overworld, seed 7, 24 sections, no light), 64 columns | raw record 6.8–11.0 KB (mean 9.4 KB); on the wire 0.87–2.3 KB (mean 1.6 KB) |
 | Login at 12 chunks (625 columns) | ≈ 1.0 MB (vs. the 2.4–9.8 MB estimate below) |
@@ -69,7 +69,7 @@ Measured sizes (`cargo test -p protocol --release --test sizes -- --nocapture`; 
 - **Server** (`crates/server`, library + binary): `server --offline [--world DIR] [--seed N] [--view-distance 14]`. Threads: a 2-worker tokio runtime for QUIC (accept loop, a task per connection and per column stream), the world thread (20 TPS, owns the `WorldMap`), the generation job pool and a storage thread that owns the `WorldStore` (loads on request, writes unloaded edited columns), so region-file I/O never runs in the tick. One region for now (T2-06).
 - **Join:** the handshake above; a new player spawns at the world spawn (the 5×5 columns around it stay loaded even with nobody online), a returning player where they left (`<world>/players/<id>.toml`). The client renders `view_distance − 2` columns (the server streams 2 more for light and meshing of the border).
 - **Streaming:** each tick the world thread hands every player the nearest columns they lack, at most **32 streams in flight** per player (a stream counts until the client has acknowledged all of it); stream priority = −distance. Encoded columns are cached until the column unloads. Beyond `view_distance + 2` the server sends `ForgetColumn` and unloads columns no player needs.
-- **Movement until T2-03:** the client sends its intents (each datagram repeats the last 3); the server runs the same `sim::physics::step` on them (≤ 3 per tick to catch up after jitter) for its streaming center. Both sides convert intents through `server::input`, and the client simulates with the quantized yaw, so the two positions are bit-identical (tested). No corrections are sent yet (T2-03).
+- **Movement:** the client sends its intents (each datagram repeats the last 3); the server runs the same `sim::physics::step` on them (≤ 3 per tick to catch up after jitter). Both sides convert intents through `server::input`, and the client simulates with the quantized yaw, so the two positions are bit-identical (tested). Reconciliation by state hash and corrections: simulation-and-ai.md (T2-03).
 - **Client:** `client --offline-name NAME --connect HOST:PORT` (the menu entry is T2-08). `Session::connect` puts the loader in network mode (`LoadConfig::generate = false`: columns come only from the network); columns are decompressed, decoded and mapped to the client's block IDs on the network threads; light and meshes stay on the client (ADR-0011). Edits are disabled until T2-04.
 - **Limits on client input:** handshake ≤ 10 s; frames bounded by each message's size before reading; ≤ 60 input datagrams/s (burst 120), excess dropped; more than 50 malformed datagrams → disconnect; a second `Hello` → disconnect. Tests: `crates/server/tests/join.rs` (garbage headers, oversized frames, bad names, noisy datagrams, wrong version; the server keeps serving).
 - **Transport:** both game endpoints use an initial RTT estimate of 100 ms instead of QUIC's 333 ms, so a lost handshake packet is resent after ≈ 0.3 s rather than ≈ 1 s.
@@ -81,6 +81,15 @@ Measured (cloud VM, 4 vCPU Xeon 2.1 GHz, release, `LossyRelay` 2% loss + RTT 100
 - For each client the server keeps the number of the last acknowledged snapshot; a delta = changes relative to it.
 - Quantization: positions 1/32 block in relative coordinates, angles 8 bits.
 - Interest management: only entities in the visibility zone; distant ones less often.
+
+Implementation (T2-03, `server::replication`, protocol version 2):
+
+- One `EntityDatagram` per client per server tick: snapshot number, baseline (the newest snapshot the client acknowledged in `InputDatagram::ack_snapshot`, or 0), the newest applied intent tick, an optional `Correction`, and entity updates.
+- The server keeps, per client, the last 64 snapshots **as the client will see them**: entities that do not fit the datagram, or are far and not due, keep their baseline state, so a delta is always exact against what the client has. The client (`Reconstructor`) rebuilds full snapshots and drops a datagram whose baseline it lacks; the next one is relative to an older acknowledged snapshot.
+- An update carries only what changed: a known entity's movement as `Step8` (i8 × 3 in 1/32 block, ±4 blocks), a full `RelPos` only for new entities or longer moves, the look and flags only when they change. Entities that stop cost nothing.
+- Interest: other players within the view radius; within 48 blocks every tick (20 Hz), farther every 4th tick (5 Hz). Over-full datagrams keep the nearest updates; the rest follow in later snapshots.
+- Measured sizes (deterministic): 20 known entities moving and turning **168 B** (26.9 kbit/s payload at 20 Hz), 20 appearing 265 B, an ack-only datagram 17 B, a correction +63 B; 96 appearing entities fit one datagram.
+- Measured on the wire (cloud VM, loopback, `crates/client/tests/replication.rs`): an observer with 20 bots walking circles nearby receives **27.4 kbit/s** of QUIC UDP payload in steady state (sends 15.7 kbit/s); UDP/IP headers add ≈ 28 B per packet.
 
 ## Traffic estimates (from PRD §8)
 
