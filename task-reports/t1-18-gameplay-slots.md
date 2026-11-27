@@ -54,6 +54,8 @@ The data side of ADR-0013. The `core` split itself was already done by T1-24 (AD
 - `Correction` is `Copy`, so the ability state could not be a `Vec`. It is a fixed 32-byte array, padded; bitcode keeps a correction at +68 B when the state is zero.
 - The first crawl test crawled past the end of its tunnel, so the "stay small inside" check tested open air. The tunnel was made longer.
 - The first network test walked off a slope into water before crawling, so crawl never fired. The script now crawls first, on the spawn.
+- One full workspace run failed `client/tests/edit.rs` (`dig_and_place_keep_meshes_and_light_exact`, at `process_light`). This happened while other cargo commands were loading the VM. The test passed in three separate runs and in the next full run. The code it covers (edits, light) was not touched by this task, so it looks like a load-dependent flake; to watch if it repeats.
+- Clippy flagged operator precedence in the button bits; parenthesized.
 - The disk filled up (55 GB of debug build artifacts) and crashed the compiler. Incremental and dependency caches were removed and the build was redone.
 
 ## Issues encountered

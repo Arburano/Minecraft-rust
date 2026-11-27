@@ -371,9 +371,9 @@ fn run_abilities(
     (forward, right): (DVec3, DVec3),
 ) -> f64 {
     let mut s = body.abilities;
-    let now = u8::from(input.jump) * abilities::JUMP
-        | u8::from(input.sprint) * abilities::SPRINT
-        | u8::from(input.descend) * abilities::DESCEND;
+    let now = (u8::from(input.jump) * abilities::JUMP)
+        | (u8::from(input.sprint) * abilities::SPRINT)
+        | (u8::from(input.descend) * abilities::DESCEND);
     if body.on_ground || body.in_fluid {
         s.used = [0; abilities::MAX_ABILITIES];
     }
