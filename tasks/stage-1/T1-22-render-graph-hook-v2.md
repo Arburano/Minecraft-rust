@@ -1,7 +1,7 @@
 # T1-22. Programmable render graph and shader-pack hook version 2
 
-- **Status:** blocked (waits for the owner to accept [ADR-0015](../../docs/adr/0015-programmable-render-graph.md))
-- **Depends on:** ADR-0015 accepted, T1-19, T1-21
+- **Status:** todo ([ADR-0015](../../docs/adr/0015-programmable-render-graph.md) accepted 2026-11-27)
+- **Depends on:** T1-19, T1-21
 - **Owner:** agent (cloud) + owner's laptop
 
 ## Goal

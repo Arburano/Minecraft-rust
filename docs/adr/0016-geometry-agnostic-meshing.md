@@ -1,6 +1,6 @@
 # 0016. Geometry-agnostic meshing and render buckets (readiness for non-cubic terrain)
 
-Status: Proposed (2026-11-26)
+Status: Accepted (owner, 2026-11-27)
 
 ## Context
 

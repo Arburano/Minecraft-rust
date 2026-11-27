@@ -1,6 +1,6 @@
 # Render graph and shader packs, hook version 2
 
-**Status: proposed** — depends on [ADR-0015](../adr/0015-programmable-render-graph.md) (Proposed). Until the owner accepts it, the implemented interface is hook version 1 ([`../modding/packs.md`](../modding/packs.md), ADR-0014). Crate: `render`. Related: [meshing-and-rendering.md](meshing-and-rendering.md), [ADR-0016](../adr/0016-geometry-agnostic-meshing.md) (render buckets).
+**Status: accepted, not implemented yet** — [ADR-0015](../adr/0015-programmable-render-graph.md) (accepted 2026-11-27), task T1-22. Until T1-22 lands, the implemented interface is hook version 1 ([`../modding/packs.md`](../modding/packs.md), ADR-0014). Crate: `render`. Related: [meshing-and-rendering.md](meshing-and-rendering.md), [ADR-0016](../adr/0016-geometry-agnostic-meshing.md) (render buckets).
 
 ## Frame
 

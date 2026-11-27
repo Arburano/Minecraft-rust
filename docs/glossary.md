@@ -8,8 +8,8 @@
 | Mesh chunk | A 32³ block cube (2×2×2 sections), the unit of meshing. ADR-0005. |
 | Render batch | 2×2×2 mesh chunks (64³ blocks), drawn with a single command. ADR-0005. |
 | Quad | A rectangular face after greedy meshing, packed into a `u64` (8 bytes). |
-| Render bucket | One geometry type inside a render batch with its own pipeline: voxel quads, model instances, later smooth meshes and water surfaces. ADR-0016 (Proposed). |
-| Render graph | The ordered stages of a frame (setup, shadow, G-buffer, deferred, translucent, composite, final) and the targets they read and write. ADR-0015 (Proposed), `render-graph.md`. |
+| Render bucket | One geometry type inside a render batch with its own pipeline: voxel quads, model instances, later smooth meshes and water surfaces. ADR-0016. |
+| Render graph | The ordered stages of a frame (setup, shadow, G-buffer, deferred, translucent, composite, final) and the targets they read and write. ADR-0015, `render-graph.md`. |
 | G-buffer, MRT | Several render targets written in one geometry pass (albedo, normal, material, motion vectors), read later by deferred passes. |
 | Generation backpressure | Holding or slowing a player at the edge of loaded terrain instead of letting them enter unloaded columns. T2-10. |
 | Masks | Bit masks of opaque and transparent voxels of a mesh chunk; input for `fast_mesh`. |

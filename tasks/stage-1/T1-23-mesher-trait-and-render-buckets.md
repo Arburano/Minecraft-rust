@@ -1,7 +1,7 @@
 # T1-23. Mesher trait and render buckets
 
-- **Status:** blocked (waits for the owner to accept [ADR-0016](../../docs/adr/0016-geometry-agnostic-meshing.md))
-- **Depends on:** ADR-0016 accepted, T1-11
+- **Status:** todo ([ADR-0016](../../docs/adr/0016-geometry-agnostic-meshing.md) accepted 2026-11-27)
+- **Depends on:** T1-11
 - **Owner:** agent (cloud)
 
 ## Goal

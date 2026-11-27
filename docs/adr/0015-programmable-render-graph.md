@@ -1,6 +1,6 @@
 # 0015. Programmable render graph for shader packs (hook version 2)
 
-Status: Proposed (2026-11-26). If accepted, it supersedes the shader-pack boundary of ADR-0014, decision 2 ("look, not geometry"); resource packs (ADR-0014, decision 1) do not change.
+Status: Accepted (owner, 2026-11-27). Supersedes the shader-pack boundary of ADR-0014, decision 2 ("look, not geometry"); resource packs (ADR-0014, decision 1) do not change.
 
 ## Context
 
