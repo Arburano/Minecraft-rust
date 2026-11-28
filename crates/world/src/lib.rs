@@ -8,6 +8,7 @@
 //! with the persisted ID table, columns with a sky heightmap and the lock-free
 //! `WorldMap` of loaded columns with dirty tracking (T1-01).
 
+pub mod capability;
 pub mod column;
 pub mod coords;
 pub mod map;
@@ -16,6 +17,7 @@ pub mod registry;
 pub mod section;
 pub mod storage;
 
+pub use capability::{Capabilities, Capability};
 pub use column::{Column, ColumnPos, ColumnState, WorldBounds};
 pub use map::{DirtyKind, WorldError, WorldMap};
 pub use modset::{ModSet, ModSetError};

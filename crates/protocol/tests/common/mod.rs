@@ -21,6 +21,7 @@ pub fn welcome() -> ServerControl {
         player_id: [7; 16],
         tick_rate: 20,
         mod_manifest_hash: [0; 32],
+        capabilities: vec!["dimensions".into(), "zones".into()],
     })
 }
 

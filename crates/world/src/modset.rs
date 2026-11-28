@@ -20,6 +20,7 @@ use std::path::{Path, PathBuf};
 use serde::Deserialize;
 
 use crate::RegistryBuilder;
+use crate::capability::{Capabilities, Capability, known_names};
 use crate::registry::{RegistryError, blocks_from_dir};
 
 /// Errors while reading a build or resolving its mods.
@@ -69,6 +70,18 @@ pub enum ModSetError {
         /// The build.
         build: String,
     },
+    /// A mod requires a capability this binary was compiled without
+    /// (ADR-0018: its cargo feature is off).
+    CapabilityNotCompiled {
+        /// The build.
+        build: String,
+        /// The first mod (in load order) that requires it.
+        mod_id: String,
+        /// The capability.
+        capability: Capability,
+        /// The binary (`server`, `client`).
+        binary: String,
+    },
 }
 
 impl fmt::Display for ModSetError {
@@ -98,6 +111,17 @@ impl fmt::Display for ModSetError {
             Self::SlotMissing { slot, build } => write!(
                 f,
                 "build {build} has no mod that provides {slot:?} (add one, e.g. a movement or world module)"
+            ),
+            Self::CapabilityNotCompiled {
+                build,
+                mod_id,
+                capability,
+                binary,
+            } => write!(
+                f,
+                "build {build} needs capability {capability} (required by mod {mod_id}); \
+                 this {binary} binary was built without it (cargo feature {:?})",
+                capability.cargo_feature().unwrap_or(capability.name())
             ),
         }
     }
@@ -141,6 +165,17 @@ struct RawManifest {
     info: RawModInfo,
     #[serde(default)]
     dependencies: BTreeMap<String, RawDependency>,
+    #[serde(default)]
+    requires: RawRequires,
+}
+
+/// `[requires]` of `mod.toml`.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawRequires {
+    /// Engine capabilities the mod needs (ADR-0018).
+    #[serde(default)]
+    capabilities: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -190,6 +225,8 @@ pub struct ModInfo {
     pub dependencies: Vec<Dependency>,
     /// Gameplay slots this mod fills (`movement`, `worldgen:<dimension>`).
     pub provides: Vec<String>,
+    /// Engine capabilities the mod requires (`[requires] capabilities`).
+    pub capabilities: Capabilities,
 }
 
 /// The slot of a dimension's world generator.
@@ -241,6 +278,14 @@ impl ModInfo {
                 path.display()
             )));
         }
+        let capabilities = Capabilities::from_names(&raw.requires.capabilities).map_err(|bad| {
+            ModSetError::Parse(format!(
+                "{}: mod {} requires unknown capability {bad:?} (known: {})",
+                path.display(),
+                raw.info.id,
+                known_names()
+            ))
+        })?;
         Ok(Self {
             id: raw.info.id,
             version: raw.info.version,
@@ -248,6 +293,7 @@ impl ModInfo {
             dir: dir.to_path_buf(),
             dependencies,
             provides: raw.info.provides,
+            capabilities,
         })
     }
 
@@ -354,6 +400,39 @@ impl ModSet {
     #[must_use]
     pub fn mods(&self) -> &[ModInfo] {
         &self.mods
+    }
+
+    /// The build's capabilities: the union over its mods (ADR-0018).
+    #[must_use]
+    pub fn capabilities(&self) -> Capabilities {
+        self.mods
+            .iter()
+            .fold(Capabilities::NONE, |set, m| set.union(m.capabilities))
+    }
+
+    /// The first mod in load order that requires a capability.
+    #[must_use]
+    pub fn requirer(&self, capability: Capability) -> Option<&ModInfo> {
+        self.mods
+            .iter()
+            .find(|m| m.capabilities.contains(capability))
+    }
+
+    /// Checks that a binary compiled with `compiled` can run this build: every
+    /// required capability must be compiled in. `binary` names the binary in
+    /// the error (`server`, `client`).
+    pub fn check_compiled(&self, compiled: Capabilities, binary: &str) -> Result<(), ModSetError> {
+        match self.capabilities().difference(compiled).iter().next() {
+            None => Ok(()),
+            Some(capability) => Err(ModSetError::CapabilityNotCompiled {
+                build: self.build.clone(),
+                mod_id: self
+                    .requirer(capability)
+                    .map_or_else(String::new, |m| m.id.clone()),
+                capability,
+                binary: binary.to_owned(),
+            }),
+        }
     }
 
     /// Whether the set has a mod.
@@ -748,6 +827,58 @@ mod tests {
     }
 
     #[test]
+    fn capabilities_are_the_union_of_the_mods() {
+        let root = temp("caps");
+        let with = |id: &str, caps: &str| {
+            format!(
+                "[mod]\nid = \"{id}\"\nversion = \"0.1.0\"\n\n[dependencies]\ncore = \"^0.1\"\n\n[requires]\ncapabilities = [{caps}]\n"
+            )
+        };
+        write_mod(&root, "core", &manifest("core", "0.1.0", ""));
+        write_mod(
+            &root,
+            "ships",
+            &with("ships", "\"moving_grids\", \"dimensions\""),
+        );
+        write_mod(
+            &root,
+            "planets",
+            &with("planets", "\"dimensions\", \"space\""),
+        );
+        let plain = ModSet::resolve("classic", &["core"], &root).expect("set");
+        assert!(plain.capabilities().is_empty());
+        assert!(plain.check_compiled(Capabilities::NONE, "server").is_ok());
+        let set = ModSet::resolve("industrial", &["ships", "planets"], &root).expect("set");
+        assert_eq!(
+            set.capabilities().to_string(),
+            "dimensions, moving_grids, space"
+        );
+        assert_eq!(
+            set.requirer(Capability::Dimensions).map(|m| m.id.as_str()),
+            Some("planets")
+        );
+        assert!(set.check_compiled(Capabilities::all(), "server").is_ok());
+        let err = set
+            .check_compiled(
+                Capabilities::all().without(Capability::MovingGrids),
+                "server",
+            )
+            .expect_err("not compiled");
+        assert_eq!(
+            err.to_string(),
+            "build industrial needs capability moving_grids (required by mod ships); \
+             this server binary was built without it (cargo feature \"moving_grids\")"
+        );
+        write_mod(&root, "odd", &with("odd", "\"lasers\""));
+        let err = ModSet::resolve("t", &["core"], &root).expect_err("unknown");
+        assert!(
+            matches!(&err, ModSetError::Parse(m) if m.contains("mod odd requires unknown capability \"lasers\"")),
+            "{err}"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
     fn shipped_builds_resolve() {
         let (mods, builds) = source_tree();
         let mut files: Vec<_> = std::fs::read_dir(&builds)
@@ -772,6 +903,10 @@ mod tests {
         assert!(classic.find("movement/profile.toml").is_some());
         assert!(classic.require_slot(MOVEMENT_SLOT).is_ok());
         assert!(classic.require_slot(&worldgen_slot("overworld")).is_ok());
+        assert!(
+            classic.capabilities().is_empty(),
+            "classic needs no capability"
+        );
         // A build with another movement provider carries only that one.
         let agile = source_build("classic_agile").expect("agile");
         assert_eq!(

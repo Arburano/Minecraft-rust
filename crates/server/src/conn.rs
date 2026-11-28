@@ -55,6 +55,8 @@ pub struct ConnContext {
     pub motd: String,
     /// The block ID table sent to every client.
     pub block_states: Arc<Vec<String>>,
+    /// The capabilities the server runs (ADR-0018), sent in `Welcome`.
+    pub capabilities: Vec<String>,
 }
 
 fn close(conn: &Connection, code: u32, reason: &str) {
@@ -131,6 +133,7 @@ async fn handshake(
         player_id: identity.id().0,
         tick_rate: TICK_RATE,
         mod_manifest_hash: [0; 32],
+        capabilities: ctx.capabilities.clone(),
     });
     write_message(&mut send, &welcome)
         .await

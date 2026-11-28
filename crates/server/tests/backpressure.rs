@@ -55,6 +55,7 @@ fn world(tag: &str, view: i32, sim: i32, region_threads: usize) -> (World, PathB
             threads: 2,
             region_threads,
             entity_limits: server::entities::EntityLimits::from_mods(&data()).expect("limits"),
+            subsystems: Default::default(),
         },
         storage,
     )

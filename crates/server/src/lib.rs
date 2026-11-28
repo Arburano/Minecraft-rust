@@ -9,6 +9,7 @@
 //! connection, one task per column stream), the world thread (20 TPS, owns
 //! the world map), the generation job pool and the storage thread.
 
+pub mod capabilities;
 pub mod columns;
 pub mod conn;
 pub mod entities;
@@ -84,6 +85,9 @@ pub struct ServerConfig {
     pub server_name: String,
     /// Message of the day.
     pub motd: String,
+    /// Factories of the optional subsystems (ADR-0018); only those of the
+    /// build's capabilities start.
+    pub subsystems: capabilities::SubsystemRegistry,
 }
 
 impl ServerConfig {
@@ -112,6 +116,7 @@ impl ServerConfig {
             lan_announce: true,
             server_name: "Voxel Engine server".into(), // OPEN-QUESTION: 15
             motd: String::new(),
+            subsystems: capabilities::SubsystemRegistry::builtin(),
         }
     }
 }
@@ -142,6 +147,11 @@ struct WorldMeta {
     /// with (ADR-0013, T1-18).
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     slots: std::collections::BTreeMap<String, String>,
+    /// Engine capabilities whose data this world may hold (ADR-0018): every
+    /// capability of every build that opened it. A build without one of them
+    /// refuses the world.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    capabilities: Vec<String>,
 }
 
 /// The overworld generator of a build: the mod that fills the overworld's
@@ -195,6 +205,10 @@ fn world_seed(
             Some(_) => {}
             None => meta.generator = Some(generator.to_owned()),
         }
+        let capabilities =
+            capabilities::check_world(&meta.capabilities, &config.mods, &config.world_dir)
+                .map_err(ServerError::World)?
+                .names();
         for (slot, now) in &slots {
             if let Some(before) = meta.slots.get(slot)
                 && before != now
@@ -204,8 +218,12 @@ fn world_seed(
                 ));
             }
         }
-        if meta.slots != slots || meta.generator.as_deref() != Some(generator) {
+        if meta.slots != slots
+            || meta.generator.as_deref() != Some(generator)
+            || meta.capabilities != capabilities
+        {
             meta.slots = slots;
+            meta.capabilities = capabilities;
             write(&meta)?;
         }
         return Ok(meta.seed);
@@ -219,6 +237,7 @@ fn world_seed(
         seed,
         generator: Some(generator.to_owned()),
         slots,
+        capabilities: config.mods.capabilities().names(),
     })?;
     Ok(seed)
 }
@@ -268,6 +287,7 @@ pub struct Server {
     endpoint: quinn::Endpoint,
     runtime: Option<tokio::runtime::Runtime>,
     notices: Vec<String>,
+    capabilities: world::Capabilities,
 }
 
 impl Server {
@@ -275,6 +295,9 @@ impl Server {
     pub fn start(config: ServerConfig) -> Result<Self, ServerError> {
         let data = |e: &dyn std::fmt::Display| ServerError::Data(e.to_string());
         let mods = &config.mods;
+        // Capabilities first: a binary without one fails before any work.
+        mods.check_compiled(capabilities::compiled(), "server")
+            .map_err(|e| data(&e))?;
         let b = mods.registry_builder().map_err(|e| data(&e))?;
         let registry = Arc::new(b.build().map_err(|e| data(&e))?);
         // Slots (ADR-0013): each file comes from the one mod that fills the
@@ -299,6 +322,14 @@ impl Server {
             &generator_id(mods, &gen_config.engine),
             &mut notices,
         )?;
+        let subsystems = config
+            .subsystems
+            .start(&capabilities::SubsystemContext {
+                mods,
+                world_dir: &config.world_dir,
+            })
+            .map_err(ServerError::Data)?;
+        let active = subsystems.capabilities();
         let bounds = config.bounds;
         let store = WorldStore::open(&config.world_dir, &registry, bounds)
             .map_err(|e| ServerError::World(e.to_string()))?;
@@ -316,6 +347,7 @@ impl Server {
                 region_threads: config.region_threads,
                 entity_limits: crate::entities::EntityLimits::from_mods(&config.mods)
                     .map_err(ServerError::Data)?,
+                subsystems,
             },
             storage,
         )
@@ -356,6 +388,7 @@ impl Server {
             server_name: config.server_name.clone(),
             motd: config.motd.clone(),
             block_states: Arc::new(registry.id_table().names),
+            capabilities: active.names(),
         });
         let accept = endpoint.clone();
         runtime.spawn(async move {
@@ -380,6 +413,7 @@ impl Server {
             endpoint,
             runtime: Some(runtime),
             notices,
+            capabilities: active,
         })
     }
 
@@ -388,6 +422,12 @@ impl Server {
     #[must_use]
     pub fn notices(&self) -> &[String] {
         &self.notices
+    }
+
+    /// The capabilities whose subsystems run (the build's, ADR-0018).
+    #[must_use]
+    pub fn capabilities(&self) -> world::Capabilities {
+        self.capabilities
     }
 
     /// Tick records of the world thread (metrics).
@@ -437,6 +477,7 @@ mod seed_tests {
             seed: u64::MAX,
             generator: None,
             slots: Default::default(),
+            capabilities: vec!["zones".into()],
         })
         .expect("encode");
         let back: super::WorldMeta = toml::from_str(&text).expect("decode");

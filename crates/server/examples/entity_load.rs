@@ -61,6 +61,7 @@ fn main() {
             threads: cores.saturating_sub(1).max(1),
             region_threads: (cores * 4 / 5).max(1),
             entity_limits: server::entities::EntityLimits::from_mods(&data).expect("limits"),
+            subsystems: Default::default(),
         },
         storage,
     )

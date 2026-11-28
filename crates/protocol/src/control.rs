@@ -28,6 +28,8 @@ const MAX_JWT_LEN: usize = 4096;
 const MAX_STATE_NAME_LEN: usize = 256;
 /// Most block states a registry can hold (`world-storage.md`).
 const MAX_STATES: usize = 1 << 16;
+/// Most capability names in a `Welcome` (far above the engine's list).
+const MAX_CAPABILITIES: usize = 64;
 
 /// The first 8 bytes each side sends on the control stream: a magic and the
 /// protocol version, little-endian. This layout never changes, so builds of
@@ -114,6 +116,10 @@ pub struct Welcome {
     /// SHA-256 of the server's mod manifest; the client downloads mods if its
     /// own differs (stage 3). All zeros until mod sync exists.
     pub mod_manifest_hash: [u8; 32],
+    /// The engine capabilities the server runs (ADR-0018), by stable name
+    /// (`world::Capability::name`). Names, not bits, so a client can name a
+    /// capability it does not know. Empty for the classic game.
+    pub capabilities: Vec<String>,
 }
 
 /// The server's block ID table: index = numeric state ID on this connection.
@@ -232,6 +238,13 @@ impl Message for ServerControl {
                 check_text(&w.server_name, MAX_NAME_LEN, "server name")?;
                 check_text(&w.server_version, MAX_NAME_LEN, "server version")?;
                 check(w.motd.len() <= MAX_TEXT_LEN, "motd")?;
+                check(
+                    w.capabilities.len() <= MAX_CAPABILITIES,
+                    "too many capabilities",
+                )?;
+                for c in &w.capabilities {
+                    check_text(c, MAX_NAME_LEN, "capability name")?;
+                }
                 check(w.tick_rate > 0, "tick rate")
             }
             Self::Registry(r) => {

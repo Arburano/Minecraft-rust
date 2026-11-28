@@ -97,7 +97,12 @@ fn main() -> ExitCode {
             Some((p, n)) if n.parse::<u32>().is_ok() => (PathBuf::from(p), n.parse().unwrap_or(1)),
             _ => (PathBuf::from(s), 1),
         });
-    let mods = match world::modset::locate(&args.build, args.mods_dir.as_deref()) {
+    let located = world::modset::locate(&args.build, args.mods_dir.as_deref()).and_then(|m| {
+        // ADR-0018: a build needing a capability this binary lacks fails now.
+        m.check_compiled(client::capabilities(), "client")?;
+        Ok(m)
+    });
+    let mods = match located {
         Ok(m) => m,
         Err(e) => {
             eprintln!("error: build {}: {e}", args.build);

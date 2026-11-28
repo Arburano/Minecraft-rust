@@ -31,7 +31,7 @@ Crates: `protocol` (message types), `net` (transport). ADR: 0007 (QUIC + custom 
 ```text
 client ─ HandshakeHeader { magic, protocol } ─► server ─ HandshakeHeader ─► client  (fixed 8 bytes)
 client ─ Hello { client_version, player_name, session_jwt } ─► gateway/server
-server ─ Welcome { server_info, mod_manifest_hash } ──────► client
+server ─ Welcome { server_info, mod_manifest_hash, capabilities } ► client
 client: if the mod manifest differs — download via the menu (see client-menu-and-updater.md)
 server ─ Registry { id_table, component_schemas } ────────► client
 server ─ Spawn { pos, tick } + first 3×3 columns ─────────► client   (player control)
@@ -45,7 +45,7 @@ The "login ≤ 5 s" metric is counted up to the moment of controlling the charac
 The crate is transport-agnostic (no `quinn`): messages become bytes and back; `net` moves them.
 
 - **Handshake header:** each side first sends 8 fixed bytes on the control stream: magic `VXEN` + `PROTOCOL_VERSION` (u32 LE). Its layout never changes, so builds with different message layouts still recognize each other: a mismatch is `ProtocolError::VersionMismatch` with the hint "Update the game…" (or "the server runs an older version…"). The server answers with its own header and closes. The protocol version therefore lives in the header, not in `Hello`.
-- **Control:** `ClientControl::{Hello, Leave}`, `ServerControl::{Welcome, Registry, Spawn, Kick}`. `Hello` carries the client version, the player name (offline mode; the server validates it with `auth::PlayerName`) and a reserved `session_jwt` (always `None` until T0-10). `Welcome` carries the player ID, tick rate and the mod manifest hash (zeros until stage 3); `RegistrySync` the block ID table (the client maps it with `Registry::remap`) and a reserved component-schema hash.
+- **Control:** `ClientControl::{Hello, Leave}`, `ServerControl::{Welcome, Registry, Spawn, Kick}`. `Hello` carries the client version, the player name (offline mode; the server validates it with `auth::PlayerName`) and a reserved `session_jwt` (always `None` until T0-10). `Welcome` carries the player ID, tick rate and the mod manifest hash (zeros until stage 3) and, since protocol version 5, the engine capabilities the server runs by name (ADR-0018, T4-01; the client refuses one it does not know or was built without); `RegistrySync` the block ID table (the client maps it with `Registry::remap`) and a reserved component-schema hash.
 - **Framing:** control and events streams carry `u32 LE length + bitcode body` frames (`encode_frame`, `split_frame`); a length above 4 MiB is refused before the body arrives.
 - **Input datagram:** `ack_snapshot` (newest complete entity snapshot) + 1–8 intents with consecutive ticks; an intent is buttons (bits, incl. the one-tick flight toggle), yaw and pitch in 16 bits, and fly-speed wheel steps.
 - **Entity datagram:** `snapshot`, `baseline` (0 = full), an origin block and updates whose fields are `Option`s (absent = unchanged): kind, `RelPos` (i16 × 3 in 1/32 block, ±1,024 blocks), `Look` (three 8-bit angles), flags; plus removed IDs. Up to 128 entries; the server splits bigger deltas over datagrams of the same snapshot.
