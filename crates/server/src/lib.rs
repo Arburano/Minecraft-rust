@@ -10,16 +10,17 @@
 //! the world map), the generation job pool and the storage thread.
 
 pub mod capabilities;
+// Shared with the client (T2-11); re-exported so `server::input` and
+// `server::replication` keep working.
+pub use netcode::{input, replication};
 pub mod columns;
 pub mod conn;
 pub mod entities;
 pub mod game;
-pub mod input;
 pub mod metrics;
 pub mod partition;
 pub mod players;
 pub mod region;
-pub mod replication;
 pub mod storage;
 pub mod zones;
 

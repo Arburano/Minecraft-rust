@@ -14,6 +14,7 @@ engine-core = { path = "../engine-core" }
 world = { path = "../world" }
 worldgen = { path = "../worldgen" }
 protocol = { path = "../protocol" }
+netcode = { path = "../netcode" }
 net = { path = "../net" }
 sim = { path = "../sim" }
 crossbeam-channel = { workspace = true }

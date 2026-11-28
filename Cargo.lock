@@ -853,6 +853,7 @@ dependencies = [
  "memory-stats",
  "mesh",
  "net",
+ "netcode",
  "png",
  "pollster",
  "protocol",
@@ -2856,6 +2857,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "netcode"
+version = "0.0.1"
+dependencies = [
+ "glam 0.34.3",
+ "protocol",
+ "sim",
+]
+
+[[package]]
 name = "nohash-hasher"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4399,6 +4409,7 @@ dependencies = [
  "glam 0.34.3",
  "memory-stats",
  "net",
+ "netcode",
  "protocol",
  "quinn",
  "rayon",

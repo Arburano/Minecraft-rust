@@ -17,8 +17,10 @@ mesh = { path = "../mesh" }
 render = { path = "../render" }
 net = { path = "../net" }
 protocol = { path = "../protocol" }
-# The server library: shared intent conversion now, the embedded server later (T2-08).
-server = { path = "../server", default-features = false }
+# Logic both ends share (intents, state hash, corrections, entity deltas).
+netcode = { path = "../netcode" }
+# The embedded server for single-player (feature `singleplayer`, T2-11).
+server = { path = "../server", default-features = false, optional = true }
 quinn = { workspace = true }
 tokio = { workspace = true }
 sim = { path = "../sim" }
@@ -40,14 +42,25 @@ memory-stats = { workspace = true }
 
 [dev-dependencies]
 png = { workspace = true }
+# Integration tests run a real server next to the client.
+server = { path = "../server", default-features = false }
 
 [features]
-# Every capability compiled in for development builds (ADR-0018).
-default = ["moving_grids"]
+# Every capability and single-player for development builds (ADR-0018).
+default = ["moving_grids", "singleplayer"]
 # Moving block structures (ADR-0019); also in the embedded server.
-moving_grids = ["server/moving_grids"]
+moving_grids = ["server?/moving_grids"]
+# Single-player worlds on an embedded server (T2-08). Without it the client
+# has no server code and only joins servers (T2-11).
+singleplayer = ["dep:server"]
 # Tracy profiler zones: `cargo run -p client --features profiling`.
 profiling = ["engine-core/profiling"]
 
 [lints]
 workspace = true
+
+[[bin]]
+name = "bots"
+path = "src/bin/bots.rs"
+# `--embedded` runs a server in the process.
+required-features = ["singleplayer"]

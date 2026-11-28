@@ -25,10 +25,8 @@ use world::storage::StorageError;
 use world::{BlockStateId, Column, ColumnPos, ModSet, Registry, WorldBounds, WorldMap};
 use worldgen::{GenContext, Pipeline, WorldgenConfig};
 
-use auth::AdmissionPolicy;
+use netcode::input::{apply_fly_steps, corrected, intent, physics_input, state_hash};
 use protocol::{Correction, InputDatagram, Intent};
-use server::input::{apply_fly_steps, corrected, intent, physics_input, state_hash};
-use server::{Server, ServerConfig};
 
 use crate::edit::{BatchSync, Editor, Placer, dig, pick, place};
 use crate::loading::{LoadConfig, Loader, Viewer};
@@ -210,7 +208,7 @@ pub struct Session {
     info: WorldInfo,
     link: Box<Link>,
     /// Single-player: the embedded server and the world folder.
-    embedded: Option<(Server, PathBuf)>,
+    embedded: Option<(crate::embedded::EmbeddedServer, PathBuf)>,
     map: WorldMap,
     light: WorldLight,
     loader: Loader,
@@ -241,28 +239,7 @@ impl Session {
     pub fn open(dir: &Path, config: SessionConfig) -> Result<Self, SessionError> {
         let info = WorldInfo::load(dir)?;
         let name = config.player_name.clone();
-        migrate_world(dir, &info, &name)?;
-        let view = config.radius + 2;
-        let mut sc = ServerConfig::new(
-            "127.0.0.1:0"
-                .parse()
-                .map_err(|e| SessionError::Data(format!("{e}")))?,
-            AdmissionPolicy {
-                allow_offline: true,
-            },
-            dir.to_owned(),
-            config.mods.clone(),
-        );
-        sc.seed = Some(info.seed);
-        sc.view_distance = view;
-        sc.sim_distance = view.min(server::DEFAULT_SIM_DISTANCE);
-        sc.threads = config.threads.max(1);
-        sc.region_threads = 2;
-        sc.bounds = config.bounds;
-        sc.lan_announce = false;
-        sc.server_name = info.name.clone();
-        let server = Server::start(sc).map_err(|e| SessionError::Data(e.to_string()))?;
-        let addr = server.local_addr();
+        let (server, addr) = crate::embedded::start(dir, &info, &config)?;
         let mut session = Self::connect(addr, &name, config)?;
         session.info = info;
         session.embedded = Some((server, dir.to_owned()));
@@ -1201,35 +1178,6 @@ fn reconcile(
     *body = b;
     *prev = last_prev;
     *fly_speed = fly;
-}
-
-/// Worlds saved before T2-08 keep the player in `world.toml`; the embedded
-/// server reads `players/<player id>.toml`. Copy it over once, so a
-/// single-player world opens where it was left (the seed is passed to the
-/// server, which writes its own `server.toml`).
-fn migrate_world(dir: &Path, info: &WorldInfo, name: &str) -> Result<(), SessionError> {
-    let id = auth::Identity::offline(name)
-        .map_err(|e| SessionError::Data(e.to_string()))?
-        .id()
-        .to_string();
-    if server::players::load(dir, &id).is_some() {
-        return Ok(());
-    }
-    if let Some(pos) = info.player.pos {
-        server::players::save(
-            dir,
-            &id,
-            &server::players::SavedPlayer {
-                pos,
-                yaw: info.player.yaw,
-                pitch: info.player.pitch,
-                flying: info.player.flying,
-                fly_speed: info.player.fly_speed,
-            },
-        )
-        .map_err(|e| SessionError::Data(format!("player file: {e}")))?;
-    }
-    Ok(())
 }
 
 /// The `core` mod's data a session needs.
