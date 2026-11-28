@@ -72,6 +72,8 @@ pub const BATCH_BLOCKS: i32 = 64;
 const QUAD_BYTES: u64 = 8;
 /// Indirection value of a section nobody uploaded: open sky.
 const DEFAULT_LIGHT: u32 = 15 << 4;
+// One dirty bit per z slice of the light indirection (`index_dirty: u64`).
+const _: () = assert!(INDIRECTION[2] <= 64);
 
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
@@ -191,6 +193,12 @@ pub struct TerrainRenderer {
     atlas: LightAtlas,
     staging: Vec<u64>,
     texels: Box<[u8; 4096]>,
+    /// CPU copy of the light indirection texture: entries change here and
+    /// reach the GPU once per frame, one write per changed z slice (T1-25:
+    /// a row of columns leaving the view used to cost ~900 tiny writes).
+    index_mirror: Vec<u32>,
+    /// Bit per z slice of `index_mirror` changed since the last upload.
+    index_dirty: u64,
     /// (slot, quad range) per draw, rebuilt by `prepare`.
     draws: Vec<(u32, Range<u32>)>,
     stats: FrameStats,
@@ -657,6 +665,8 @@ impl TerrainRenderer {
             atlas: LightAtlas::new(),
             staging: Vec::new(),
             texels: Box::new([0; 4096]),
+            index_mirror: vec![DEFAULT_LIGHT; cells],
+            index_dirty: 0,
             draws: Vec::new(),
             stats: FrameStats::default(),
         }
@@ -854,31 +864,48 @@ impl TerrainRenderer {
         self.write_index(queue, section, DEFAULT_LIGHT);
     }
 
-    fn write_index(&self, queue: &wgpu::Queue, section: IVec3, entry: u32) {
-        let i = LightAtlas::indirection_index(section);
-        queue.write_texture(
-            wgpu::TexelCopyTextureInfo {
-                texture: &self.light_index_tex,
-                mip_level: 0,
-                origin: wgpu::Origin3d {
-                    x: i[0],
-                    y: i[1],
-                    z: i[2],
+    /// Records an indirection entry; [`Self::flush_light_index`] uploads it.
+    fn write_index(&mut self, _queue: &wgpu::Queue, section: IVec3, entry: u32) {
+        let [x, y, z] = LightAtlas::indirection_index(section);
+        let i = ((z * INDIRECTION[1] + y) * INDIRECTION[0] + x) as usize;
+        if self.index_mirror[i] != entry {
+            self.index_mirror[i] = entry;
+            self.index_dirty |= 1 << z;
+        }
+    }
+
+    /// Uploads the indirection entries changed since the last call: one
+    /// `write_texture` per changed z slice (64 × 32 entries, 8 KiB). Called by
+    /// [`Self::prepare`]; light changes take effect in the next frame drawn.
+    pub fn flush_light_index(&mut self, queue: &wgpu::Queue) -> u32 {
+        let mut writes = 0;
+        let slice = (INDIRECTION[0] * INDIRECTION[1]) as usize;
+        while self.index_dirty != 0 {
+            let z = self.index_dirty.trailing_zeros();
+            self.index_dirty &= self.index_dirty - 1;
+            let start = z as usize * slice;
+            queue.write_texture(
+                wgpu::TexelCopyTextureInfo {
+                    texture: &self.light_index_tex,
+                    mip_level: 0,
+                    origin: wgpu::Origin3d { x: 0, y: 0, z },
+                    aspect: wgpu::TextureAspect::All,
                 },
-                aspect: wgpu::TextureAspect::All,
-            },
-            bytemuck::bytes_of(&entry),
-            wgpu::TexelCopyBufferLayout {
-                offset: 0,
-                bytes_per_row: Some(4),
-                rows_per_image: Some(1),
-            },
-            wgpu::Extent3d {
-                width: 1,
-                height: 1,
-                depth_or_array_layers: 1,
-            },
-        );
+                bytemuck::cast_slice(&self.index_mirror[start..start + slice]),
+                wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(INDIRECTION[0] * 4),
+                    rows_per_image: Some(INDIRECTION[1]),
+                },
+                wgpu::Extent3d {
+                    width: INDIRECTION[0],
+                    height: INDIRECTION[1],
+                    depth_or_array_layers: 1,
+                },
+            );
+            writes += 1;
+        }
+        writes
     }
 
     /// Culls and builds the draw list for a frame. `visible` limits drawing
@@ -890,6 +917,7 @@ impl TerrainRenderer {
         camera: &CameraParams,
         visible: Option<&std::collections::HashSet<IVec3>>,
     ) -> FrameStats {
+        self.flush_light_index(queue);
         let u = CameraUniform {
             view_proj: camera.view_proj.to_cols_array_2d(),
             position: [

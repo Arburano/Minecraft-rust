@@ -45,6 +45,8 @@ pub struct Options {
     pub bench: Option<u32>,
     /// The bench route (T1-25: `walk` at 12 chunks, `fly` at 16).
     pub bench_route: crate::bench::Route,
+    /// Present without vsync (measurements).
+    pub no_vsync: bool,
     /// Prefer the GPU whose name contains this text, for this run only.
     pub gpu: Option<String>,
     /// Join this server right away (T2-02; the multiplayer menu is T2-08).
@@ -270,7 +272,11 @@ impl App {
         if caps.usages.contains(wgpu::TextureUsages::COPY_SRC) {
             config.usage |= wgpu::TextureUsages::COPY_SRC;
         }
-        config.present_mode = wgpu::PresentMode::AutoVsync;
+        config.present_mode = if self.opts.no_vsync {
+            wgpu::PresentMode::AutoNoVsync
+        } else {
+            wgpu::PresentMode::AutoVsync
+        };
         surface.configure(&selected.device, &config);
         self.menu.gpu_line = format!(
             "GPU: {} ({:?}), path {:?}",
@@ -441,11 +447,16 @@ impl App {
                 self.settings.quality,
                 self.settings.quality.settings().render_distance
             );
-            match b.finish(
-                &self.opts.data_dir.join("bench"),
-                &self.menu.gpu_line,
-                &profile,
-            ) {
+            let gpu = format!(
+                "{}, {}",
+                self.menu.gpu_line,
+                if self.opts.no_vsync {
+                    "no vsync"
+                } else {
+                    "vsync"
+                }
+            );
+            match b.finish(&self.opts.data_dir.join("bench"), &gpu, &profile) {
                 Ok((path, summary)) => println!("{summary}saved {}", path.display()),
                 Err(e) => eprintln!("bench: {e}"),
             }
