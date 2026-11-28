@@ -12,12 +12,12 @@ The single source of numbers. Change here and in PRD §1 at the same time. Statu
 
 | What | Value | Status |
 | --- | --- | --- |
-| FPS on iGPU / GTX 1050, 12 chunks | ≥ 60, 1% low ≥ 45 | Target |
-| Frame spike | none > 33 ms over 30 min of walking | Target |
-| Minimum full-data distance | 8 chunks (Low), 12 (default), 16 (High) | Target |
+| FPS on iGPU / GTX 1050, 12 chunks | ≥ 60, 1% low ≥ 45 | Measured on the iGPU (bare-metal Vega 10, DX12, path Bi, T1-15 fly route at **High 16 chunks**, 3 × 30 min): average **257.9–295.8 FPS**, 1% low **50.9–103.0** ➔ met; GTX 1660 Ti 325.6 / 93.8 (1 run). GTX 1050 not verified (open question 12); [stage 1 exit review](../research/stage-1-exit-2026-11-28.md) |
+| Frame spike | none > 33 ms over 30 min of walking | Measured deviation (bare-metal Vega 10, T1-15 fly route at High 16 chunks over new terrain, 3 × 30 min): **36–189** frames > 33 ms, max **114.9–119.6 ms**; GTX 1660 Ti 98 frames, max 94.6 ms. Target kept; attribution and fix in [T1-21](../../tasks/stage-1/T1-21-frame-spike-attribution.md); [stage 1 exit review](../research/stage-1-exit-2026-11-28.md) |
+| Minimum full-data distance | 8 chunks (Low), 12 (default), 16 (High) | Measured: High (16 chunks) runs on the Vega 10 above the FPS target (T1-15); spikes as in the row above |
 | Distance with LOD | 64 chunks on GTX 1050 | Target (stage 5) |
-| Client RAM, 12 chunks | ≤ 1 GiB internal budget; ≤ 2 GB external target | Hypothesis: 0.5–0.9 GiB |
-| Cold start to menu | ≤ 5 s | Measured (bare-metal Ryzen 7 3750H, Windows 11, `scripts/cold_start.ps1`, 3+ runs): first cold run **1.64 s**, warm runs **0.85–0.96 s** ➔ target met (> 3× margin); [Wave 3 summary](../research/bare-metal-2026-11-22-wave3/summary.md), [T1-13 report](../../task-reports/t1-13-client-app-and-menu.md) |
+| Client RAM, 12 chunks | ≤ 1 GiB internal budget; ≤ 2 GB external target | Measured (bare-metal Ryzen 7 3750H, Windows 11, process working set sampled every second, T1-15 fly route at High **16** chunks, 4 × 30 min): peak **324–346 MiB**, average 247–325 MiB ➔ met with ≈ 3× margin (stage 1 exit ≤ 1.5 GB also met). Shared GPU memory of the iGPU driver is not necessarily in the working set; [stage 1 exit review](../research/stage-1-exit-2026-11-28.md) |
+| Cold start to menu | ≤ 5 s | Measured (bare-metal Ryzen 7 3750H, Windows 11, `scripts/cold_start.ps1`, 3+ runs): first cold run **1.64 s**, warm runs **0.85–0.96 s** ➔ target met (> 3× margin); T1-15 runs 1.31–1.67 s (4 runs, [stage 1 exit review](../research/stage-1-exit-2026-11-28.md)); [Wave 3 summary](../research/bare-metal-2026-11-22-wave3/summary.md), [T1-13 report](../../task-reports/t1-13-client-app-and-menu.md) |
 | Joining a server until control | ≤ 5 s with asset cache | Target |
 | GPU geometry time | ≤ 8 ms per frame on iGPU | Measured on real terrain (12 chunks, 277k quads: Radeon RX Vega 10 DX12 path Bi **1.52 ms** median, path B **1.96 ms**; GTX 1660 Ti **0.44 ms**; [Wave 2 summary](../research/bare-metal-2026-11-22-wave2/summary.md), [T1-11 report](../../task-reports/t1-11-renderer-terrain.md)) |
 | CPU command recording | ≤ 1 ms per frame | Measured (Vega 10 DX12 real terrain: prepare + record **0.06 ms** median, **0.12 ms** p95, **0.20 ms** p99; [Wave 2 summary](../research/bare-metal-2026-11-22-wave2/summary.md)) |

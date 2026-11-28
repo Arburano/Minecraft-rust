@@ -73,8 +73,9 @@ Core and single-player world ([roadmap](../docs/process/roadmap.md), PRD §9). E
 | [T1-17](stage-1/T1-17-worldgen-modes.md) | World generation modes: normal and extended (Tectonic as reference) | T1-03, T1-13 | agent + owner review | todo (later) |
 | [T1-18](stage-1/T1-18-gameplay-slots.md) | Gameplay slots: replaceable movement profile and generator (ADR-0013) | T1-12, T1-13 | agent (cloud) | todo |
 | [T1-19](stage-1/T1-19-resource-and-shader-packs.md) | Resource, texture and shader packs (ADR-0014) | T1-11, T1-13 | agent (cloud) + laptop | in-progress (owner: try packs, shader-pack GPU cost) |
-| [T1-15](stage-1/T1-15-stage-1-exit-harness.md) | Stage 1 exit measurement | T1-01 … T1-14 | agent + owner's laptop | in-progress (harness done; owner: laptop runs) |
-| [T1-20](stage-1/T1-20-stage-1-exit-review.md) | Stage 1 exit review and stage 2 backlog | T1-15 | agent + owner | in-progress (stage 2 backlog done; review waits for T1-15) |
+| [T1-15](stage-1/T1-15-stage-1-exit-harness.md) | Stage 1 exit measurement | T1-01 … T1-14 | agent + owner's laptop | in-progress (laptop runs done 2026-11-27; owner: exit decision) |
+| [T1-20](stage-1/T1-20-stage-1-exit-review.md) | Stage 1 exit review and stage 2 backlog | T1-15 | agent + owner | in-progress (review written; owner: exit decision) |
+| [T1-21](stage-1/T1-21-frame-spike-attribution.md) | Frame spike attribution and fix | T1-15 | agent (cloud) + laptop | todo |
 
 ### Stage 1: order and parallel work
 
@@ -93,6 +94,7 @@ Wave 1 tasks touch different crates (`world`, `mesh`, `render`, `engine-core`, `
 
 - World map `get_block`/`set_block` are 2.8× / 2.4× the section access (VM, T1-01); the owner kept the 2× target (2026-11-22). Optimize when profiling shows map access in a hot path (physics, edits), e.g. a per-caller column cache or batched access APIs; re-measure on the laptop.
 - Replaceable movement and world generation ("gameplay slots") — [ADR-0013](../docs/adr/0013-replaceable-movement-and-worldgen.md), accepted by the owner 2026-11-22 → [T1-18](stage-1/T1-18-gameplay-slots.md).
+- Frame spikes from the stage 1 exit runs (36–189 frames > 33 ms per 30 min, [review](../docs/research/stage-1-exit-2026-11-28.md)) → [T1-21](stage-1/T1-21-frame-spike-attribution.md).
 - T1-16 leftovers (the owner accepted both options, 2026-11-22): an ADR for persistent per-region light grids (≤ 100 µs per edit), and a cheaper pass for sky changes reaching below the snapshot (≈ 10 ms on the VM). Chained slabs are preferred because they are exact and have no visible delay; spreading over frames is the fallback.
 
 ## Stage 2: network and server
@@ -122,4 +124,4 @@ The owner decided on 2026-11-23 to start stage 2 while the T1-15 laptop runs are
 | 5 | T2-05, T2-08 | T2-04 |
 | 6 | T2-09 | everything above |
 
-Stage 1 work that continues in parallel: T1-15 laptop runs, T1-17, T1-18, the T1-19 laptop check, the T1-16 follow-ups, and gameplay polish (block highlight, hold to dig, transparent pass, block models, biome tints).
+Stage 1 work that continues in parallel: T1-21 (frame spikes, proposed high priority), T1-17, T1-18, the T1-19 laptop check, the T1-16 follow-ups, and gameplay polish (block highlight, hold to dig, transparent pass, block models, biome tints).
