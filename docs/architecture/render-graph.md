@@ -1,6 +1,6 @@
 # Render graph and shader packs, hook version 2
 
-**Status: accepted, not implemented yet** — [ADR-0015](../adr/0015-programmable-render-graph.md) (accepted 2026-11-27), task T1-22. Until T1-22 lands, the implemented interface is hook version 1 ([`../modding/packs.md`](../modding/packs.md), ADR-0014). Crate: `render`. Related: [meshing-and-rendering.md](meshing-and-rendering.md), [ADR-0016](../adr/0016-geometry-agnostic-meshing.md) (render buckets).
+**Status: accepted; part 1 implemented** — [ADR-0015](../adr/0015-programmable-render-graph.md) (accepted 2026-11-27), task T1-22. See "Implementation (T1-22 part 1)" at the end for what runs today. Hook version 1 ([`../modding/packs.md`](../modding/packs.md), ADR-0014) keeps working. Crate: `render`. Related: [meshing-and-rendering.md](meshing-and-rendering.md), [ADR-0016](../adr/0016-geometry-agnostic-meshing.md) (render buckets).
 
 ## Frame
 
@@ -124,3 +124,55 @@ Budgets: the frame budget does not change (`performance-budgets.md`). The built-
 ## Iris-format packs
 
 Not supported. A possible later adapter (open question 17) would read the public `shaders.properties` description and GLSL programs, translate GLSL to WGSL with naga, and map Iris program names onto the stages above. It is written from the public format description only, with no code from Iris or OptiFine (`docs/legal.md`).
+
+## Implementation (T1-22 part 1)
+
+**What runs:**
+
+- **`render::graph`** (pure, unit-tested): the version 2 manifest, validation and target allocation.
+  - Validation checks:
+    - stage names and file paths;
+    - reads after writes, with history and engine targets;
+    - allowed formats, equal scales per pass, full size for geometry passes;
+    - attachment, target, option and pass limits;
+    - memory at the current resolution.
+  - Every error names the pass (`stage/file`).
+  - Targets are allocated as *versions* (each write starts one), so aliasing and ping-pong fall out of lifetimes: a chain of 6 composite passes over `colortex0` uses 2 textures.
+  - History targets get two persistent textures that swap each frame.
+- **`render::graph::exec::GraphRenderer`**:
+  - builds the passes and records a frame: the pack's `gbuffer_opaque` passes (or the built-in forward pass into `colortex0`), then `deferred`, `composite`, and `final` (the pack's, or the built-in copy of `colortex0` to the screen);
+  - sets the terrain's culling margin to `max_displacement`.
+- **Geometry hooks** on paths B, Bi and C:
+  - `pack_vertex(PackVertex) -> PackVaryings`: displaced world position plus 4 `vec4` values (the spec allows up to 8; 4 for now);
+  - `pack_fragment(PackFragment) -> PackTargets`: one output per written target;
+  - the version 1 hooks (`pack_surface`, `pack_light_curve`, `pack_fog`) are callable from them.
+- **Full-screen passes:**
+  - `pack_fullscreen(uv) -> PackTargets`;
+  - read targets are bound by name (`colortexN` as `texture_2d<f32>` with `pack_sampler`, `depth0` as `texture_depth_2d`);
+  - helpers `pack_pixel(uv)` and `pack_world_at(uv, depth)`.
+- **`PackFrame`** (full-screen passes):
+  - view-projection and its inverse, the previous frame's view-projection and camera;
+  - viewport, frame index, time, fog, sky, sun direction;
+  - 32 options.
+
+  Geometry passes see `camera` and `pack_option(0..32)`.
+- **Built-in graphs:** Low is the forward path (unchanged). Default (`BUILTIN_DEFAULT`) is the built-in opaque pass into an `rgba16f` `colortex0` plus the built-in final pass.
+- **Client:**
+  - a `hook_version = 2` pack is loaded with all its pass files and built for the window size (rebuilt on resize);
+  - any error falls back to the built-in look with a notice, and the console names the pass.
+
+**Measured** (software Vulkan, reference scene, 320×180):
+
+- The built-in Default graph matches the forward golden images on B, Bi and C: at most 1 level of difference, 4–10 on path C as before.
+- The example pack `sunlit-deferred` has its own golden images (`sunlit-deferred-<camera>.png`) and matches them on all three paths.
+- Lifting all geometry by 0.5 blocks through `pack_vertex` changes 39% of the `chunk_border` image.
+
+**Not yet (part 2):**
+
+- shadow maps and cascades, `setup`, `gbuffer_translucent` (water and glass), `depth1`;
+- TAA jitter;
+- more than 4 varyings;
+- block ids and tags in `PackVertex` (waving leaves need them);
+- GPU timestamps per stage in the shader-pack menu, and the over-budget notice;
+- entity boxes drawn through a graph (they are not drawn while a version 2 pack is active);
+- laptop numbers for the frame budget.

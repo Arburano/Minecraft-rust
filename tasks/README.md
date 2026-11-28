@@ -76,7 +76,7 @@ Core and single-player world ([roadmap](../docs/process/roadmap.md), PRD §9). E
 | [T1-15](stage-1/T1-15-stage-1-exit-harness.md) | Stage 1 exit measurement | T1-01 … T1-14 | agent + owner's laptop | in-progress (laptop runs done 2026-11-27; owner: exit decision) |
 | [T1-20](stage-1/T1-20-stage-1-exit-review.md) | Stage 1 exit review and stage 2 backlog | T1-15 | agent + owner | in-progress (review written; owner: exit decision) |
 | [T1-21](stage-1/T1-21-render-reference-scene.md) | Render reference scene and screenshot tests | T1-11, T1-19 | agent (cloud) + laptop | in-progress (cloud part done; owner: laptop look) |
-| [T1-22](stage-1/T1-22-render-graph-hook-v2.md) | Programmable render graph and shader-pack hook version 2 (ADR-0015) | ADR-0015 (accepted 2026-11-27), T1-19, T1-21 | agent (cloud) + laptop | todo |
+| [T1-22](stage-1/T1-22-render-graph-hook-v2.md) | Programmable render graph and shader-pack hook version 2 (ADR-0015) | ADR-0015 (accepted 2026-11-27), T1-19, T1-21 | agent (cloud) + laptop | in-progress (part 1 done; part 2: shadows, translucent, TAA, timestamps) |
 | [T1-23](stage-1/T1-23-mesher-trait-and-render-buckets.md) | Mesher trait and render buckets (ADR-0016) | ADR-0016 (accepted 2026-11-27), T1-11 | agent (cloud) | in-progress (cloud part done; owner: laptop frame check) |
 | [T1-24](stage-1/T1-24-modular-base-game.md) | Modular base game: split `core` into modules and add builds (ADR-0017) | T1-13, T2-08 | agent (cloud) | done |
 | [T1-25](stage-1/T1-25-frame-spike-attribution.md) | Frame spike attribution and fix | T1-15 | agent (cloud) + laptop | in-progress (attribution and walking route done; owner: laptop runs) |

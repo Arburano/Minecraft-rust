@@ -20,11 +20,12 @@ bytemuck = { workspace = true }
 pollster = { workspace = true }
 naga = { workspace = true }
 
+toml = { workspace = true }
+
 [dev-dependencies]
 world = { path = "../world" }
 assets = { path = "../assets" }
 png = { workspace = true }
-toml = { workspace = true }
 
 [lints]
 workspace = true

@@ -72,6 +72,8 @@ pub const BATCH_BLOCKS: i32 = 64;
 const QUAD_BYTES: u64 = 8;
 /// Indirection value of a section nobody uploaded: open sky.
 const DEFAULT_LIGHT: u32 = 15 << 4;
+/// The shader-pack uniform: 8 options, the time, then 24 more options.
+const PACK_PARAMS_BYTES: u64 = 48 + 96;
 // One dirty bit per z slice of the light indirection (`index_dirty: u64`).
 const _: () = assert!(INDIRECTION[2] <= 64);
 
@@ -199,6 +201,8 @@ pub struct TerrainRenderer {
     index_mirror: Vec<u32>,
     /// Bit per z slice of `index_mirror` changed since the last upload.
     index_dirty: u64,
+    /// Culling boxes grow by this (vertex displacement of a pack).
+    cull_margin: f32,
     /// (slot, quad range) per draw, rebuilt by `prepare`.
     draws: Vec<(u32, Range<u32>)>,
     stats: FrameStats,
@@ -358,6 +362,30 @@ fn create_pipeline(
     color_format: wgpu::TextureFormat,
     source: &str,
 ) -> wgpu::RenderPipeline {
+    create_pipeline_with(
+        device,
+        pipeline_layout,
+        path,
+        &[Some(wgpu::ColorTargetState {
+            format: color_format,
+            blend: None,
+            write_mask: wgpu::ColorWrites::ALL,
+        })],
+        source,
+        "fs_main",
+    )
+}
+
+/// A terrain pipeline with any color targets and fragment entry point
+/// (render graph geometry passes, ADR-0015).
+fn create_pipeline_with(
+    device: &wgpu::Device,
+    pipeline_layout: &wgpu::PipelineLayout,
+    path: TerrainPath,
+    targets: &[Option<wgpu::ColorTargetState>],
+    source: &str,
+    fs_entry: &str,
+) -> wgpu::RenderPipeline {
     let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
         label: Some("terrain"),
         source: wgpu::ShaderSource::Wgsl(source.into()),
@@ -400,13 +428,9 @@ fn create_pipeline(
         multisample: Default::default(),
         fragment: Some(wgpu::FragmentState {
             module: &shader,
-            entry_point: Some("fs_main"),
+            entry_point: Some(fs_entry),
             compilation_options: Default::default(),
-            targets: &[Some(wgpu::ColorTargetState {
-                format: color_format,
-                blend: None,
-                write_mask: wgpu::ColorWrites::ALL,
-            })],
+            targets,
         }),
         multiview_mask: None,
         cache: None,
@@ -467,7 +491,8 @@ impl TerrainRenderer {
         });
         let pack_buf = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("shader pack params"),
-            size: 48,
+            // v1: 8 options and the time (48 bytes); v2 adds 24 options.
+            size: PACK_PARAMS_BYTES,
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -667,6 +692,7 @@ impl TerrainRenderer {
             texels: Box::new([0; 4096]),
             index_mirror: vec![DEFAULT_LIGHT; cells],
             index_dirty: 0,
+            cull_margin: 0.0,
             draws: Vec::new(),
             stats: FrameStats::default(),
         }
@@ -732,6 +758,76 @@ impl TerrainRenderer {
         data[..8].copy_from_slice(options);
         data[8] = time;
         queue.write_buffer(&self.pack_buf, 0, bytemuck::cast_slice(&data));
+    }
+
+    /// Option values (up to 32, hook version 2) and time for shader packs.
+    pub fn set_pack_params_v2(&self, queue: &wgpu::Queue, options: &[f32; 32], time: f32) {
+        let mut data = [0f32; 36];
+        data[..8].copy_from_slice(&options[..8]);
+        data[8] = time;
+        data[12..36].copy_from_slice(&options[8..]);
+        queue.write_buffer(&self.pack_buf, 0, bytemuck::cast_slice(&data));
+    }
+
+    /// Grows the culling boxes by `blocks` (a version 2 pack's
+    /// `max_displacement`), so displaced geometry is not culled too early.
+    pub fn set_cull_margin(&mut self, blocks: f32) {
+        self.cull_margin = blocks.max(0.0);
+    }
+
+    /// The built-in look into a target of `format` (the render graph's
+    /// built-in opaque pass writes `colortex0`).
+    #[must_use]
+    pub fn builtin_pipeline(
+        &self,
+        device: &wgpu::Device,
+        format: wgpu::TextureFormat,
+    ) -> wgpu::RenderPipeline {
+        create_pipeline(
+            device,
+            &self.pipeline_layout,
+            self.path,
+            format,
+            &super::hooks::compose(self.path, None),
+        )
+    }
+
+    /// A version 2 geometry pass: the pack's `pack_vertex` / `pack_fragment`
+    /// writing `targets` (name, format) in order. The composed shader is
+    /// validated first; the error names the line.
+    pub fn geometry_pipeline(
+        &self,
+        device: &wgpu::Device,
+        pack: &str,
+        targets: &[(String, wgpu::TextureFormat)],
+    ) -> Result<wgpu::RenderPipeline, String> {
+        let names: Vec<&str> = targets.iter().map(|(n, _)| n.as_str()).collect();
+        let source = super::hooks::compose_geometry_v2(self.path, pack, &names);
+        super::hooks::validate(&source)?;
+        let states: Vec<Option<wgpu::ColorTargetState>> = targets
+            .iter()
+            .map(|(_, f)| {
+                Some(wgpu::ColorTargetState {
+                    format: *f,
+                    blend: None,
+                    write_mask: wgpu::ColorWrites::ALL,
+                })
+            })
+            .collect();
+        Ok(create_pipeline_with(
+            device,
+            &self.pipeline_layout,
+            self.path,
+            &states,
+            &source,
+            "fs_pack",
+        ))
+    }
+
+    /// Draws what the last `prepare` selected with another pipeline (render
+    /// graph passes).
+    pub fn render_with(&self, pass: &mut wgpu::RenderPass<'_>, pipeline: &wgpu::RenderPipeline) {
+        self.draw(pass, pipeline);
     }
 
     /// Uploads (or replaces) the render batch at batch position `pos`
@@ -943,8 +1039,8 @@ impl TerrainRenderer {
             if visible.is_some_and(|v| !v.contains(pos)) {
                 continue;
             }
-            let min = pos.as_vec3() * size;
-            let max = min + Vec3::splat(size);
+            let min = pos.as_vec3() * size - Vec3::splat(self.cull_margin);
+            let max = pos.as_vec3() * size + Vec3::splat(size + self.cull_margin);
             if !frustum.intersects(min, max) {
                 continue;
             }
@@ -980,10 +1076,14 @@ impl TerrainRenderer {
     /// Records the prepared draws into a pass whose depth attachment uses
     /// [`DEPTH_FORMAT`].
     pub fn render(&self, pass: &mut wgpu::RenderPass<'_>) {
+        self.draw(pass, &self.pipeline);
+    }
+
+    fn draw(&self, pass: &mut wgpu::RenderPass<'_>, pipeline: &wgpu::RenderPipeline) {
         if self.draws.is_empty() {
             return;
         }
-        pass.set_pipeline(&self.pipeline);
+        pass.set_pipeline(pipeline);
         pass.set_bind_group(0, &self.bind0, &[]);
         if let Some(b) = &self.bind1 {
             pass.set_bind_group(1, b, &[]);

@@ -150,8 +150,10 @@ struct Game {
     frame_ms: f32,
     /// The shader pack's post pass, if it has one.
     post: Option<render::terrain::post::PostPass>,
+    /// A hook version 2 pack's render graph, if one is active (T1-22).
+    graph: Option<render::graph::exec::GraphRenderer>,
     /// Shader pack option values (`pack_option(i)`).
-    pack_options: [f32; 8],
+    pack_options: [f32; 32],
     started: Instant,
     /// A message over the hotbar for a few seconds.
     notice: Option<(String, Instant)>,
@@ -361,7 +363,8 @@ impl App {
                     debug: false,
                     frame_ms: 16.7,
                     post: None,
-                    pack_options: [0.0; 8],
+                    graph: None,
+                    pack_options: [0.0; 32],
                     started: Instant::now(),
                     notice: None,
                     playing_since: None,
@@ -393,11 +396,36 @@ impl App {
                 .and_then(|info| client::packs::load_shader_pack(&info))
         });
         let mut error = None;
-        let mut options = [0f32; 8];
+        let mut options = [0f32; 32];
         let mut post = None;
+        let mut graph = None;
+        game.view.drop_graph();
         match loaded {
             None => {
                 let _ = game.view.set_shader(&gpu.device, None);
+            }
+            Some(Ok(pack)) if pack.graph.is_some() => {
+                let values = self
+                    .settings
+                    .shader_options
+                    .get(chosen.as_deref().unwrap_or_default());
+                for (slot, o) in options.iter_mut().zip(&pack.options) {
+                    *slot = values
+                        .and_then(|v| v.get(&o.id).copied())
+                        .unwrap_or(o.default);
+                }
+                let _ = game.view.set_shader(&gpu.device, None);
+                if let Some(g) = &pack.graph {
+                    match game.view.build_graph(
+                        &gpu.device,
+                        g,
+                        gpu.config.format,
+                        (gpu.config.width, gpu.config.height),
+                    ) {
+                        Ok(r) => graph = Some(r),
+                        Err(e) => error = Some(format!("{}: {e}", pack.name)),
+                    }
+                }
             }
             Some(Err(e)) => error = Some(e),
             Some(Ok(pack)) => {
@@ -432,10 +460,11 @@ impl App {
                     .into(),
                 Instant::now(),
             ));
-            options = [0.0; 8];
+            options = [0.0; 32];
         }
         gpu.scene = post.as_ref().map(|_| scene_view(&gpu.device, &gpu.config));
         game.post = post;
+        game.graph = graph;
         game.pack_options = options;
     }
 
@@ -683,7 +712,9 @@ impl App {
             let t = game.started.elapsed().as_secs_f32();
             game.view.set_pack_params(&gpu.queue, &game.pack_options, t);
             if let Some(p) = &game.post {
-                p.set_params(&gpu.queue, &game.pack_options, t);
+                let mut first = [0f32; 8];
+                first.copy_from_slice(&game.pack_options[..8]);
+                p.set_params(&gpu.queue, &first, t);
             }
             self.cost.sync = game.view.sync(&gpu.queue, &mut game.session);
             let prepare_start = Instant::now();
@@ -710,12 +741,30 @@ impl App {
         } else {
             wgpu::Color::BLACK
         };
+        // A version 2 pack draws the world through its render graph.
+        let graph_drawn = match &mut self.game {
+            Some(game) if game.graph.is_some() => {
+                let t = game.started.elapsed().as_secs_f32();
+                if let Some(g) = &mut game.graph {
+                    game.view.render_graph(
+                        g,
+                        &gpu.device,
+                        &gpu.queue,
+                        &mut encoder,
+                        (t, game.pack_options),
+                        &view,
+                    );
+                }
+                true
+            }
+            _ => false,
+        };
         let post = self.game.as_ref().and_then(|g| g.post.as_ref());
         let world_target = match (&gpu.scene, post) {
             (Some(scene), Some(_)) => scene,
             _ => &view,
         };
-        {
+        if !graph_drawn {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("world"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -1135,6 +1184,9 @@ impl ApplicationHandler for App {
                     gpu.depth = depth_view(&gpu.device, gpu.config.width, gpu.config.height);
                     if gpu.scene.is_some() {
                         gpu.scene = Some(scene_view(&gpu.device, &gpu.config));
+                    }
+                    if let Some(g) = self.game.as_mut().and_then(|g| g.graph.as_mut()) {
+                        g.resize(&gpu.device, gpu.config.width, gpu.config.height);
                     }
                 }
             }

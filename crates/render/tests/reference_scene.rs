@@ -31,6 +31,8 @@ use glam::{IVec3, Mat4, Vec3};
 use light::{WorldLight, light_column, props_from_registry};
 use mesh::batch::{RenderBatch, slot};
 use mesh::{MeshChunkBuilder, PackedBatch, SectionNeighborhood};
+use render::graph::exec::{FrameParams, GraphPack, GraphRenderer};
+use render::graph::{BUILTIN_DEFAULT, GraphLimits, GraphManifest, SUPPORTED_STAGES};
 use render::terrain::camera::{look_to, perspective};
 use render::terrain::post::PostPass;
 use render::terrain::renderer::{
@@ -832,4 +834,329 @@ fn a_one_line_shading_change_fails_the_comparison() {
     let err = check(name, "self-test-darker", &rgb).expect_err("a darker shading must not pass");
     println!("{err}");
     assert!(err.contains("of pixels differ") && err.contains("diff (magenta = different)"));
+}
+
+// ---------------------------------------------------------------- render graph (T1-22)
+
+const GRAPH_LIMITS: GraphLimits = GraphLimits {
+    width: WIDTH,
+    height: HEIGHT,
+    max_target_bytes: 64 << 20,
+    max_color_attachments: 8,
+    supported: &SUPPORTED_STAGES,
+};
+
+/// The fixed sun of the reference scene (late morning).
+const SUN: Vec3 = Vec3::new(0.45, 0.8, 0.35);
+
+fn camera_params(eye: Vec3, dir: Vec3) -> CameraParams {
+    CameraParams {
+        view_proj: perspective(
+            70f32.to_radians(),
+            WIDTH as f32 / HEIGHT as f32,
+            0.05,
+            256.0,
+        ) * look_to(eye, dir.normalize(), Vec3::Y),
+        position: eye,
+        daylight: 1.0,
+        fog: (160.0, 240.0),
+        sky: SKY,
+    }
+}
+
+/// Reads a pack folder from `docs/examples/shaderpacks/`.
+fn example_pack(name: &str) -> (GraphPack, [f32; 32]) {
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../docs/examples/shaderpacks")
+        .join(name);
+    let manifest = GraphManifest::from_toml(
+        &std::fs::read_to_string(dir.join("shaderpack.toml")).expect("manifest"),
+    )
+    .expect("manifest parses");
+    let mut files = std::collections::BTreeMap::new();
+    for p in &manifest.passes {
+        files.insert(
+            p.file.clone(),
+            std::fs::read_to_string(dir.join(&p.file)).expect("pass file"),
+        );
+    }
+    let mut options = [0f32; 32];
+    for (i, o) in manifest.options.iter().enumerate() {
+        options[i] = o.default;
+    }
+    (GraphPack { manifest, files }, options)
+}
+
+fn inline_pack(manifest: &str, files: &[(&str, &str)]) -> GraphPack {
+    GraphPack {
+        manifest: GraphManifest::from_toml(manifest).expect("manifest"),
+        files: files
+            .iter()
+            .map(|(n, c)| ((*n).to_owned(), (*c).to_owned()))
+            .collect(),
+    }
+}
+
+/// Renders one camera through a graph; returns RGB8, top row first.
+fn shoot_graph(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    terrain: &mut TerrainRenderer,
+    graph: &mut GraphRenderer,
+    t: &Target,
+    (eye, dir): (Vec3, Vec3),
+    options: [f32; 32],
+) -> Vec<u8> {
+    let camera = camera_params(eye, dir);
+    terrain.prepare(queue, &camera, None);
+    let mut enc = device.create_command_encoder(&Default::default());
+    graph.render(
+        device,
+        queue,
+        &mut enc,
+        terrain,
+        &FrameParams {
+            camera,
+            time: 0.0,
+            sun: SUN,
+            options,
+        },
+        &t.color_view,
+    );
+    enc.copy_texture_to_buffer(
+        t.color.as_image_copy(),
+        wgpu::TexelCopyBufferInfo {
+            buffer: &t.readback,
+            layout: wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(WIDTH * 4),
+                rows_per_image: Some(HEIGHT),
+            },
+        },
+        wgpu::Extent3d {
+            width: WIDTH,
+            height: HEIGHT,
+            depth_or_array_layers: 1,
+        },
+    );
+    queue.submit([enc.finish()]);
+    t.readback
+        .slice(..)
+        .map_async(wgpu::MapMode::Read, |r| r.expect("map"));
+    device
+        .poll(wgpu::PollType::Wait {
+            submission_index: None,
+            timeout: Some(std::time::Duration::from_secs(120)),
+        })
+        .expect("poll");
+    let rgba = t
+        .readback
+        .slice(..)
+        .get_mapped_range()
+        .expect("mapped")
+        .to_vec();
+    t.readback.unmap();
+    rgba.chunks_exact(4)
+        .flat_map(|p| [p[0], p[1], p[2]])
+        .collect()
+}
+
+/// Acceptance (T1-22): the built-in Default graph (the built-in opaque pass
+/// into a 16-bit float colortex0, then the built-in final pass) reproduces
+/// the forward look of the golden images on every path.
+#[test]
+fn built_in_default_graph_matches_the_forward_golden_images() {
+    let Some((device, queue, _)) = gpu_or_skip() else {
+        return;
+    };
+    if std::env::var_os("UPDATE_GOLDEN").is_some() {
+        return; // the forward test writes these images
+    }
+    let scene = prepare_scene();
+    let t = target(&device);
+    let pack = inline_pack(BUILTIN_DEFAULT, &[]);
+    let mut failures = Vec::new();
+    for path in [
+        TerrainPath::PullingIndexed,
+        TerrainPath::Pulling,
+        TerrainPath::Instanced,
+    ] {
+        let mut terrain = renderer(&device, &queue, path, &scene);
+        let mut graph = GraphRenderer::new(
+            &device,
+            &mut terrain,
+            &pack,
+            FORMAT,
+            (WIDTH, HEIGHT),
+            &GRAPH_LIMITS,
+        )
+        .expect("built-in graph");
+        assert_eq!(graph.graph().slots.len(), 1);
+        for (name, eye, dir) in cameras() {
+            let rgb = shoot_graph(
+                &device,
+                &queue,
+                &mut terrain,
+                &mut graph,
+                &t,
+                (eye, dir),
+                [0.0; 32],
+            );
+            if let Some(d) = record(
+                check(name, &format!("{name}-{path:?}-graph"), &rgb),
+                &mut failures,
+            ) {
+                println!(
+                    "graph {path:?} {name}: {:.3}% pixels differ, max channel difference {}",
+                    d.share() * 100.0,
+                    d.max_channel
+                );
+            }
+        }
+    }
+    assert!(failures.is_empty(), "\n{}", failures.join("\n"));
+}
+
+/// The example version 2 pack (`docs/examples/shaderpacks/sunlit-deferred`)
+/// has its own golden images, and renders the same on every path.
+#[test]
+fn version_2_pack_has_its_own_golden_images() {
+    let Some((device, queue, _)) = gpu_or_skip() else {
+        return;
+    };
+    let scene = prepare_scene();
+    let t = target(&device);
+    let (pack, options) = example_pack("sunlit-deferred");
+    let mut failures = Vec::new();
+    for path in [
+        TerrainPath::PullingIndexed,
+        TerrainPath::Pulling,
+        TerrainPath::Instanced,
+    ] {
+        if path != TerrainPath::PullingIndexed && std::env::var_os("UPDATE_GOLDEN").is_some() {
+            continue;
+        }
+        let mut terrain = renderer(&device, &queue, path, &scene);
+        let mut graph = GraphRenderer::new(
+            &device,
+            &mut terrain,
+            &pack,
+            FORMAT,
+            (WIDTH, HEIGHT),
+            &GRAPH_LIMITS,
+        )
+        .unwrap_or_else(|e| panic!("{path:?}: {e}"));
+        for (name, eye, dir) in cameras() {
+            let rgb = shoot_graph(
+                &device,
+                &queue,
+                &mut terrain,
+                &mut graph,
+                &t,
+                (eye, dir),
+                options,
+            );
+            let golden = format!("sunlit-deferred-{name}");
+            record(
+                check(&golden, &format!("{golden}-{path:?}"), &rgb),
+                &mut failures,
+            );
+        }
+    }
+    assert!(failures.is_empty(), "\n{}", failures.join("\n"));
+}
+
+/// The vertex hook moves geometry: lifting everything by half a block
+/// changes the picture, and the culling margin follows `max_displacement`.
+#[test]
+fn the_vertex_hook_displaces_geometry() {
+    let Some((device, queue, _)) = gpu_or_skip() else {
+        return;
+    };
+    let scene = prepare_scene();
+    let t = target(&device);
+    let manifest = "hook_version = 2\nmax_displacement = 0.5\n[targets]\ncolortex0 = { format = \"rgba16f\" }\n[[pass]]\nstage = \"gbuffer_opaque\"\nfile = \"g.wgsl\"\nbuckets = [\"voxel_quads\"]\nwrites = [\"colortex0\"]\n";
+    let flat = "fn pack_fragment(f: PackFragment) -> PackTargets { var t: PackTargets; t.colortex0 = vec4<f32>(pack_surface(Surface(f.albedo, f.normal, f.world, f.block_light, f.sky_light, f.daylight)), 1.0); return t; }";
+    let lifted = format!(
+        "{flat}\nfn pack_vertex(v: PackVertex) -> PackVaryings {{ var o: PackVaryings; o.world = v.world + vec3<f32>(0.0, 0.5, 0.0); return o; }}"
+    );
+    let (name, eye, dir) = cameras()
+        .into_iter()
+        .find(|c| c.0 == "chunk_border")
+        .expect("camera");
+    let mut shots = Vec::new();
+    for code in [flat.to_owned(), lifted] {
+        let mut terrain = renderer(&device, &queue, TerrainPath::PullingIndexed, &scene);
+        let pack = inline_pack(manifest, &[("g.wgsl", &code)]);
+        let mut graph = GraphRenderer::new(
+            &device,
+            &mut terrain,
+            &pack,
+            FORMAT,
+            (WIDTH, HEIGHT),
+            &GRAPH_LIMITS,
+        )
+        .expect("graph");
+        assert_eq!(graph.max_displacement(), 0.5);
+        shots.push(shoot_graph(
+            &device,
+            &queue,
+            &mut terrain,
+            &mut graph,
+            &t,
+            (eye, dir),
+            [0.0; 32],
+        ));
+    }
+    let (d, _) = compare(&shots[0], &shots[1]);
+    println!(
+        "{name}: lifting by half a block changes {:.1}% of pixels",
+        d.share() * 100.0
+    );
+    assert!(d.share() > 0.05, "the vertex hook had no visible effect");
+}
+
+/// A broken graph or shader is refused with a message naming the pass, so
+/// the client can fall back to the built-in look.
+#[test]
+fn errors_name_the_pass_and_nothing_is_built() {
+    let Some((device, queue, _)) = gpu_or_skip() else {
+        return;
+    };
+    let scene = prepare_scene();
+    let mut terrain = renderer(&device, &queue, TerrainPath::PullingIndexed, &scene);
+    let manifest = "hook_version = 2\n[targets]\ncolortex0 = { format = \"rgba16f\" }\n[[pass]]\nstage = \"composite\"\nfile = \"c.wgsl\"\nreads = [\"colortex0\"]\nwrites = [\"colortex0\"]\n";
+    let broken = inline_pack(
+        manifest,
+        &[(
+            "c.wgsl",
+            "fn pack_fullscreen(uv: vec2<f32>) -> PackTargets { return 1.0; }",
+        )],
+    );
+    let e = GraphRenderer::new(
+        &device,
+        &mut terrain,
+        &broken,
+        FORMAT,
+        (WIDTH, HEIGHT),
+        &GRAPH_LIMITS,
+    )
+    .err()
+    .expect("broken shader");
+    assert_eq!(e.pass.as_deref(), Some("composite/c.wgsl"), "{e}");
+    let missing = inline_pack(manifest, &[]);
+    let e = GraphRenderer::new(
+        &device,
+        &mut terrain,
+        &missing,
+        FORMAT,
+        (WIDTH, HEIGHT),
+        &GRAPH_LIMITS,
+    )
+    .err()
+    .expect("missing file");
+    assert!(
+        e.to_string().contains("composite/c.wgsl") && e.to_string().contains("no file"),
+        "{e}"
+    );
 }
