@@ -56,6 +56,12 @@ struct Args {
     /// (sprinting on the ground at 12 chunks, the exit criterion literally).
     #[arg(long, value_enum, default_value_t = bench::Route::Fly)]
     bench_mode: bench::Route,
+    /// Present frames without waiting for the display (no vsync). For
+    /// measurements (T1-25): with vsync, laptops with switchable graphics can
+    /// pace frames at the integrated GPU's refresh (≈ 33 ms seen on a GTX
+    /// 1660 Ti), which hides what the engine itself costs.
+    #[arg(long)]
+    no_vsync: bool,
     /// Prefer the GPU whose name contains this text (e.g. `vega`, `1660`).
     #[arg(long, value_name = "NAME")]
     gpu: Option<String>,
@@ -128,6 +134,7 @@ fn main() -> ExitCode {
         safe_mode: args.safe_mode,
         bench: args.bench_route,
         bench_route: args.bench_mode,
+        no_vsync: args.no_vsync,
         gpu: args.gpu.clone(),
         connect: args.connect,
     };
