@@ -4,5 +4,5 @@
 #[test]
 fn client_and_embedded_server_capabilities_match() {
     assert_eq!(client::capabilities(), server::capabilities::compiled());
-    assert!(client::embedded::AVAILABLE, "default builds have single-player");
+    const { assert!(client::embedded::AVAILABLE, "default builds have single-player") };
 }
