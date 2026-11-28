@@ -73,12 +73,13 @@ Core and single-player world ([roadmap](../docs/process/roadmap.md), PRD §9). E
 | [T1-17](stage-1/T1-17-worldgen-modes.md) | World generation modes: normal and extended (Tectonic as reference) | T1-03, T1-13 | agent + owner review | in-progress (part 1 done: engines, `climate`, `overworld_plus`; owner: look review) |
 | [T1-18](stage-1/T1-18-gameplay-slots.md) | Gameplay slots: replaceable movement profile and generator (ADR-0013) | T1-12, T1-13 | agent (cloud) | done (owner: feel review of `classic_agile`) |
 | [T1-19](stage-1/T1-19-resource-and-shader-packs.md) | Resource, texture and shader packs (ADR-0014) | T1-11, T1-13 | agent (cloud) + laptop | in-progress (owner: try packs, shader-pack GPU cost) |
-| [T1-15](stage-1/T1-15-stage-1-exit-harness.md) | Stage 1 exit measurement | T1-01 … T1-14 | agent + owner's laptop | in-progress (harness done; owner: laptop runs) |
-| [T1-20](stage-1/T1-20-stage-1-exit-review.md) | Stage 1 exit review and stage 2 backlog | T1-15 | agent + owner | in-progress (stage 2 backlog done; review waits for T1-15) |
+| [T1-15](stage-1/T1-15-stage-1-exit-harness.md) | Stage 1 exit measurement | T1-01 … T1-14 | agent + owner's laptop | in-progress (laptop runs done 2026-11-27; owner: exit decision) |
+| [T1-20](stage-1/T1-20-stage-1-exit-review.md) | Stage 1 exit review and stage 2 backlog | T1-15 | agent + owner | in-progress (review written; owner: exit decision) |
 | [T1-21](stage-1/T1-21-render-reference-scene.md) | Render reference scene and screenshot tests | T1-11, T1-19 | agent (cloud) + laptop | in-progress (cloud part done; owner: laptop look) |
 | [T1-22](stage-1/T1-22-render-graph-hook-v2.md) | Programmable render graph and shader-pack hook version 2 (ADR-0015) | ADR-0015 (accepted 2026-11-27), T1-19, T1-21 | agent (cloud) + laptop | todo |
 | [T1-23](stage-1/T1-23-mesher-trait-and-render-buckets.md) | Mesher trait and render buckets (ADR-0016) | ADR-0016 (accepted 2026-11-27), T1-11 | agent (cloud) | in-progress (cloud part done; owner: laptop frame check) |
 | [T1-24](stage-1/T1-24-modular-base-game.md) | Modular base game: split `core` into modules and add builds (ADR-0017) | T1-13, T2-08 | agent (cloud) | done |
+| [T1-25](stage-1/T1-25-frame-spike-attribution.md) | Frame spike attribution and fix | T1-15 | agent (cloud) + laptop | in-progress (attribution and walking route done; owner: laptop runs) |
 
 ### Stage 1: order and parallel work
 
@@ -100,6 +101,7 @@ Wave 1 tasks touch different crates (`world`, `mesh`, `render`, `engine-core`, `
 - External projects review (2026-11-26, [research](../docs/research/external-projects-review-2026-11-26.md)): "shader packs change everything, as Iris does" → [ADR-0015](../docs/adr/0015-programmable-render-graph.md) (accepted 2026-11-27) and T1-22; readiness for a non-cubic world → [ADR-0016](../docs/adr/0016-geometry-agnostic-meshing.md) (accepted 2026-11-27) and T1-23; visual checks → T1-21 (prerequisite for both); generation backpressure and lag-machine limits → T2-10.
 - Modular base game and builds (owner request 2026-11-27) → [ADR-0017](../docs/adr/0017-modular-base-game-and-builds.md) and T1-24 (done): `core`, `movement`, `overworld`, planned `nether`, `end`, `mobs`; later modules (moving structures with collision, space, roles and permissions) are documented in [builds](../docs/modding/builds.md).
 - Planned builds (owner, 2026-11-27): an industrial mod pack (giant flying constructions as in Create: Aeronautics, machines, planets, space, rockets) and an RPG build (giant world, zones, evolving dungeons, bosses, progression, skills) → [builds](../docs/modding/builds.md), [ADR-0018](../docs/adr/0018-engine-capabilities-per-build.md) (capabilities, accepted 2026-11-27), [ADR-0019](../docs/adr/0019-moving-block-structures.md) (moving structures, accepted 2026-11-27), [moving-structures](../docs/architecture/moving-structures.md), [dimensions](../docs/architecture/dimensions.md). Tasks: T4-01 … T4-10 (Stage 4 below).
+- Frame spikes from the stage 1 exit runs (36–189 frames > 33 ms per 30 min, [review](../docs/research/stage-1-exit-2026-11-28.md)) → [T1-25](stage-1/T1-25-frame-spike-attribution.md).
 - T1-16 leftovers (the owner accepted both options, 2026-11-22): an ADR for persistent per-region light grids (≤ 100 µs per edit), and a cheaper pass for sky changes reaching below the snapshot (≈ 10 ms on the VM). Chained slabs are preferred because they are exact and have no visible delay; spreading over frames is the fallback.
 
 ## Stage 2: network and server
@@ -130,7 +132,7 @@ The owner decided on 2026-11-23 to start stage 2 while the T1-15 laptop runs are
 | 5 | T2-05, T2-08, T2-10 | T2-04 (T2-05, T2-08); T2-03 (T2-10) |
 | 6 | T2-09 | everything above |
 
-Stage 1 work that continues in parallel: T1-15 laptop runs, T1-17, T1-18, the T1-19 laptop check, T1-21 (and T1-22, T1-23 once their ADRs are accepted), the T1-16 follow-ups, and gameplay polish (block highlight, hold to dig, transparent pass, block models, biome tints).
+Stage 1 work that continues in parallel: T1-25 (frame spikes, proposed high priority), T1-17 part 2, the T1-19 and T1-21 laptop checks, T1-22, the T1-16 follow-ups, and gameplay polish (block highlight, hold to dig, transparent pass, block models, biome tints).
 
 ## Stage 4: engine capabilities for the planned builds (early backlog)
 

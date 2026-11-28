@@ -47,10 +47,15 @@ struct Args {
     /// Start without resource and shader packs (if a pack broke the game).
     #[arg(long)]
     safe_mode: bool,
-    /// Stage 1 exit measurement (T1-15): fly the scripted route for SECONDS
-    /// after a warm-up, write frame times and memory to <data>/bench, exit.
+    /// Stage 1 exit measurement (T1-15, T1-25): run the scripted route for
+    /// SECONDS after a warm-up, write frame times, spikes with their causes
+    /// and memory to <data>/bench, exit.
     #[arg(long, value_name = "SECONDS")]
     bench_route: Option<u32>,
+    /// The bench route (T1-25): `fly` (16 chunks, the stress case) or `walk`
+    /// (sprinting on the ground at 12 chunks, the exit criterion literally).
+    #[arg(long, value_enum, default_value_t = bench::Route::Fly)]
+    bench_mode: bench::Route,
     /// Prefer the GPU whose name contains this text (e.g. `vega`, `1660`).
     #[arg(long, value_name = "NAME")]
     gpu: Option<String>,
@@ -122,6 +127,7 @@ fn main() -> ExitCode {
         screenshot,
         safe_mode: args.safe_mode,
         bench: args.bench_route,
+        bench_route: args.bench_mode,
         gpu: args.gpu.clone(),
         connect: args.connect,
     };
