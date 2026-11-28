@@ -1,6 +1,6 @@
 # T4-01. Engine capabilities per build
 
-- **Status:** todo (can start now)
+- **Status:** done (cloud; report: [t4-01-capabilities](../../task-reports/t4-01-capabilities.md))
 - **Depends on:** T1-24
 - **Owner:** agent (cloud)
 
@@ -19,5 +19,5 @@
 
 ## Acceptance criteria
 
-- [ ] A build whose mods require nothing starts no optional subsystem (test).
-- [ ] The error messages name the build, the mod and the capability.
+- [x] A build whose mods require nothing starts no optional subsystem (test: `server/tests/capabilities.rs`).
+- [x] The error messages name the build, the mod and the capability.

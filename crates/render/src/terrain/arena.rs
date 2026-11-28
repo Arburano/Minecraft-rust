@@ -1,6 +1,7 @@
-//! Range allocator for the quad buffer: one contiguous range per render batch
-//! (its six direction lists back to back). First fit with coalescing; the
-//! free list keeps its capacity, so steady-state updates do not allocate.
+//! Range allocator for a render-bucket buffer (ADR-0016): one arena per
+//! bucket, one contiguous range per render batch in each (for the quad
+//! bucket, its six direction lists back to back). First fit with coalescing;
+//! the free list keeps its capacity, so steady-state updates do not allocate.
 
 use std::ops::Range;
 

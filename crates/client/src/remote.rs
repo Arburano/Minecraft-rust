@@ -40,6 +40,36 @@ pub enum RemoteError {
     /// The server did not answer in time.
     #[error("the server did not answer within {0:?}")]
     Timeout(Duration),
+    /// The server runs a capability this client cannot (ADR-0018).
+    #[error("{0}")]
+    Capability(String),
+}
+
+/// Checks the capabilities a server runs against the ones this client was
+/// compiled with ([`crate::capabilities`]).
+pub fn check_server_capabilities(
+    names: &[String],
+    compiled: world::Capabilities,
+) -> Result<(), RemoteError> {
+    for name in names {
+        match world::Capability::from_name(name) {
+            None => {
+                return Err(RemoteError::Capability(format!(
+                    "the server runs capability {name:?}, which this version of the game does \
+                     not know; update the game"
+                )));
+            }
+            Some(c) if !compiled.contains(c) => {
+                return Err(RemoteError::Capability(format!(
+                    "the server runs capability {c}; this client was built without it \
+                     (cargo feature {:?})",
+                    c.cargo_feature().unwrap_or(c.name())
+                )));
+            }
+            Some(_) => {}
+        }
+    }
+    Ok(())
 }
 
 impl From<StreamError> for RemoteError {
@@ -355,6 +385,7 @@ async fn login(addr: SocketAddr, name: &str, registry: &Registry) -> Result<Logi
     let ServerControl::Welcome(welcome) = next().await? else {
         return Err(RemoteError::Connection("expected Welcome".into()));
     };
+    check_server_capabilities(&welcome.capabilities, crate::capabilities())?;
     let ServerControl::Registry(sync) = next().await? else {
         return Err(RemoteError::Connection("expected the block table".into()));
     };

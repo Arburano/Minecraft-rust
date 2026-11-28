@@ -1,6 +1,6 @@
 # T1-23. Mesher trait and render buckets
 
-- **Status:** todo ([ADR-0016](../../docs/adr/0016-geometry-agnostic-meshing.md) accepted 2026-11-27)
+- **Status:** in-progress (cloud part done 2026-11-27, [report](../../task-reports/t1-23-mesher-trait-and-render-buckets.md); owner: frame numbers on the laptop) ([ADR-0016](../../docs/adr/0016-geometry-agnostic-meshing.md) accepted 2026-11-27)
 - **Depends on:** T1-11
 - **Owner:** agent (cloud)
 
@@ -17,8 +17,8 @@ Remove the "quads only" assumption from `mesh` and `render` without changing wha
 
 ## Acceptance criteria
 
-- [ ] `mesh_chunk` benchmarks before/after: no regression beyond noise (state the machine and runs).
-- [ ] T1-21 golden images unchanged.
+- [x] `mesh_chunk` benchmarks before/after: no regression beyond noise (state the machine and runs) — VM, see the report.
+- [x] T1-21 golden images unchanged (software Vulkan, B, Bi, C and the warm-glow pack).
 - [ ] Frame numbers on the laptop unchanged within noise.
 
 ## Out of scope

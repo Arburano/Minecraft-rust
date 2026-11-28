@@ -73,5 +73,7 @@ jobs:
           if-no-files-found: ignore
       - name: Worldgen without the built-in overworld (T1-18)
         run: cargo check -p worldgen --no-default-features
+      - name: Server without optional capability features (T4-01)
+        run: cargo test -p server --no-default-features --lib --test capabilities
       - name: Benches compile
         run: cargo bench --workspace --no-run

@@ -35,6 +35,12 @@ anyhow = { workspace = true }
 tokio = { workspace = true }
 
 [features]
+# Every capability compiled in for development builds (ADR-0018); a build's
+# release binary keeps only its own.
+default = ["moving_grids"]
+# Moving block structures (ADR-0019). Gates the rigid-body physics dependency
+# once it lands (T4-03); a binary without it refuses builds that require it.
+moving_grids = []
 # Tracy profiler zones: `cargo run -p server --features profiling`.
 profiling = ["engine-core/profiling"]
 

@@ -18,7 +18,7 @@ render = { path = "../render" }
 net = { path = "../net" }
 protocol = { path = "../protocol" }
 # The server library: shared intent conversion now, the embedded server later (T2-08).
-server = { path = "../server" }
+server = { path = "../server", default-features = false }
 quinn = { workspace = true }
 tokio = { workspace = true }
 sim = { path = "../sim" }
@@ -42,6 +42,10 @@ memory-stats = { workspace = true }
 png = { workspace = true }
 
 [features]
+# Every capability compiled in for development builds (ADR-0018).
+default = ["moving_grids"]
+# Moving block structures (ADR-0019); also in the embedded server.
+moving_grids = ["server/moving_grids"]
 # Tracy profiler zones: `cargo run -p client --features profiling`.
 profiling = ["engine-core/profiling"]
 

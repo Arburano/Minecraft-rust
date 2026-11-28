@@ -47,7 +47,7 @@ pub use wire::{Angle8, Angle16, BlockXyz, ColumnXz, NetId, RelPos};
 
 /// Version of the message layouts. Any change to a message type that an older
 /// build cannot decode raises it (and the golden files in `tests/golden/`).
-pub const PROTOCOL_VERSION: u32 = 4;
+pub const PROTOCOL_VERSION: u32 = 5;
 
 /// QUIC ALPN of this protocol family (`networking-protocol.md`).
 pub const ALPN: &[u8] = b"vxl/1";

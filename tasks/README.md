@@ -77,7 +77,7 @@ Core and single-player world ([roadmap](../docs/process/roadmap.md), PRD §9). E
 | [T1-20](stage-1/T1-20-stage-1-exit-review.md) | Stage 1 exit review and stage 2 backlog | T1-15 | agent + owner | in-progress (stage 2 backlog done; review waits for T1-15) |
 | [T1-21](stage-1/T1-21-render-reference-scene.md) | Render reference scene and screenshot tests | T1-11, T1-19 | agent (cloud) + laptop | in-progress (cloud part done; owner: laptop look) |
 | [T1-22](stage-1/T1-22-render-graph-hook-v2.md) | Programmable render graph and shader-pack hook version 2 (ADR-0015) | ADR-0015 (accepted 2026-11-27), T1-19, T1-21 | agent (cloud) + laptop | todo |
-| [T1-23](stage-1/T1-23-mesher-trait-and-render-buckets.md) | Mesher trait and render buckets (ADR-0016) | ADR-0016 (accepted 2026-11-27), T1-11 | agent (cloud) | todo |
+| [T1-23](stage-1/T1-23-mesher-trait-and-render-buckets.md) | Mesher trait and render buckets (ADR-0016) | ADR-0016 (accepted 2026-11-27), T1-11 | agent (cloud) | in-progress (cloud part done; owner: laptop frame check) |
 | [T1-24](stage-1/T1-24-modular-base-game.md) | Modular base game: split `core` into modules and add builds (ADR-0017) | T1-13, T2-08 | agent (cloud) | done |
 
 ### Stage 1: order and parallel work
@@ -138,7 +138,7 @@ Engine work behind [ADR-0018](../docs/adr/0018-engine-capabilities-per-build.md)
 
 | Task | Name | Depends on | Owner | Status |
 | --- | --- | --- | --- | --- |
-| [T4-01](stage-4/T4-01-capabilities.md) | Engine capabilities per build | T1-24 | agent (cloud) | todo |
+| [T4-01](stage-4/T4-01-capabilities.md) | Engine capabilities per build | T1-24 | agent (cloud) | done |
 | [T4-02](stage-4/T4-02-dimensions.md) | Dimensions | T4-01, T2-06, T2-08 | agent (cloud) | todo |
 | [T4-03](stage-4/T4-03-moving-grids-physics.md) | Moving grids: storage and physics | T4-01, T4-02 | agent (cloud) | todo |
 | [T4-04](stage-4/T4-04-grid-assembly-and-api.md) | Grid assembly, disassembly, splitting and the grids mod API | T4-03 (WIT part: stage 3 mod API) | agent (cloud) | todo |

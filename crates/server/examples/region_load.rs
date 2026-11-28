@@ -65,6 +65,7 @@ fn main() {
             threads: cores.saturating_sub(1).max(1),
             region_threads,
             entity_limits: Default::default(),
+            subsystems: Default::default(),
         },
         storage,
     )

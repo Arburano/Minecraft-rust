@@ -101,6 +101,15 @@ Some features cannot be mods: they need engine speed or reach into physics, netw
 | `instances` | private copies of an area per party, created and dropped on demand | "RPG build" below | 4+ |
 | `progression` | server-stored per-player stats, levels and skills with a mod API | "RPG build" below | 4+ |
 
+How it works (T4-01):
+
+- **The set.** `world::ModSet::capabilities()` is the union of the mods' `[requires] capabilities`. `world::Capabilities` is a small bit set, so checking it costs one bit test.
+- **Compiled in.** A capability with a heavy dependency has a cargo feature of the same name on `server` and `client` (first: `moving_grids`, on by default for development). `server::capabilities::compiled()` and `client::capabilities()` give the binary's set. The server and the client check the build at start: "build X needs capability Y (required by mod Z); this server binary was built without it (cargo feature "Y")".
+- **Started.** `server::capabilities::SubsystemRegistry` maps a capability to a factory; `Server::start` starts one `Subsystem` per capability of the build. A subsystem is ticked on the world thread after the regions simulate and stopped with the world. A capability the build does not require has no factory call, thread, tick call or message; with no capability the world tick only checks an empty list. A required capability without a subsystem is an error ("… which this engine version does not implement yet"); none is implemented yet, the first is `moving_grids` (T4-03).
+- **Announced.** `Welcome.capabilities` (protocol version 5) lists the capabilities the server runs, by name. The client refuses a server whose capability it does not know or was built without.
+- **Recorded in the world.** `server.toml` has `capabilities = [...]`: every capability of every build that opened the world, since data written once stays. A build without one of them refuses the world, naming the build and the capability.
+- **CI** runs the workspace tests with every feature (the default) and `cargo test -p server --no-default-features` without them.
+
 ## Planned builds
 
 Two large builds are planned besides `classic`. They share only the engine, `core` and `movement` (and may replace `movement` too). Everything else is their own modules, so neither carries the other's logic. Working titles.
@@ -160,4 +169,6 @@ Example builds once these exist:
 - The build id is not stored in the world, and opening a world with a different build is not checked (with T1-18's slot checks).
 - The server does not send its mod list to the client (`mod_manifest_hash` in `Welcome` is zero); both sides must run the same build.
 - The updater (ADR-0010) does not download per build.
-- `[requires] capabilities` (ADR-0018, accepted, T4-01).
+- A per-build release binary with only its capabilities' features (the build tool, ADR-0018 "Not decided here").
+- WIT interfaces linked only with their capability (ADR-0018 rule 5): with the stage 3 mod API.
+- Client-side subsystems (render passes of a capability): with the first capability that has one (T4-06).

@@ -178,6 +178,8 @@ pub struct WorldSetup {
     pub region_threads: usize,
     /// Per-region entity limits (T2-10).
     pub entity_limits: crate::entities::EntityLimits,
+    /// The optional subsystems of the build's capabilities (ADR-0018).
+    pub subsystems: crate::capabilities::Subsystems,
 }
 
 /// A column with its encoded message.
@@ -259,6 +261,7 @@ pub struct World {
     held: u64,
     walker_limit: usize,
     over_limit: usize,
+    subsystems: crate::capabilities::Subsystems,
 }
 
 /// Entity simulation counters since the last [`World::entity_stats`].
@@ -347,6 +350,7 @@ impl World {
             held: 0,
             walker_limit: setup.entity_limits.of(crate::entities::WALKER_NAME),
             over_limit: 0,
+            subsystems: setup.subsystems,
         })
     }
 
@@ -413,6 +417,10 @@ impl World {
             let regions = &mut self.regions;
             self.pool
                 .install(|| regions.par_iter_mut().for_each(|r| r.tick(&shared)));
+        }
+        // Optional subsystems (ADR-0018): none without capabilities.
+        if !self.subsystems.is_empty() {
+            self.subsystems.tick(self.ticks);
         }
         let simulate = simulate.elapsed();
         // Exchange.
@@ -1207,6 +1215,7 @@ impl World {
     }
 
     fn shutdown(&mut self) {
+        self.subsystems.shutdown();
         let mut records = Vec::new();
         let (physics, swim) = (self.physics.clone(), self.swim.clone());
         for r in &mut self.regions {
@@ -1234,6 +1243,12 @@ impl World {
             let _ = self.storage.tx.send(Request::Save(records));
         }
         self.storage.stop();
+    }
+
+    /// The capabilities whose subsystems run in this world (ADR-0018).
+    #[must_use]
+    pub fn capabilities(&self) -> world::Capabilities {
+        self.subsystems.capabilities()
     }
 
     /// Player-ticks spent held at the edge of the loaded world (T2-10).
