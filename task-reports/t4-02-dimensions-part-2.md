@@ -39,7 +39,7 @@
 - `server/tests/zones.rs`: an edit tagged with another dimension is refused where the player may build.
 - `server::players`: the dimension round-trips, and the overworld writes no `dimension` key.
 - Existing server and protocol tests and examples updated for the new fields.
-- `cargo fmt --all`; `cargo clippy --workspace --all-targets` and `-p client --no-default-features` with `-D warnings`: clean. `cargo test --workspace`: see "Issues encountered".
+- `cargo fmt --all`; `cargo clippy --workspace --all-targets` and `-p client --no-default-features` with `-D warnings`: clean. `cargo test --workspace`: all pass (85 test binaries, cloud VM, 1 run).
 
 ## What went wrong
 
