@@ -16,6 +16,7 @@ pub mod modset;
 pub mod registry;
 pub mod section;
 pub mod storage;
+pub mod zones;
 
 pub use capability::{Capabilities, Capability};
 pub use column::{Column, ColumnPos, ColumnState, WorldBounds};

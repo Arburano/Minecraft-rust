@@ -238,6 +238,7 @@ pub struct World {
     next_net_id: u64,
     snapshot: u32,
     corrections: u64,
+    zone_refusals: u64,
     edit_count: u64,
     times: TickTimes,
     ticks: u64,
@@ -262,6 +263,8 @@ pub struct World {
     walker_limit: usize,
     over_limit: usize,
     subsystems: crate::capabilities::Subsystems,
+    /// The zone index of the `zones` capability; `None` without it.
+    zones: Option<Arc<world::zones::ZoneIndex>>,
 }
 
 /// Entity simulation counters since the last [`World::entity_stats`].
@@ -329,6 +332,7 @@ impl World {
             next_net_id: 1,
             snapshot: 0,
             corrections: 0,
+            zone_refusals: 0,
             edit_count: 0,
             times: TickTimes::default(),
             ticks: 0,
@@ -350,6 +354,7 @@ impl World {
             held: 0,
             walker_limit: setup.entity_limits.of(crate::entities::WALKER_NAME),
             over_limit: 0,
+            zones: setup.subsystems.zones(),
             subsystems: setup.subsystems,
         })
     }
@@ -413,6 +418,7 @@ impl World {
                 offsets: &self.offsets,
                 players: &self.snapshot_players,
                 tick: self.ticks,
+                zones: self.zones.as_deref(),
             };
             let regions = &mut self.regions;
             self.pool
@@ -421,6 +427,10 @@ impl World {
         // Optional subsystems (ADR-0018): none without capabilities.
         if !self.subsystems.is_empty() {
             self.subsystems.tick(self.ticks);
+            // Zone changes take effect from the next tick.
+            if self.zones.is_some() {
+                self.zones = self.subsystems.zones();
+            }
         }
         let simulate = simulate.elapsed();
         // Exchange.
@@ -1076,6 +1086,7 @@ impl World {
             self.entity_stats.simulated += r.out.simulated;
             paths.append(&mut r.out.path_requests);
             self.corrections += r.out.corrections;
+            self.zone_refusals += r.out.zone_refusals;
             self.edit_count += r.out.changes.len() as u64;
             for &(c, b) in &r.out.changes {
                 all_changes.push((r.id, c, b));
@@ -1245,6 +1256,12 @@ impl World {
         self.storage.stop();
     }
 
+    /// The zone API handle, when the build runs `zones` (T4-08).
+    #[must_use]
+    pub fn zone_control(&self) -> Option<crate::zones::ZoneControl> {
+        self.subsystems.zone_control()
+    }
+
     /// The capabilities whose subsystems run in this world (ADR-0018).
     #[must_use]
     pub fn capabilities(&self) -> world::Capabilities {
@@ -1265,6 +1282,12 @@ impl World {
         let r = self.regions.iter().find(|r| r.id == *rid)?;
         let p = r.player(id)?;
         Some((r.map.column(p.column()).is_some(), p.body.pos))
+    }
+
+    /// Player steps undone by zone entry rules so far (T4-08).
+    #[must_use]
+    pub fn zone_refusals(&self) -> u64 {
+        self.zone_refusals
     }
 
     /// Corrections issued so far (metrics and tests).

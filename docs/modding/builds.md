@@ -97,7 +97,7 @@ Some features cannot be mods: they need engine speed or reach into physics, netw
 | `dimensions` | several worlds per server, travel between them, physics per dimension | [dimensions.md](../architecture/dimensions.md) | 4 |
 | `moving_grids` | moving block structures with rigid-body physics and collision | [ADR-0019](../adr/0019-moving-block-structures.md), [moving-structures.md](../architecture/moving-structures.md) | 4 |
 | `space` | vacuum, large coordinates, planets as dimensions, gravity sources | [dimensions.md](../architecture/dimensions.md), "Space" | 4–5 |
-| `zones` | named areas with rules (PvP, build rights, spawn tables, level ranges) | PRD §14 No. 11 | 4 |
+| `zones` | named areas with rules (PvP, build rights, entry, spawn tables, difficulty) | [zones.md](zones.md), PRD §14 No. 11 | 4 (done: T4-08) |
 | `instances` | private copies of an area per party, created and dropped on demand | "RPG build" below | 4+ |
 | `progression` | server-stored per-player stats, levels and skills with a mod API | "RPG build" below | 4+ |
 
@@ -105,7 +105,7 @@ How it works (T4-01):
 
 - **The set.** `world::ModSet::capabilities()` is the union of the mods' `[requires] capabilities`. `world::Capabilities` is a small bit set, so checking it costs one bit test.
 - **Compiled in.** A capability with a heavy dependency has a cargo feature of the same name on `server` and `client` (first: `moving_grids`, on by default for development). `server::capabilities::compiled()` and `client::capabilities()` give the binary's set. The server and the client check the build at start: "build X needs capability Y (required by mod Z); this server binary was built without it (cargo feature "Y")".
-- **Started.** `server::capabilities::SubsystemRegistry` maps a capability to a factory; `Server::start` starts one `Subsystem` per capability of the build. A subsystem is ticked on the world thread after the regions simulate and stopped with the world. A capability the build does not require has no factory call, thread, tick call or message; with no capability the world tick only checks an empty list. A required capability without a subsystem is an error ("… which this engine version does not implement yet"); none is implemented yet, the first is `moving_grids` (T4-03).
+- **Started.** `server::capabilities::SubsystemRegistry` maps a capability to a factory; `Server::start` starts one `Subsystem` per capability of the build. A subsystem is ticked on the world thread after the regions simulate and stopped with the world. A capability the build does not require has no factory call, thread, tick call or message; with no capability the world tick only checks an empty list. A required capability without a subsystem is an error ("… which this engine version does not implement yet"); the first implemented one is `zones` ([zones.md](zones.md), T4-08). A subsystem can also hand regions read-only data for their parallel tick (the zone index); it is swapped only between ticks.
 - **Announced.** `Welcome.capabilities` (protocol version 5) lists the capabilities the server runs, by name. The client refuses a server whose capability it does not know or was built without.
 - **Recorded in the world.** `server.toml` has `capabilities = [...]`: every capability of every build that opened the world, since data written once stays. A build without one of them refuses the world, naming the build and the capability.
 - **CI** runs the workspace tests with every feature (the default) and `cargo test -p server --no-default-features` without them.

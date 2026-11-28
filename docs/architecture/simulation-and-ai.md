@@ -49,7 +49,7 @@ Implementation (T2-03, `client::session`, `server::game`, `server::input`):
 - Full AI within a radius of ≈ 48 blocks of the nearest player (the number is tuned by playtesting).
 - Beyond that, the AI decision frequency falls with distance (simulation LOD): every 2nd, 4th, 8th tick. Physics and animation remain, so the mob does not visibly "freeze".
 - Pathfinding is asynchronous in the task pool (`Visible` priority near the player), and the result is applied in the next tick. A per-region task limit per tick.
-- Spawning only within the radius where a player can see the mob (as in Minecraft: no closer than ~24 blocks, no farther than the simulation distance), by zone tables. Despawning of distant ones — as in Minecraft.
+- Spawning only within the radius where a player can see the mob (as in Minecraft: no closer than ~24 blocks, no farther than the simulation distance), by zone tables (`ZoneIndex::spawn_table`, [zones.md](../modding/zones.md); the spawn system itself comes with stage 4 gameplay). Despawning of distant ones — as in Minecraft.
 - We do not do: spawning mobs "in the air with AI turned off" (PRD §14, No. 4).
 
 ### Engine side, implemented (T2-07, `server::entities`)
