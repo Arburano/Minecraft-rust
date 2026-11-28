@@ -1,0 +1,4 @@
+frame,ms,generation_ms,saved_reads_ms,relight_ms,saves_ms,autosave_ms,ticks_ms,ui_ms,upload_batches_ms,upload_light_ms,prepare_ms,acquire_ms,encode_ms,submit_ms,present_ms,outside_ms,cause,saved_reads,unloaded_columns,ticks,batches,quads,light_sections,removed_sections
+59150,56.231,0.393,0.000,0.002,0.003,0.000,0.001,43.373,0.005,0.001,0.531,0.609,0.658,1.080,4.141,5.435,ui,0,0,0,0,0,0,0
+61362,39.692,0.326,0.000,0.001,0.002,0.000,0.021,0.182,0.003,0.000,0.603,9.724,0.141,0.667,1.113,26.907,outside,0,0,1,0,0,0,0
+77764,37.496,0.822,0.000,0.001,0.001,0.000,0.000,0.125,0.003,0.000,0.497,6.089,28.229,0.859,0.476,0.394,encode,0,0,0,0,0,0,0

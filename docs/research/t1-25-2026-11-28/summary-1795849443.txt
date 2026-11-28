@@ -1,0 +1,10 @@
+stage 1 exit route: 29128 frames over 300 s, GPU: AMD Radeon(TM) RX Vega 10 Graphics (Dx12), path PullingIndexed, profile High (16 chunks)
+average FPS 97.1 (target 60)
+1% low FPS 29.9 (target >= 45)
+frame time p50 9.35 ms, p99 20.06 ms, max 120.87 ms
+frames > 33 ms: 143 (target 0)
+process memory peak 324 MiB, average 313 MiB (target <= 1536 MiB; internal budget 1024 MiB)
+route: fly, 1665 blocks flown 12 blocks above the ground at ≈ 5.5 blocks/s; 299 memory samples
+spikes attributed: 143
+spike causes (longest phase): upload_light 73 (avg 39.6 ms); acquire 46 (avg 38.3 ms); generation 7 (avg 58.8 ms); submit 6 (avg 57.7 ms); prepare 4 (avg 44.5 ms); encode 2 (avg 38.2 ms); present 2 (avg 35.0 ms); outside 2 (avg 43.8 ms); ui 1 (avg 86.2 ms);
+mean phase over spikes, ms: generation 9.02; saved_reads 0.00; relight 0.00; saves 0.00; autosave 0.00; ticks 0.00; ui 0.55; upload_batches 0.41; upload_light 12.24; prepare 1.62; acquire 10.61; encode 0.66; submit 3.90; present 1.18; outside 1.11;
