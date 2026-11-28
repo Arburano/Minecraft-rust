@@ -11,16 +11,12 @@ publish = false
 world = { path = "../world" }
 bitcode = { workspace = true }
 zstd = { workspace = true }
+thiserror = { workspace = true }
 
 [dev-dependencies]
 proptest = { workspace = true }
-criterion = { workspace = true }
-# Dev-only: realistic columns from the T0-12 corpus for the size measurements.
+# T2-01 size measurements on real generated columns.
 worldgen = { path = "../worldgen" }
-
-[[bench]]
-name = "codec"
-harness = false
 
 [lints]
 workspace = true

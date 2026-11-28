@@ -34,6 +34,24 @@ Sizes are tuned automatically from metrics; starting values come from Folia expe
 - The heaviest regions go to the fastest cores (pinning, P-cores on hybrid CPUs); enabled in stage 6.
 - There is no dedicated core "for mods": mods run in the tick of their region with a budget, otherwise every hook would become cross-thread synchronization.
 - The capacity of a single region is a separate target: the maximum number of players in one region at tick ≤ 25 ms. Beyond that — a queue or an instance. The number is determined by the stage 2 benchmark.
+- **Two levels of parallelism.** Regions are the macro level (ADR-0008). Inside a crowded region the systems still run in parallel by declared access (engine-core.md), and heavy systems (physics, AI decisions, fluids) iterate entities in parallel batches (`par_iter`) when the entity count makes it worth it. Entities that are not ticked (simulation LOD, T2-07) cost no CPU: they are filtered out by component, not checked one by one. This is what keeps a single dense region from being one thread ([review](../research/external-projects-review-2026-11-26.md), section 1).
+
+## Overload protection (T2-10)
+
+- **Generation backpressure:** the authoritative player position never enters a column that is not loaded on the server. A player faster than generation is slowed or held at the edge (with a notice), and generation for that player gets the highest priority. Dropping generation work silently and letting players fly into empty space is never acceptable, even if it keeps the tick rate.
+- **Cheap-entity limits:** falling blocks and item entities have per-region limits and merge rules (numbers in the `core` datapack), so lag machines cannot stall a region.
+- **Activation range:** the simulation LOD (simulation-and-ai.md) is our equivalent of an entity activation range; block mechanics inside the simulation distance are never slowed.
+
+Implementation (T2-10):
+
+- **Held at the edge:** unloaded cells are solid for the physics on both sides (T1-12, `MapBlocks`), and the server applies a player's intents only once the 3×3 columns around it are live; until then they stay queued. So no player position is ever inside unloaded terrain or below the world. The server counts player-ticks at the edge (`World::held_ticks`: the 3×3 not live, or the 5×5 not all live while moving); the client shows "Loading terrain…" when a column around where it will be in half a second is missing (`Session::terrain_loading`).
+- **Priority ahead:** a region's column requests carry a score, the distance to the player's column or to where it will be in 2 s (velocity × 40 ticks), whichever is nearer; the node sorts all regions' requests by score before the in-flight limit (128) applies. Territory columns are filled nearest to a member first.
+- **Entity limits:** `data/entities/limits.toml` of the build's mods (merged; the defaults are in `mods/core`) gives the simulated entities per region by kind (`[default] max_per_region`, `[kind."<name>"]`); entities over the limit stay stored (dormant) and wake when there is room. Only the engine's test entity (`test:walker`, 1,000) exists so far; falling blocks and items (stage 4) get entries there, with merging as their gameplay defines it.
+
+Measured (cloud VM 4 vCPU Xeon 2.1 GHz, release, `crates/server/tests/backpressure.rs`, one run):
+
+- 50 players flying straight out at the highest fly speed (≈ 176 blocks/s) for 20 s over a never-generated world (view 10, simulation 6): **0 positions inside unloaded terrain or below the world**; the farthest got 1,784 blocks; 82% of player-ticks were held at the edge (generation for 50 such flyers far exceeds 4 cores); **tick p99 10.7 ms**.
+- 10,000 entities spawned in one region: 1,000 simulated (the limit), 9,000 stored, none lost; tick p99 4.0 ms (`entity_load -- 10000`: p99 4.1 ms).
 
 ## Memory
 
@@ -42,6 +60,26 @@ Sizes are tuned automatically from metrics; starting values come from Folia expe
 ## Prototype (T0-09)
 
 `crates/sim` implements the core of this design: region = `bevy_ecs::World`, stable `NetId`, the four tick phases, sorted inter-region transfer messages, merge/split between ticks with the buffer invariant enforced at new borders (split deferred while entities occupy the border sections). Prototype relaxations, to be lifted in later stages: a flat single-layer world with rectangular territories on the x/z plane; entity ownership by territory containment, so a walking entity transiently occupies the buffer ring before its transfer is delivered; intents for in-flight entities are dropped deterministically; the load is scripted kinematic bots, not gameplay. Measurements: [T0-09 summary](../research/sim-regions-2026-11-20.md).
+
+## Implementation on the real server (T2-06, `crates/server`)
+
+- **Node and regions:** the world thread is the node (`game.rs`). A region (`region.rs`) is a separate `bevy_ecs::World` whose entities are the connected players, plus a `WorldMap` with the live columns of its territory. Regions tick in parallel on a rayon pool (`ServerConfig::region_threads`, default 80% of the logical CPUs) and touch only their own players and columns; they read the node's shared state (registry, physics, the encoded-column cache, last tick's player snapshot) immutably. No locks around the world.
+- **Phases per tick:** `PreTick` routes connection messages to the owning region and makes arriving columns live; the **restructure** (between ticks) recomputes the partition; `Simulate` runs the regions in parallel; `Exchange` sends block changes to players of other regions that hold the column, re-encodes edited columns into the cache, requests missing columns, and takes the player snapshot.
+- **Territories and partition** (`partition.rs`, pure): each player owns the square of columns within the **simulation distance** (default 8, `ServerConfig::sim_distance`) plus a 1-column buffer; the world spawn is an anchor with radius 2. Members whose areas touch share a region (union–find), so two regions never border directly. Members already together split only when their areas are 2 columns apart (hysteresis against flicker at a border). Groups keep the region ID most of their members had (ties: the lower ID); others get new IDs. When nobody crossed a column border nothing is recomputed; when only positions changed and every member keeps its region, the area edges are updated incrementally (coverage counts); full repartitioning (merge, split, join, leave) moves player entities between ECS worlds by stable ID and live columns between maps.
+- **Columns:** live columns exist only inside territories. Columns between the simulation distance and the view distance live in the node's **cache of encoded columns** (the "LRU of compressed columns for sending"), which also feeds streaming. A column entering a territory is decoded from the cache on the job pool (off the tick) or loaded from storage/generation; a column leaving every territory is dropped from the live maps and saved if edited. The cache keeps every column some player may see (view + 2) and the spawn area; it is trimmed once a second.
+- **Interactions across regions:** block changes reach players of other regions in `Exchange` (same tick); other regions' players are replicated from the previous tick's snapshot (one tick late), own region's from the current state. Entity transfers between regions happen only in the restructure, so `Simulate` needs no inter-region messages yet; distant actions (teleports, projectiles) will use the message machinery of the T0-09 prototype (`sim::message`).
+- **Determinism:** the same inputs and partitioning give the same state hash, independent of the number of region threads (`crates/server/tests/regions.rs`).
+
+Measured (cloud VM 4 vCPU Xeon 2.1 GHz, release, `cargo run -p server --release --example region_load -- <players> <clusters> 30`, view 10, simulation 6, players walking circles, no network, 3 region threads):
+
+| Load | Tick p50 / p95 / p99 | Slowest region p99 |
+| --- | --- | --- |
+| 200 players in 8 regions (3 runs) | 2.8–3.1 / 4.8–4.9 / **5.8–6.8 ms** | 3.2–4.3 ms |
+| 100 players in 1 region | 3.0 / 4.4 / 5.4 ms | 4.5 ms |
+| 200 players in 1 region | 13.2 / 24.7 / **25.7 ms** | 25.1 ms |
+| 400 players in 1 region | 31.8 / 49.5 / 58.0 ms | 57.0 ms |
+
+So on this VM one region holds ≈ 200 players within 25 ms p99 (all of them in view of each other — the worst case for replication, which is O(n²) per region). The laptop numbers (8 cores, the stage 2 exit check) are for the owner.
 
 ## Tests
 

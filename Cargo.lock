@@ -855,11 +855,15 @@ dependencies = [
  "net",
  "png",
  "pollster",
+ "protocol",
+ "quinn",
  "render",
  "serde",
  "serde_json",
+ "server",
  "sim",
  "thiserror 2.0.21",
+ "tokio",
  "toml",
  "wgpu",
  "winit",
@@ -3669,8 +3673,8 @@ name = "protocol"
 version = "0.0.1"
 dependencies = [
  "bitcode",
- "criterion",
  "proptest",
+ "thiserror 2.0.21",
  "world",
  "worldgen",
  "zstd 0.14.4",
@@ -4058,15 +4062,18 @@ name = "render"
 version = "0.0.1"
 dependencies = [
  "anyhow",
+ "assets",
  "bytemuck",
  "clap",
  "glam 0.34.3",
  "light",
  "mesh",
  "naga",
+ "png",
  "pollster",
  "serde",
  "serde_json",
+ "toml",
  "wgpu",
  "world",
 ]
@@ -4383,13 +4390,26 @@ dependencies = [
 name = "server"
 version = "0.0.1"
 dependencies = [
+ "anyhow",
  "auth",
+ "bevy_ecs",
  "clap",
+ "crossbeam-channel",
  "engine-core",
- "modhost",
+ "glam 0.34.3",
+ "memory-stats",
  "net",
+ "protocol",
+ "quinn",
+ "rayon",
+ "rcgen",
+ "serde",
  "sim",
+ "thiserror 2.0.21",
+ "tokio",
+ "toml",
  "world",
+ "worldgen",
 ]
 
 [[package]]

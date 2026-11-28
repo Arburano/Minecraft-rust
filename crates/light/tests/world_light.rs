@@ -1,7 +1,6 @@
 //! T1-09: world-level lighting equals a fresh initial lighting of the final
 //! world, through initial shortcuts, queued edits and sky changes.
 
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use light::{
@@ -9,8 +8,7 @@ use light::{
     snapshot_from_world,
 };
 use world::coords::{BlockPos, SectionPos};
-use world::registry::blocks_from_dir;
-use world::{BlockStateId, ColumnPos, Registry, RegistryBuilder, WorldBounds, WorldMap};
+use world::{BlockStateId, ColumnPos, Registry, WorldBounds, WorldMap};
 use worldgen::{GenContext, Pipeline, WorldgenConfig};
 
 const BOUNDS: WorldBounds = WorldBounds {
@@ -18,22 +16,19 @@ const BOUNDS: WorldBounds = WorldBounds {
     section_count: 8,
 };
 
-fn data() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../mods/core/data")
+fn data() -> world::ModSet {
+    world::modset::source_build(world::modset::DEFAULT_BUILD).expect("build")
 }
 
 fn registry() -> Arc<Registry> {
-    let mut b = RegistryBuilder::new();
-    b.add_mod(
-        "core",
-        blocks_from_dir(&data().join("blocks")).expect("blocks"),
-    );
+    let mods = data();
+    let b = mods.registry_builder().expect("blocks");
     Arc::new(b.build().expect("registry"))
 }
 
 /// Generated columns in `-r..=r` around the origin.
 fn world(reg: &Arc<Registry>, r: i32, seed: u64) -> WorldMap {
-    let src = std::fs::read_to_string(data().join("worldgen/overworld.toml")).expect("config");
+    let src = data().read("worldgen/overworld.toml").expect("config");
     let ctx = GenContext::new(
         seed,
         WorldgenConfig::from_toml(&src, reg).expect("config"),

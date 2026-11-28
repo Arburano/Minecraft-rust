@@ -1,0 +1,18 @@
+# The end dimension (ADR-0017). Planned module, no content yet.
+# Will own: end generation (islands), end-only blocks under `end:`, its boss
+# fight (depends on `mobs`) and the exit portal.
+[mod]
+id = "end"
+version = "0.1.0"
+api = "^0.1"
+side = "both"
+authors = ["project team"]
+description = "The end dimension (planned: stage 4+; no content yet)"
+
+[dependencies]
+core = "^0.1"
+
+[permissions]
+
+[budget]
+tick_ms = 0.5

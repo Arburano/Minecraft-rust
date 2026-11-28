@@ -1,0 +1,6 @@
+id = "overworld_plus:spruce_log"
+model = "core:models/cube_all"
+textures = { side = "minecraft:block/spruce_log", top = "minecraft:block/spruce_log_top", bottom = "minecraft:block/spruce_log_top" }   # fallback: core:fallback/spruce_log
+hardness = 2.0
+tool = "axe"
+opaque = true

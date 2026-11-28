@@ -26,6 +26,7 @@ new chunk  ─► gather 34³ + masks  ─► queue (Visible / Prefetch)
 - Empty and solid mesh chunks are skipped by section flags; the mesher is not called. "Solid" means every section in the 4×4×4 neighborhood is fully opaque (a solid core with air padding still meshes its boundary faces).
 - An edit on a mesh chunk border affects neighbors (padding): up to 4 mesh chunks (up to 8 with diagonal AO). `mesh::affected_mesh_chunks` computes the dirty set.
 - Non-cubic models (stairs, fences, plants) take a separate path: precomputed model templates, instances. No greedy merging.
+- Mesher boundary (ADR-0016, T1-23): `mesh::ChunkMesher` takes the gathered padded chunk (`MeshInput`: voxels + masks) and writes render buckets (`MeshChunkQuads`: the 6 quad lists and the `models` list of `ModelInstance`s). `MeshChunkBuilder<M>` is generic over the mesher, so dispatch is once per mesh chunk and the per-cell loop stays monomorphic; `CubicGreedyMesher` (the `fast_mesh` path above) is the only implementation and the default. A block selects its mesher with the registry property `mesher` (`world::MesherKind`, default and only value `cubic`). Physics, raycasts and the server never read mesh output — they use the registry collision shape (test `sim/tests/collision_source.rs`).
 
 Measured (VM 2 vCPU, ±30%, 62³ unit, pre-code research): `fast_mesh` 0.27 ms, masks from scratch 0.35 ms, `mesh()` 1.1 ms.
 
@@ -35,6 +36,7 @@ Measured (VM, T0-04, 32³ mesh chunk, seeded terrain corpus 4×2×4 chunks, 8.1%
 
 - A 32³ mesh chunk produces quads with coordinates 0..31 (anchor planes and max corners reach 32). When copying into a 64³ batch we add an offset of 0 or 32 on each axis — a flip of bit 5 of each 6-bit coordinate field. Coordinates are stored modulo 64: a max-corner anchor field (positive face plane, or the far corner of Down/Right/Front) reading 0 means 64; such fields are always ≥ 1, so this is unambiguous. Min-corner fields never wrap.
 - A batch = 8 mesh chunks, one range in the GPU buffer per face direction. Re-meshing one mesh chunk → re-copying the whole batch (`mesh::RenderBatch::pack_into`). Decided by the T0-05 benchmark (open question No. 8): full re-copy ≈ 1.6 µs vs ≈ 0.2 µs for the 8-sub-range variant (VM, 4 976-quad batch), both far under the 50 µs budget — the ~1.4 µs saving does not justify 48 ranges with per-slot counters. Bare-metal confirmation pending.
+- Render buckets (ADR-0016, T1-23): a batch holds one range per bucket — `PackedVoxelQuads` (the 6 per-direction quad ranges above) and `ModelInstances` (block-model instances of all 8 slots, same 6-bit coordinate fields, so the same bit flip adds the offset). `SmoothMesh` and `WaterSurface` are declared (`mesh::RenderBucket`) and not implemented. `render::terrain` keeps a range per bucket for each resident batch, each from its own `RangeArena`; model instances are accounted for (`FrameStats::models_resident`) but not drawn until the block-model pipeline exists — no mesher produces them yet. Empty buckets cost nothing. No world format change (ADR-0016 decision 4).
 - Number of draw commands: ≈ as for a 62³ unit (≈ 600 at 12 chunks without indirect), not ≈ 4,500 for separate 32³ ones.
 
 ## Quad format (8 bytes)
@@ -98,6 +100,8 @@ Platform findings from T0-14 that the stage 1 renderer must handle:
 ## Render graph and profiles
 
 Passes: opaque → transparent (sorted by batches from farthest) → water → entities → particles → UI. Optional: shadows, SSAO, clouds, fog. The Low profile turns optional passes off first; render distance is not below 8 chunks on any profile (PRD §14).
+
+Accepted (2026-11-27), not implemented yet: a programmable render graph that shader packs can extend (shadow, G-buffer with MRT, deferred, translucent, composite stages, vertex hooks with bounded displacement) — [ADR-0015](../adr/0015-programmable-render-graph.md), [render-graph.md](render-graph.md). Render buckets by geometry type and the `ChunkMesher` trait ([ADR-0016](../adr/0016-geometry-agnostic-meshing.md)) are in place since T1-23 (see "Meshing" and "Render batches"); only the cubic mesher and the quad pipeline draw anything. Until T1-22 lands, the passes above are what is built.
 
 ## Budgets
 

@@ -1,6 +1,6 @@
 # Architecture overview
 
-The engine is a "voxel OS": the core (world, rendering, networking, scheduling, mod host) knows nothing about specific blocks or mobs. All gameplay is the `core` mod on the public API. Client and server share one codebase; single-player runs an embedded server in the same process.
+The engine is a "voxel OS": the core (world, rendering, networking, scheduling, mod host) knows nothing about specific blocks or mobs. All gameplay is mods on the public API: the base game is split into modules (`core`, `movement`, one per world, `mobs`, …) and a build lists the modules a game runs with (ADR-0017, `modding/builds.md`). Client and server share one codebase; single-player runs an embedded server in the same process.
 
 ## Crates
 
@@ -53,6 +53,8 @@ The engine is a "voxel OS": the core (world, rendering, networking, scheduling, 
 
 Dependency rule: arrows only point down. `world` knows nothing about rendering, `sim` knows nothing about the network (the network feeds intents into `PreTick` and picks up deltas in `PostTick`). A new link between crates that violates the direction requires an ADR.
 
+Optional engine features (planned): a build starts only the **capabilities** its mods require — `dimensions`, `moving_grids`, `space`, `zones`, `instances`, `progression` ([ADR-0018](../adr/0018-engine-capabilities-per-build.md), accepted 2026-11-27). Moving structures would live in `sim` (grids, Rapier behind the `moving_grids` feature), `server` (regions, network) and `render` (per-object transforms): [moving-structures.md](moving-structures.md), [dimensions.md](dimensions.md).
+
 ## Threads
 
 Client:
@@ -82,7 +84,8 @@ Server: network (several threads), chunk IO, generation, region tick pool (≈ 8
 ```text
 crates/      engine code (workspace)
 wit/         mod contract (WIT)
-mods/core/   base gameplay as a mod
+mods/        base gameplay as modules (core, movement, overworld, …)
+builds/      builds: lists of mods (ADR-0017)
 docs/        PRD, specifications, ADRs, process, research
 tasks/       task backlog by stage
 research/    benchmarks that justified decisions (separate workspace)

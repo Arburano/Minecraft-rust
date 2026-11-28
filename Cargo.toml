@@ -47,7 +47,7 @@ quinn = "0.11"
 bytes = "1"           # quinn's datagram API takes bytes::Bytes
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync", "time"] }
 reqwest = { version = "0.13", default-features = false, features = ["rustls", "json"] }
-rcgen = "0.14"        # self-signed certificates for tests and spikes only, never shipped
+rcgen = "0.14"        # self-signed certificates: tests, spikes and the offline-mode server (T2-02)
 
 # Mods
 wasmtime = "50"       # 51 is still a release candidate; tests in docs/research used 50.0.1

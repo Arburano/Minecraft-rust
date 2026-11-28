@@ -39,11 +39,16 @@ fn fallback_array_matches_golden_file() {
 }
 
 #[test]
-fn every_core_block_has_its_own_fallback_texture() {
-    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../mods/core/data/blocks");
+fn every_mod_block_has_its_own_fallback_texture() {
+    let mods = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../mods");
     let missing = fallback_texture("missing");
     let mut count = 0;
-    for entry in std::fs::read_dir(dir).expect("core blocks") {
+    let dirs = std::fs::read_dir(mods)
+        .expect("mods")
+        .filter_map(Result::ok)
+        .map(|e| e.path().join("data/blocks"))
+        .filter(|d| d.is_dir());
+    for entry in dirs.flat_map(|d| std::fs::read_dir(d).expect("blocks")) {
         let path = entry.expect("entry").path();
         let stem = path
             .file_stem()
@@ -54,7 +59,7 @@ fn every_core_block_has_its_own_fallback_texture() {
         assert_ne!(fallback_texture(key), missing, "{key}");
         count += 1;
     }
-    assert!(count >= 15);
+    assert!(count >= 20);
 }
 
 fn temp_dir(name: &str) -> PathBuf {

@@ -1,0 +1,7 @@
+# The classic game with the advanced overworld engine (ADR-0017): the same
+# shared base and movement, but `overworld_plus` instead of `overworld`.
+[build]
+id = "classic_plus"
+name = "Classic+"
+description = "The overworld with the climate engine: continents, mountains, more biomes and trees"
+mods = ["core", "movement", "overworld_plus"]

@@ -7,8 +7,6 @@ use std::path::PathBuf;
 
 use assets::local_install::InstalledTextures;
 use client::textures::{build, read_block_faces};
-use world::RegistryBuilder;
-use world::registry::blocks_from_dir;
 
 fn png(rgba: [u8; 4]) -> Vec<u8> {
     let mut out = Vec::new();
@@ -48,8 +46,8 @@ fn faces_come_from_the_installation_with_tints() {
     z.finish().expect("finish");
 
     let blocks = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../mods/core/data/blocks");
-    let mut b = RegistryBuilder::new();
-    b.add_mod("core", blocks_from_dir(&blocks).expect("blocks"));
+    let mods = world::modset::source_build(world::modset::DEFAULT_BUILD).expect("build");
+    let b = mods.registry_builder().expect("blocks");
     let reg = b.build().expect("registry");
     let mut installed = InstalledTextures::open(&dir, None).expect("open");
     let t = build(&reg, &read_block_faces(&blocks), &mut [&mut installed]);
@@ -126,8 +124,8 @@ fn packs_stack_top_first_fall_through_and_keep_hd_detail() {
         &[("stone", [0, 200, 0, 255]), ("dirt", [0, 0, 200, 255])],
     );
     let blocks = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../mods/core/data/blocks");
-    let mut b = RegistryBuilder::new();
-    b.add_mod("core", blocks_from_dir(&blocks).expect("blocks"));
+    let mods = world::modset::source_build(world::modset::DEFAULT_BUILD).expect("build");
+    let b = mods.registry_builder().expect("blocks");
     let reg = b.build().expect("registry");
     let faces = read_block_faces(&blocks);
     let t = build(&reg, &faces, &mut [&mut top, &mut lower]);
@@ -159,8 +157,8 @@ fn real_installation_when_configured() {
         return;
     };
     let blocks = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../mods/core/data/blocks");
-    let mut b = RegistryBuilder::new();
-    b.add_mod("core", blocks_from_dir(&blocks).expect("blocks"));
+    let mods = world::modset::source_build(world::modset::DEFAULT_BUILD).expect("build");
+    let b = mods.registry_builder().expect("blocks");
     let reg = b.build().expect("registry");
     let t0 = std::time::Instant::now();
     let mut installed = InstalledTextures::open(std::path::Path::new(&dir), None).expect("open");

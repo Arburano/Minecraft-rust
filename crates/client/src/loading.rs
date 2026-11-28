@@ -98,6 +98,9 @@ pub struct LoadConfig {
     pub tick_budget: Duration,
     /// Jobs in flight at most (bounds queued work and main-thread copying).
     pub max_in_flight: usize,
+    /// Generate columns the source does not have. Off when playing on a
+    /// server: columns come only from the network (T2-02).
+    pub generate: bool,
 }
 
 impl Default for LoadConfig {
@@ -108,6 +111,7 @@ impl Default for LoadConfig {
             apply_budget: Duration::from_millis(1),
             tick_budget: Duration::from_millis(2),
             max_in_flight: 32,
+            generate: true,
         }
     }
 }
@@ -591,6 +595,10 @@ impl Loader {
                 self.finished.push_back(JobOutput::Generated(column));
                 self.stats.submitted += 1;
                 self.stats.max_submit = self.stats.max_submit.max(t.elapsed());
+                continue;
+            }
+            if matches!(target, Target::Generate(_)) && !self.config.generate {
+                // Not arrived yet: asked again next tick.
                 continue;
             }
             self.submit(target, map, pool, class);

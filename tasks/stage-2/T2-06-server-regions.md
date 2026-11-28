@@ -1,6 +1,6 @@
 # T2-06. Regional multithreading on the real server
 
-- **Status:** todo
+- **Status:** in progress (cloud part done; owner: the 8-core laptop run) — [report](../../task-reports/t2-06-server-regions.md)
 - **Depends on:** T2-02, T0-09 (prototype)
 - **Owner:** agent (cloud)
 
@@ -15,8 +15,8 @@ Bring the T0-09 region prototype ([server-regions.md](../../docs/architecture/se
 
 ## Acceptance criteria
 
-- [ ] 1,000-entity merge/split property test: none lost or duplicated; the same inputs and partitioning give the same state hash.
-- [ ] 200 bots in 8 regions: tick p99 ≤ 25 ms on the laptop (8 cores); the maximum for 1 region is measured (single-region capacity, server-regions.md).
+- [x] 1,000-entity merge/split property test: none lost or duplicated; the same inputs and partitioning give the same state hash. (`tests/regions.rs`; also identical with 1 and 4 region threads.)
+- [ ] 200 bots in 8 regions: tick p99 ≤ 25 ms on the laptop (8 cores); the maximum for 1 region is measured (single-region capacity, server-regions.md). Cloud VM (4 vCPU): p99 5.8–6.8 ms; one region ≈ 200 players. Laptop run: `cargo run -p server --release --example region_load -- 200 8 30` and `-- 200 1 30` / `-- 400 1 30`.
 
 ## Out of scope
 

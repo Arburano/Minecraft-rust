@@ -2,6 +2,7 @@
 
 use noise::NoiseFn;
 
+use crate::config::{TreeShape, Trees};
 use crate::pipeline::{GenContext, ProtoColumn, Stage};
 
 /// Cheap 2D pass: surface height and biome of every block column.
@@ -180,7 +181,6 @@ impl Stage for TreePlacer {
 
     fn run(&self, ctx: &GenContext, col: &mut ProtoColumn) {
         let cfg = &ctx.config;
-        let t = &cfg.trees;
         for ncz in col.pos.z - 1..=col.pos.z + 1 {
             for ncx in col.pos.x - 1..=col.pos.x + 1 {
                 let mut rng = ctx.rng(&[0x7e, i64::from(ncx), i64::from(ncz)]);
@@ -193,40 +193,81 @@ impl Stage for TreePlacer {
                 }
                 for _ in 0..count {
                     let (ox, oz) = (ncx * 16 + rng.range(0, 16), ncz * 16 + rng.range(0, 16));
-                    let trunk = rng.range(t.min_trunk, t.max_trunk + 1);
                     let s = ctx.surface(ox, oz);
                     let biome = &cfg.biomes[usize::from(s.biome)];
+                    // The kind growing at the origin; no random draw when a
+                    // biome has one kind, so single-kind data keeps its trees.
+                    let kind = match biome.trees.len() {
+                        0 => 0,
+                        1 => usize::from(biome.trees[0]),
+                        n => usize::from(biome.trees[rng.range(0, n as i32) as usize]),
+                    };
+                    let t = &cfg.tree_kinds[kind];
+                    let trunk = rng.range(t.min_trunk, t.max_trunk + 1);
                     let beach = s.height <= cfg.sea_level + cfg.beach_max_above_sea;
                     if beach || biome.trees_per_column <= 0.0 {
                         continue;
                     }
-                    place_tree(col, ctx, ox, s.height + 1, oz, trunk);
+                    place_tree(col, ctx, t, ox, s.height + 1, oz, trunk);
                 }
             }
         }
     }
 }
 
-fn place_tree(col: &mut ProtoColumn, ctx: &GenContext, ox: i32, base: i32, oz: i32, trunk: i32) {
-    let t = &ctx.config.trees;
+/// Writes the leaves of one crown layer (radius `r` ≤ 2) that fall inside
+/// this column, only into air.
+fn leaf_layer(
+    col: &mut ProtoColumn,
+    ctx: &GenContext,
+    leaves: world::BlockStateId,
+    (ox, y, oz): (i32, i32, i32),
+    r: i32,
+    keep_corners: bool,
+) {
+    let (bx, bz) = (col.pos.x * 16, col.pos.z * 16);
+    for dz in -r..=r {
+        for dx in -r..=r {
+            if r > 0 && dx.abs() == r && dz.abs() == r && !keep_corners {
+                continue; // round the corners
+            }
+            let (lx, lz) = (ox + dx - bx, oz + dz - bz);
+            if (0..16).contains(&lx) && (0..16).contains(&lz) {
+                let (lx, lz) = (lx as usize, lz as usize);
+                if col.get(lx, y, lz) == ctx.config.caves.air {
+                    col.set(lx, y, lz, leaves);
+                }
+            }
+        }
+    }
+}
+
+fn place_tree(
+    col: &mut ProtoColumn,
+    ctx: &GenContext,
+    t: &Trees,
+    ox: i32,
+    base: i32,
+    oz: i32,
+    trunk: i32,
+) {
     let (bx, bz) = (col.pos.x * 16, col.pos.z * 16);
     let top = base + trunk;
     // Crown first, only into air, then the trunk over it.
-    for dy in -2i32..=1 {
-        let r: i32 = if dy >= 0 { 1 } else { 2 };
-        for dz in -r..=r {
-            for dx in -r..=r {
-                if dx.abs() == r && dz.abs() == r && dy != -1 {
-                    continue; // round the corners
-                }
-                let (lx, lz) = (ox + dx - bx, oz + dz - bz);
-                if (0..16).contains(&lx) && (0..16).contains(&lz) {
-                    let (lx, lz) = (lx as usize, lz as usize);
-                    let y = top + dy;
-                    if col.get(lx, y, lz) == ctx.config.caves.air {
-                        col.set(lx, y, lz, t.leaves);
-                    }
-                }
+    match t.shape {
+        TreeShape::Round => {
+            for dy in -2i32..=1 {
+                let r: i32 = if dy >= 0 { 1 } else { 2 };
+                leaf_layer(col, ctx, t.leaves, (ox, top + dy, oz), r, dy == -1);
+            }
+        }
+        TreeShape::Cone => {
+            // A tip above the trunk, then rings of radius 1 and 2 alternating
+            // down to two blocks above the ground.
+            leaf_layer(col, ctx, t.leaves, (ox, top, oz), 0, false);
+            for (i, y) in (base + 2..top).rev().enumerate() {
+                let r = if i % 2 == 0 { 1 } else { 2 };
+                leaf_layer(col, ctx, t.leaves, (ox, y, oz), r, false);
             }
         }
     }

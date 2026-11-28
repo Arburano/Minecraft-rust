@@ -81,4 +81,4 @@ It runs once per pixel over the rendered world, before the UI. `depth` is the ra
 
 ## Versioning
 
-The hook interface has a version (`hook_version`). A change that breaks packs raises it, and packs for an older version are refused with a clear message rather than drawn wrongly. New hooks (for example shadows, reflections or water) are added in later versions with their own budgets.
+The hook interface has a version (`hook_version`). A change that breaks packs raises it, and packs for an older version are refused with a clear message rather than drawn wrongly. New hooks (for example shadows, reflections or water) are added in later versions with their own budgets. Hook version 2 — a full render graph with shadow, G-buffer, deferred, translucent and composite stages and vertex hooks — is proposed in [ADR-0015](../adr/0015-programmable-render-graph.md) and specified in [render-graph.md](../architecture/render-graph.md); it is not implemented yet.

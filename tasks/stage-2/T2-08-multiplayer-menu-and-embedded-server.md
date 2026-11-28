@@ -1,6 +1,6 @@
 # T2-08. Multiplayer menu and single-player on an embedded server
 
-- **Status:** todo
+- **Status:** in progress (cloud part done; owner: the T1-15 route and a two-laptop LAN game) — [report](../../task-reports/t2-08-multiplayer-menu-and-embedded-server.md)
 - **Depends on:** T2-02, T2-04
 - **Owner:** agent (cloud) + owner's playtest
 

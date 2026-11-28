@@ -1,6 +1,6 @@
 # 0014. Resource, texture and shader packs
 
-Status: Accepted (owner, 2026-11-22: shader packs change the look, not geometry — option 1). Implemented in T1-19 (formats and hook reference: `docs/modding/packs.md`).
+Status: Accepted (owner, 2026-11-22: shader packs change the look, not geometry — option 1). Decision 2 (the shader-pack boundary) superseded by [ADR-0015](0015-programmable-render-graph.md) (2026-11-27); hook version 1 stays supported. Implemented in T1-19 (formats and hook reference: `docs/modding/packs.md`).
 
 ## Context
 

@@ -1,0 +1,19 @@
+# The nether dimension (ADR-0017). Planned module: it exists so that builds and
+# docs can name it; no content yet (dimensions arrive with stage 4+ gameplay).
+# Will own: nether generation, nether-only blocks under the `nether:` namespace,
+# portals to the overworld (optional dependency on `overworld`).
+[mod]
+id = "nether"
+version = "0.1.0"
+api = "^0.1"
+side = "both"
+authors = ["project team"]
+description = "The nether dimension (planned: stage 4+; no content yet)"
+
+[dependencies]
+core = "^0.1"
+
+[permissions]
+
+[budget]
+tick_ms = 0.5

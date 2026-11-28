@@ -1,0 +1,9 @@
+# The default build (ADR-0017, docs/modding/builds.md): the classic voxel
+# survival game. A build is only a list of mods on top of the engine; their
+# dependencies are added automatically. Add a mod here when its content exists:
+# `nether`, `end` and `mobs` are planned modules without content yet.
+[build]
+id = "classic"
+name = "Classic"
+description = "The overworld with the shared base"
+mods = ["core", "movement", "overworld"]

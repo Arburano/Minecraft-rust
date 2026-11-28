@@ -4,14 +4,20 @@
 //! - `docs/architecture/networking-protocol.md`
 //! - ADR-0007 (QUIC + own protocol)
 //!
-//! T0-11 spike scope: the channel layout from the spec (datagrams for intents
-//! and entity deltas, one prioritised unidirectional stream per column) with
-//! random bytes instead of real column data, plus a loss/delay relay for
-//! transport-level loss emulation. Real message types (`protocol`, `bitcode`)
-//! and the real column format are stage 1 work.
+//! - `endpoint`: QUIC endpoints (BBR on the server; an offline-mode client that
+//!   accepts the server's self-signed certificate).
+//! - `messages`: the handshake header and framed `protocol` messages over
+//!   streams (T2-02).
+//! - `lossy`: a loss/delay relay for tests.
+//! - `spike`: the T0-11 transport spike (random payloads), kept for its
+//!   measurements.
 
 pub mod endpoint;
 pub mod lossy;
+pub mod messages;
 pub mod spike;
 
-pub use endpoint::{ALPN, Error, client_endpoint, server_endpoint, server_endpoint_with_transport};
+pub use endpoint::{
+    ALPN, Error, client_endpoint, client_endpoint_offline, server_endpoint,
+    server_endpoint_with_transport,
+};

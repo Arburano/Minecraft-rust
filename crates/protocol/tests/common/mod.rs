@@ -1,128 +1,240 @@
-//! Sample messages shared by the integration tests.
-
+//! Sample messages shared by the protocol tests.
 #![allow(dead_code)]
 
-use protocol::handshake::ComponentSchema;
-use protocol::messages::buttons;
 use protocol::*;
+use world::storage::ColumnRecord;
+use world::{BlockStateId, ColumnPos, Section, WorldBounds};
 
-pub fn hello() -> Hello {
-    Hello {
+pub fn hello() -> ClientControl {
+    ClientControl::Hello(Hello {
         client_version: "0.0.1".into(),
-        identity: ClaimedIdentity::Offline {
-            name: "Alex_42".into(),
-        },
+        player_name: "Alex_42".into(),
         session_jwt: None,
-    }
+    })
 }
 
-pub fn welcome() -> Welcome {
-    Welcome {
-        server_info: ServerInfo {
-            name: "Test server".into(),
-            motd: "Hello, world".into(),
-            tick_rate: 20,
-            view_distance: 12,
-        },
-        player_id: [
-            0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0x8d, 0xef, 0x80, 0x11, 0x22, 0x33, 0x44, 0x55,
-            0x66, 0x77,
-        ],
-        mod_manifest_hash: [0xab; 32],
-    }
+pub fn welcome() -> ServerControl {
+    ServerControl::Welcome(Welcome {
+        server_name: "Test server".into(),
+        motd: "Hello there".into(),
+        server_version: "0.0.1".into(),
+        player_id: [7; 16],
+        tick_rate: 20,
+        mod_manifest_hash: [0; 32],
+        capabilities: vec!["dimensions".into(), "zones".into()],
+    })
 }
 
-pub fn registry() -> Registry {
-    Registry {
-        id_table: vec![
+pub fn registry() -> ServerControl {
+    ServerControl::Registry(RegistrySync {
+        block_states: vec![
             "core:air".into(),
             "core:missing".into(),
             "core:stone".into(),
+            "core:log[axis=x]".into(),
             "core:log[axis=y]".into(),
         ],
-        entity_kinds: vec!["core:player".into(), "core:pig".into()],
-        component_schemas: vec![ComponentSchema {
-            name: "example:mana".into(),
-            schema_hash: [7; 32],
-        }],
-    }
+        component_schema_hash: [0; 32],
+    })
 }
 
-pub fn spawn() -> Spawn {
-    Spawn {
-        pos: FixedPos::from_blocks([8.5, 72.0, -3.25]),
-        yaw: Angle16::from_radians(1.0),
-        pitch: Angle16::from_radians(-0.25),
+pub fn spawn() -> ServerControl {
+    ServerControl::Spawn(Spawn {
         tick: 1234,
-        entity: 1,
+        position: [8.5, 72.0, -3.25],
+        yaw: 1.5,
+        pitch: -0.25,
         min_section_y: -4,
         section_count: 24,
+        flying: false,
+        fly_speed: 1.0,
+        view_distance: 12,
+    })
+}
+
+pub fn kick() -> ServerControl {
+    ServerControl::Kick {
+        reason: KickReason::ServerFull,
+        message: "The server is full".into(),
     }
 }
 
-/// Deterministic pseudo-random numbers (splitmix64), so sample messages are
-/// not unrealistically regular (bitcode packs regular data very well).
-pub fn noise(i: u64) -> u64 {
-    let mut z = i.wrapping_add(0x9E37_79B9_7F4A_7C15);
-    z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
-    z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
-    z ^ (z >> 31)
-}
-
-pub fn input(frames: usize) -> InputDatagram {
+pub fn input(n: usize) -> InputDatagram {
     InputDatagram {
-        ack_snapshot: 77_000,
-        frames: (0..frames as u32)
-            .map(|i| InputFrame {
-                tick: 1_000_000 + i,
-                buttons: buttons::JUMP | buttons::SPRINT,
-                forward: 127,
-                strafe: -64,
-                fly_speed: 16,
-                yaw: Angle16(noise(u64::from(i)) as u16),
-                pitch: Angle16(noise(u64::from(i) + 100) as u16),
+        ack_snapshot: 4000,
+        intents: (0..n as u32)
+            .map(|i| Intent {
+                tick: 10_000 + i,
+                buttons: Buttons(
+                    Buttons::FORWARD | Buttons::SPRINT | ((i as u16 & 1) * Buttons::JUMP),
+                ),
+                yaw: Angle16(12_345u16.wrapping_add(i as u16 * 77)),
+                pitch: Angle16::from_radians(-0.3),
+                fly_speed_steps: 0,
+                state_hash: 0x9e37_79b9u32.wrapping_mul(i + 1),
             })
             .collect(),
     }
 }
 
-/// A steady-state delta: `moving` entities walking (up to ~0.45 block, i.e.
-/// two 20 Hz snapshots at sprint speed, per horizontal axis), each with a new
-/// yaw, scattered IDs, plus one spawn and one despawn.
-pub fn entity_delta(moving: u32) -> EntityDelta {
-    EntityDelta {
-        snapshot: 5021,
-        baseline: Some(5019),
-        tick: 100_400,
-        ack_input: 1_000_003,
-        spawns: vec![EntitySpawn {
-            id: NetEntityId(900),
-            kind: 1,
-            pos: FixedPos::from_blocks([120.25, 64.0, -40.5]),
-            yaw: Angle8(17),
-            pitch: Angle8(0),
-        }],
-        updates: (0..u64::from(moving))
-            .map(|i| {
-                let r = noise(i + 1000);
-                let axis = |bits: u64| ((bits % 29) as i16) - 14;
-                EntityUpdate {
-                    id: NetEntityId((noise(i) % 5000) as u32),
-                    pos: Some(PosUpdate::Delta(PosDelta {
-                        dx: axis(r),
-                        dy: if r & (1 << 40) == 0 {
-                            0
-                        } else {
-                            axis(r >> 20) / 2
-                        },
-                        dz: axis(r >> 8),
-                    })),
-                    yaw: Some(Angle8((r >> 48) as u8)),
-                    pitch: None,
-                    on_ground: r & (1 << 41) == 0,
-                }
+/// `n` entities appearing (kind, absolute position, look, flags): the
+/// largest form, sent once per entity.
+pub fn entities(n: usize) -> EntityDatagram {
+    let origin = BlockXyz {
+        x: 1000,
+        y: 64,
+        z: -2000,
+    };
+    EntityDatagram {
+        snapshot: 4001,
+        baseline: 4000,
+        ack_tick: Some(9_990),
+        correction: None,
+        origin,
+        updates: (0..n as u64)
+            .map(|i| EntityUpdate {
+                id: NetId(100_000 + i * 3),
+                kind: Some(0),
+                pos: RelPos::quantize(
+                    [
+                        1000.0 + (i as f64 * 7.31) % 90.0 - 45.0,
+                        64.0 + (i as f64 * 1.7) % 10.0,
+                        -2000.0 + (i as f64 * 13.9) % 90.0 - 45.0,
+                    ],
+                    origin,
+                ),
+                moved: None,
+                look: Some(Look {
+                    yaw: Angle8((i * 37) as u8),
+                    pitch: Angle8((i * 11) as u8),
+                    head_yaw: Angle8((i * 41) as u8),
+                }),
+                flags: Some(1),
             })
             .collect(),
-        despawns: vec![NetEntityId(4)],
+        removed: vec![NetId(5)],
+    }
+}
+
+/// `n` known entities moving and turning (the steady state at 20 Hz:
+/// ≈ 0.2–0.3 blocks per tick, i.e. a step of up to ±10 in 1/32 block).
+pub fn moving(n: usize) -> EntityDatagram {
+    EntityDatagram {
+        snapshot: 4001,
+        baseline: 4000,
+        ack_tick: Some(9_990),
+        correction: None,
+        origin: BlockXyz {
+            x: 1000,
+            y: 64,
+            z: -2000,
+        },
+        updates: (0..n as u64)
+            .map(|i| EntityUpdate {
+                id: NetId(100_000 + i * 3),
+                kind: None,
+                pos: None,
+                moved: Some(Step8 {
+                    x: ((i * 7) % 21) as i8 - 10,
+                    y: 0,
+                    z: ((i * 5) % 21) as i8 - 10,
+                }),
+                look: Some(Look {
+                    yaw: Angle8((i * 37) as u8),
+                    pitch: Angle8((i * 11) as u8),
+                    head_yaw: Angle8((i * 41) as u8),
+                }),
+                flags: None,
+            })
+            .collect(),
+        removed: Vec::new(),
+    }
+}
+
+/// A datagram with a correction (the rare case).
+pub fn corrected() -> EntityDatagram {
+    EntityDatagram {
+        correction: Some(Correction {
+            tick: 9_990,
+            pos: [1000.123, 70.0, -1999.5],
+            vel: [0.1, -0.0784, 0.0],
+            flags: EntityUpdate::ON_GROUND,
+            fly_speed: 1.0,
+            abilities: [0; protocol::ABILITY_STATE_BYTES],
+        }),
+        ..moving(2)
+    }
+}
+
+pub fn client_events() -> Vec<ClientEvent> {
+    vec![
+        ClientEvent::Chat {
+            text: "hi all".into(),
+        },
+        ClientEvent::Dig {
+            seq: 1,
+            pos: BlockXyz { x: 1, y: -5, z: 3 },
+        },
+        ClientEvent::Place {
+            seq: 2,
+            pos: BlockXyz { x: 1, y: 70, z: 3 },
+            state: 2,
+        },
+    ]
+}
+
+pub fn server_events() -> Vec<ServerEvent> {
+    vec![
+        ServerEvent::Chat {
+            from: "Alex_42".into(),
+            text: "hi all".into(),
+        },
+        ServerEvent::BlockChanges(vec![
+            BlockChange {
+                pos: BlockXyz { x: 1, y: -5, z: 3 },
+                state: 0,
+            },
+            BlockChange {
+                pos: BlockXyz { x: 2, y: 70, z: 3 },
+                state: 4,
+            },
+        ]),
+        ServerEvent::BlockAck {
+            seq: 2,
+            accepted: false,
+        },
+        ServerEvent::ForgetColumn(ColumnXz { x: -7, z: 9 }),
+    ]
+}
+
+/// A small hand-made column: stone below 0, a mixed section, air above.
+pub fn small_record() -> ColumnRecord {
+    let bounds = WorldBounds {
+        min_section_y: -4,
+        section_count: 8,
+    };
+    let mut sections = Vec::new();
+    for sy in -4..4 {
+        let s = match sy {
+            ..0 => Section::uniform(BlockStateId(2)),
+            0 => {
+                let mut s = Section::uniform(BlockStateId::AIR);
+                for i in 0..4096 {
+                    if i % 7 == 0 || i < 256 {
+                        s.set(i, BlockStateId(2 + (i % 3) as u16));
+                    }
+                }
+                s
+            }
+            _ => Section::new(),
+        };
+        sections.push(s);
+    }
+    ColumnRecord {
+        pos: ColumnPos { x: -3, z: 12 },
+        bounds,
+        sections,
+        light: Vec::new(),
+        entities: Vec::new(),
     }
 }

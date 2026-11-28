@@ -1,0 +1,11 @@
+# Per-region limits of simulated entities by kind (T2-10, server-regions.md
+# "Overload protection"). Entities over the limit stay stored but are not
+# simulated until there is room. Falling blocks and dropped items (stage 4)
+# get their own entries here.
+
+[default]
+max_per_region = 2000
+
+# The engine's test entity (T2-07).
+[kind."test:walker"]
+max_per_region = 1000

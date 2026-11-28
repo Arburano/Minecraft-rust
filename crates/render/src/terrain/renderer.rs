@@ -1,6 +1,12 @@
 //! The wgpu side of the terrain renderer: one quad buffer shared by all
 //! render batches (ranges from [`RangeArena`]), paths B and C, block texture
 //! array, light bricks, per-frame culling into a reused draw list.
+//!
+//! Each resident batch keeps one range per render bucket (ADR-0016,
+//! [`mesh::RenderBucket`]): the packed quads with their six direction
+//! sub-ranges, and the block-model instances. Model instances are only
+//! accounted for (their own arena, [`FrameStats::models_resident`]) until the
+//! block-model pipeline exists; no mesher produces them yet.
 
 use std::collections::HashMap;
 use std::ops::Range;
@@ -111,6 +117,8 @@ pub enum TerrainError {
     BatchSlotsFull,
     /// The light atlas has no free brick.
     LightAtlasFull,
+    /// No free range of the block-model instance arena is large enough.
+    ModelBufferFull,
 }
 
 impl std::fmt::Display for TerrainError {
@@ -119,6 +127,7 @@ impl std::fmt::Display for TerrainError {
             Self::QuadBufferFull => "terrain quad buffer is full",
             Self::BatchSlotsFull => "all render batch slots are in use",
             Self::LightAtlasFull => "light atlas is full",
+            Self::ModelBufferFull => "block-model instance arena is full",
         })
     }
 }
@@ -138,13 +147,22 @@ pub struct FrameStats {
     pub quads_resident: u32,
     /// Quads submitted.
     pub quads_drawn: u32,
+    /// Block-model instances resident (not drawn yet, see the module docs).
+    pub models_resident: u32,
 }
 
+/// Capacity of the block-model instance arena (bookkeeping only for now).
+const MODEL_CAPACITY: u32 = 1 << 20;
+
+/// Per-bucket ranges of one resident render batch.
 struct GpuBatch {
     slot: u32,
-    range: Range<u32>,
-    /// Absolute quad ranges per direction inside `range`.
+    /// [`mesh::RenderBucket::PackedVoxelQuads`]: range in the quad buffer.
+    quads: Range<u32>,
+    /// Absolute quad ranges per direction inside `quads`.
     dirs: [Range<u32>; 6],
+    /// [`mesh::RenderBucket::ModelInstances`]: range in the model arena.
+    models: Range<u32>,
 }
 
 /// Terrain renderer for one device.
@@ -167,6 +185,7 @@ pub struct TerrainRenderer {
     light_atlas_tex: wgpu::Texture,
     light_index_tex: wgpu::Texture,
     arena: RangeArena,
+    model_arena: RangeArena,
     batches: HashMap<IVec3, GpuBatch>,
     free_slots: Vec<u32>,
     atlas: LightAtlas,
@@ -632,6 +651,7 @@ impl TerrainRenderer {
             light_atlas_tex,
             light_index_tex,
             arena: RangeArena::new(quad_capacity),
+            model_arena: RangeArena::new(MODEL_CAPACITY),
             batches: HashMap::new(),
             free_slots: (0..MAX_BATCHES).rev().collect(),
             atlas: LightAtlas::new(),
@@ -713,14 +733,19 @@ impl TerrainRenderer {
         packed: &PackedBatch,
     ) -> Result<(), TerrainError> {
         self.remove_batch(pos);
-        let total = packed.len() as u32;
-        if total == 0 {
+        if packed.is_empty() {
             return Ok(());
         }
+        let total = packed.len() as u32;
         let slot = self.free_slots.pop().ok_or(TerrainError::BatchSlotsFull)?;
         let Some(range) = self.arena.alloc(total) else {
             self.free_slots.push(slot);
             return Err(TerrainError::QuadBufferFull);
+        };
+        let Some(models) = self.model_arena.alloc(packed.models.len() as u32) else {
+            self.arena.free(range);
+            self.free_slots.push(slot);
+            return Err(TerrainError::ModelBufferFull);
         };
         self.staging.clear();
         let mut dirs: [Range<u32>; 6] = Default::default();
@@ -743,14 +768,23 @@ impl TerrainRenderer {
             u64::from(slot) * 16,
             bytemuck::cast_slice(&[origin.x, origin.y, origin.z, 0]),
         );
-        self.batches.insert(pos, GpuBatch { slot, range, dirs });
+        self.batches.insert(
+            pos,
+            GpuBatch {
+                slot,
+                quads: range,
+                dirs,
+                models,
+            },
+        );
         Ok(())
     }
 
     /// Drops a batch and frees its buffer range.
     pub fn remove_batch(&mut self, pos: IVec3) {
         if let Some(b) = self.batches.remove(&pos) {
-            self.arena.free(b.range);
+            self.arena.free(b.quads);
+            self.model_arena.free(b.models);
             self.free_slots.push(b.slot);
         }
     }
@@ -876,7 +910,8 @@ impl TerrainRenderer {
         };
         let size = BATCH_BLOCKS as f32;
         for (pos, b) in &self.batches {
-            stats.quads_resident += b.range.end - b.range.start;
+            stats.quads_resident += b.quads.end - b.quads.start;
+            stats.models_resident += b.models.end - b.models.start;
             if visible.is_some_and(|v| !v.contains(pos)) {
                 continue;
             }

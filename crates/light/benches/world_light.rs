@@ -5,27 +5,21 @@
 //! ≤ 100 / 200 µs p95 per-edit budget.
 
 use std::hint::black_box;
-use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
 
 use criterion::{Criterion, criterion_group, criterion_main};
 use light::{LightUpdates, WorldLight, light_column, props_from_registry};
 use world::coords::BlockPos;
-use world::registry::blocks_from_dir;
-use world::{BlockStateId, ColumnPos, RegistryBuilder, WorldBounds, WorldMap};
+use world::{BlockStateId, ColumnPos, WorldBounds, WorldMap};
 use worldgen::{GenContext, Pipeline, WorldgenConfig};
 
 fn bench_world_light(c: &mut Criterion) {
-    let data = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../mods/core/data");
-    let mut b = RegistryBuilder::new();
-    b.add_mod(
-        "core",
-        blocks_from_dir(&data.join("blocks")).expect("blocks"),
-    );
+    let mods = world::modset::source_build(world::modset::DEFAULT_BUILD).expect("build");
+    let b = mods.registry_builder().expect("blocks");
     let reg = Arc::new(b.build().expect("registry"));
     let props = props_from_registry(&reg);
-    let src = std::fs::read_to_string(data.join("worldgen/overworld.toml")).expect("config");
+    let src = mods.read("worldgen/overworld.toml").expect("config");
     let bounds = WorldBounds::default();
     let ctx = GenContext::new(
         7,

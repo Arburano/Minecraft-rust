@@ -1,5 +1,9 @@
 //! 64^3 render batches: quads of 8 mesh chunks (2x2x2) copied with an offset
-//! of 0/32 per axis, 6 ranges by face direction (ADR-0005, T0-05).
+//! of 0/32 per axis, 6 ranges by face direction (ADR-0005, T0-05), plus one
+//! range per further render bucket (ADR-0016): today the block-model
+//! instances ([`crate::RenderBucket::ModelInstances`]). [`crate::ModelInstance`]
+//! shares the quads' coordinate field layout, so the same bit flip adds the
+//! offset.
 //!
 //! # Coordinate convention
 //!
@@ -23,7 +27,7 @@
 //!   50 us budget on the T0-04 corpus (see the task report), so the full
 //!   re-copy is kept: 6 ranges instead of 48, no per-slot counters.
 
-use crate::{MeshChunkQuads, Quad};
+use crate::{MeshChunkQuads, ModelInstance, Quad, RenderBucket};
 use world::RENDER_BATCH_MESH_CHUNKS;
 
 /// Mesh chunks per axis in a render batch (2).
@@ -92,10 +96,15 @@ impl RenderBatch {
     pub fn set_chunk(&mut self, slot: usize, quads: &MeshChunkQuads) {
         assert!(slot < SLOTS);
         let xor = OFFSET_XOR[slot];
-        for (dst, src) in self.chunks[slot].quads.iter_mut().zip(&quads.quads) {
+        let chunk = &mut self.chunks[slot];
+        for (dst, src) in chunk.quads.iter_mut().zip(&quads.quads) {
             dst.clear();
             dst.extend(src.iter().map(|q| Quad(q.0 ^ xor)));
         }
+        chunk.models.clear();
+        chunk
+            .models
+            .extend(quads.models.iter().map(|m| ModelInstance(m.0 ^ xor)));
     }
 
     /// The sub-range of one slot: 6 per-direction lists in batch coordinates.
@@ -121,8 +130,9 @@ impl RenderBatch {
     }
 
     /// Full re-copy variant: concatenates all 8 slots into 6 contiguous
-    /// per-direction ranges, slots in [`slot`] order. Reuses the capacity
-    /// of `out` (no allocation after warm-up).
+    /// per-direction ranges and one range per further bucket, slots in
+    /// [`slot`] order. Reuses the capacity of `out` (no allocation after
+    /// warm-up).
     pub fn pack_into(&self, out: &mut PackedBatch) {
         for dir in 0..6 {
             let dst = &mut out.quads[dir];
@@ -131,29 +141,48 @@ impl RenderBatch {
                 dst.extend_from_slice(&chunk.quads[dir]);
             }
         }
+        out.models.clear();
+        for chunk in self.chunks.iter() {
+            out.models.extend_from_slice(&chunk.models);
+        }
     }
 }
 
-/// A render batch packed into 6 contiguous ranges, one per [`crate::Face`]
-/// direction: the upload/draw layout (one GPU buffer range and one draw
-/// command per direction). Quads are in batch coordinates (modulo 64).
+/// A render batch packed into contiguous per-bucket ranges: 6 quad ranges,
+/// one per [`crate::Face`] direction ([`RenderBucket::PackedVoxelQuads`]),
+/// and one block-model range ([`RenderBucket::ModelInstances`]). This is the
+/// upload/draw layout (one GPU buffer range and one draw command per range).
+/// Everything is in batch coordinates (modulo 64).
 #[derive(Clone, Debug, Default)]
 pub struct PackedBatch {
     /// One contiguous quad range per face direction.
     pub quads: [Vec<Quad>; 6],
+    /// Block-model instances of all slots.
+    pub models: Vec<ModelInstance>,
 }
 
 impl PackedBatch {
-    /// Total number of quads over all directions.
+    /// Total number of quads over all directions (the quad bucket only).
     #[must_use]
     pub fn len(&self) -> usize {
         self.quads.iter().map(Vec::len).sum()
     }
 
-    /// True when there is no visible geometry.
+    /// True when no bucket holds geometry.
     #[must_use]
     pub fn is_empty(&self) -> bool {
-        self.quads.iter().all(Vec::is_empty)
+        self.quads.iter().all(Vec::is_empty) && self.models.is_empty()
+    }
+
+    /// Number of entries in `bucket` (0 for buckets that are not
+    /// implemented).
+    #[must_use]
+    pub fn bucket_len(&self, bucket: RenderBucket) -> usize {
+        match bucket {
+            RenderBucket::PackedVoxelQuads => self.len(),
+            RenderBucket::ModelInstances => self.models.len(),
+            RenderBucket::SmoothMesh | RenderBucket::WaterSurface => 0,
+        }
     }
 }
 
@@ -229,6 +258,32 @@ mod tests {
         // Packing twice reuses the buffers without growing them.
         batch.pack_into(&mut packed);
         assert_eq!(packed.len(), SLOTS * 6);
+    }
+
+    #[test]
+    fn models_get_slot_offset_and_pack_after_quads() {
+        let mut batch = RenderBatch::new();
+        let mut c = MeshChunkQuads::default();
+        c.models
+            .push(ModelInstance::pack(1, 31, 0, BlockStateId(42)));
+        batch.set_chunk(slot(1, 0, 1), &c);
+        batch.set_chunk(slot(0, 1, 0), &c);
+        assert!(!batch.is_empty());
+        assert_eq!(batch.len(), 0, "len counts quads only");
+        let mut packed = PackedBatch::default();
+        batch.pack_into(&mut packed);
+        assert_eq!(packed.bucket_len(RenderBucket::ModelInstances), 2);
+        assert_eq!(packed.bucket_len(RenderBucket::PackedVoxelQuads), 0);
+        assert_eq!(packed.bucket_len(RenderBucket::SmoothMesh), 0);
+        // Slot order: (0,1,0) is slot 4, (1,0,1) is slot 3.
+        assert_eq!(packed.models[0].xyz(), [33, 31, 32]);
+        assert_eq!(packed.models[1].xyz(), [1, 63, 0]);
+        assert!(packed.models.iter().all(|m| m.state() == BlockStateId(42)));
+        // Replacing the slot with an empty chunk drops its models.
+        batch.set_chunk(slot(1, 0, 1), &MeshChunkQuads::default());
+        batch.set_chunk(slot(0, 1, 0), &MeshChunkQuads::default());
+        batch.pack_into(&mut packed);
+        assert!(packed.is_empty());
     }
 
     #[test]

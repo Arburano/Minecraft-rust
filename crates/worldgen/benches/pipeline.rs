@@ -1,29 +1,31 @@
 //! T1-03: generation speed (worldgen.md, "a column ≤ N ms per core").
 //! One full column (16×384×16, all stages) on one thread, the 2D surface pass
-//! alone, packing into palette sections, and 64 columns on a 4-thread pool.
+//! alone, packing into palette sections, and 64 columns on a 4-thread pool —
+//! for each landscape engine (`classic`: build `classic`; `climate`: build
+//! `classic_plus`).
 
 use std::hint::black_box;
 use std::sync::Arc;
 
 use criterion::{Criterion, criterion_group, criterion_main};
 use engine_core::jobs::JobPool;
-use world::registry::blocks_from_dir;
-use world::{ColumnPos, RegistryBuilder, WorldBounds};
+use world::{ColumnPos, WorldBounds};
 use worldgen::{GenContext, Pipeline, WorldgenConfig};
 
 fn bench_pipeline(c: &mut Criterion) {
-    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../mods/core/data");
-    let mut b = RegistryBuilder::new();
-    b.add_mod(
-        "core",
-        blocks_from_dir(&dir.join("blocks")).expect("blocks"),
-    );
+    bench_build(c, "worldgen", "classic");
+    bench_build(c, "worldgen_climate", "classic_plus");
+}
+
+fn bench_build(c: &mut Criterion, group: &str, build: &str) {
+    let mods = world::modset::source_build(build).expect("build");
+    let b = mods.registry_builder().expect("blocks");
     let reg = b.build().expect("registry");
-    let src = std::fs::read_to_string(dir.join("worldgen/overworld.toml")).expect("config");
+    let src = mods.read("worldgen/overworld.toml").expect("config");
     let cfg = WorldgenConfig::from_toml(&src, &reg).expect("config");
     let ctx = Arc::new(GenContext::new(7, cfg, WorldBounds::default()));
     let pipeline = Arc::new(Pipeline::overworld());
-    let mut g = c.benchmark_group("worldgen");
+    let mut g = c.benchmark_group(group);
     g.sample_size(20);
     let mut k = 0i32;
     g.bench_function("column_all_stages", |b| {

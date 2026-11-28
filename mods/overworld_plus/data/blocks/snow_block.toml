@@ -1,0 +1,6 @@
+id = "overworld_plus:snow_block"
+model = "core:models/cube_all"
+textures = { all = "minecraft:block/snow" }   # fallback: core:fallback/snow_block
+hardness = 0.2
+tool = "shovel"
+opaque = true

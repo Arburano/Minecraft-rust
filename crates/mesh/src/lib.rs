@@ -9,14 +9,22 @@
 //! padding on each side, index `(y * 34 + x) * 34 + z` with padded coordinates
 //! `0..=33` (chunk-local block `b` sits at padded coordinate `b + 1`).
 //!
-//! Render batches ([`RenderBatch`], [`batch`]) copy the quads of 8 mesh chunks
-//! into a 64^3 batch with 0/32 offsets, 6 ranges by face direction.
+//! Render batches ([`RenderBatch`], [`batch`]) copy the output of 8 mesh
+//! chunks into a 64^3 batch with 0/32 offsets: 6 quad ranges by face
+//! direction plus one range per further render bucket ([`RenderBucket`]).
+//!
+//! Meshing goes through the [`ChunkMesher`] boundary (ADR-0016,
+//! [`mesher`]); [`CubicGreedyMesher`] is the only implementation.
 
 pub mod batch;
+pub mod mesher;
 pub mod reference;
 pub mod visibility;
 
 pub use batch::{PackedBatch, RenderBatch};
+pub use mesher::{
+    ChunkMesher, CubicGreedyMesher, MeshInput, MesherKind, ModelInstance, RenderBucket,
+};
 pub use visibility::ChunkVisibility;
 
 use binary_greedy_meshing::Mesher;
@@ -220,45 +228,71 @@ fn copy_box(
     }
 }
 
-/// Greedy-meshed output: 6 quad lists indexed by [`Face`]
-/// (Up, Down, Right, Left, Front, Back). Quads are the crate's 8-byte packed
-/// format with chunk-local coordinates; the batch copy ([`batch`]) adds the
-/// 0/32 offsets.
+/// Meshed output of one mesh chunk, one list per implemented render bucket
+/// ([`RenderBucket`]):
+///
+/// - [`RenderBucket::PackedVoxelQuads`]: 6 quad lists indexed by [`Face`]
+///   (Up, Down, Right, Left, Front, Back). Quads are the crate's 8-byte
+///   packed format with chunk-local coordinates;
+/// - [`RenderBucket::ModelInstances`]: one instance per block-model block.
+///
+/// The batch copy ([`batch`]) adds the 0/32 offsets.
 #[derive(Clone, Debug, Default)]
 pub struct MeshChunkQuads {
     /// One quad list per face direction.
     pub quads: [Vec<Quad>; 6],
+    /// Block-model instances (empty until block models exist).
+    pub models: Vec<ModelInstance>,
 }
 
 impl MeshChunkQuads {
-    /// Total number of quads over all directions.
+    /// Total number of quads over all directions (the
+    /// [`RenderBucket::PackedVoxelQuads`] bucket only).
     #[must_use]
     pub fn len(&self) -> usize {
         self.quads.iter().map(Vec::len).sum()
     }
 
-    /// True when there is no visible geometry.
+    /// True when no bucket holds geometry.
     #[must_use]
     pub fn is_empty(&self) -> bool {
-        self.quads.iter().all(Vec::is_empty)
+        self.quads.iter().all(Vec::is_empty) && self.models.is_empty()
     }
 
-    /// Clears all lists, keeping their capacity for the next re-mesh.
+    /// Number of entries in `bucket` (0 for buckets that are not
+    /// implemented).
+    #[must_use]
+    pub fn bucket_len(&self, bucket: RenderBucket) -> usize {
+        match bucket {
+            RenderBucket::PackedVoxelQuads => self.len(),
+            RenderBucket::ModelInstances => self.models.len(),
+            RenderBucket::SmoothMesh | RenderBucket::WaterSurface => 0,
+        }
+    }
+
+    /// Clears all buckets, keeping their capacity for the next re-mesh.
     pub fn clear(&mut self) {
         for q in &mut self.quads {
             q.clear();
         }
+        self.models.clear();
     }
 }
 
 /// Reusable meshing pipeline for one 32^3 mesh chunk: gather, masks, mesher.
 ///
 /// Load path: [`Self::build`] / [`Self::build_into`] (gather + masks from
-/// scratch + `fast_mesh`). Edit path: [`Self::set_block`] (buffer + masks
+/// scratch + the mesher). Edit path: [`Self::set_block`] (buffer + masks
 /// incrementally) then [`Self::remesh_into`]. No allocations on the edit path
 /// when the output quads are reused.
+///
+/// Meshing goes through the [`ChunkMesher`] boundary (ADR-0016) with static
+/// dispatch once per mesh chunk: [`Self::remesh_into`] runs the cubic greedy
+/// mesher (the only [`MesherKind`] today), [`Self::remesh_with`] any other.
+/// The builder stays non-generic so its hot path is compiled once in this
+/// crate (a generic builder measured ≈ 10% slower `remesh`, T1-23 report).
 pub struct MeshChunkBuilder {
-    mesher: Mesher<CS>,
+    cubic: CubicGreedyMesher,
     voxels: Box<[u16; P3]>,
     masks: MaskCache,
     scratch: Box<[BlockStateId; world::SECTION_VOLUME]>,
@@ -277,7 +311,7 @@ impl MeshChunkBuilder {
     #[must_use]
     pub fn new() -> Self {
         Self {
-            mesher: Mesher::new(),
+            cubic: CubicGreedyMesher::new(),
             voxels: Box::new([0; P3]),
             masks: MaskCache::new(),
             scratch: Box::new([BlockStateId::AIR; world::SECTION_VOLUME]),
@@ -449,17 +483,41 @@ impl MeshChunkBuilder {
 
     /// Re-meshes with the cached masks, reusing the capacity of `out`.
     /// Skips the mesher for empty and solid chunks.
+    ///
+    /// Every block uses [`MesherKind::Cubic`] today, so every chunk goes to
+    /// the cubic greedy mesher. When a second kind exists, the gather records
+    /// the kinds present and this dispatches on them, once per chunk.
     pub fn remesh_into(&mut self, out: &mut MeshChunkQuads) {
         engine_core::zone!("mesh::remesh");
         out.clear();
         if self.non_air_core == 0 || self.solid {
             return;
         }
-        self.mesher.clear();
-        self.mesher
-            .fast_mesh(&*self.voxels, &*self.masks.opaque, &*self.masks.transparent);
-        for (dst, src) in out.quads.iter_mut().zip(&self.mesher.quads) {
-            dst.extend_from_slice(src);
+        let input = MeshInput {
+            voxels: &self.voxels,
+            opaque: &self.masks.opaque,
+            transparent: &self.masks.transparent,
+        };
+        self.cubic.mesh(input, out);
+    }
+
+    /// Like [`Self::remesh_into`] with a caller-provided mesher (statically
+    /// dispatched): the extension point for further meshers and tests.
+    pub fn remesh_with<M: ChunkMesher>(&mut self, mesher: &mut M, out: &mut MeshChunkQuads) {
+        out.clear();
+        if self.non_air_core == 0 || self.solid {
+            return;
+        }
+        mesher.mesh(self.input(), out);
+    }
+
+    /// The gathered buffer and masks as mesher input.
+    #[must_use]
+    pub fn input(&self) -> MeshInput<'_> {
+        MeshInput {
+            voxels: &self.voxels,
+            opaque: &self.masks.opaque,
+            transparent: &self.masks.transparent,
         }
     }
 
@@ -684,6 +742,53 @@ mod tests {
                 chunk(-1, -1, 0)
             ]
         );
+    }
+
+    /// A test mesher that emits one model instance per non-air core cell.
+    struct EveryBlockModel;
+
+    impl ChunkMesher for EveryBlockModel {
+        const KIND: MesherKind = MesherKind::Cubic;
+        const BUCKETS: &'static [RenderBucket] = &[RenderBucket::ModelInstances];
+
+        fn mesh(&mut self, input: MeshInput<'_>, out: &mut MeshChunkQuads) {
+            for y in 0..CS {
+                for x in 0..CS {
+                    for z in 0..CS {
+                        let v = input.voxels[pad_index(x + 1, y + 1, z + 1)];
+                        if v != 0 {
+                            out.models.push(ModelInstance::pack(
+                                x as u32,
+                                y as u32,
+                                z as u32,
+                                BlockStateId(v),
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn builder_dispatches_to_its_mesher() {
+        let n = neighborhood_from(|x, y, z| match (x, y, z) {
+            (3, 4, 5) => stone(),
+            (31, 0, 7) => glass(),
+            _ => BlockStateId::AIR,
+        });
+        let mut b = MeshChunkBuilder::new();
+        b.gather(&n, is_transparent);
+        let mut out = MeshChunkQuads::default();
+        b.remesh_with(&mut EveryBlockModel, &mut out);
+        assert_eq!(out.len(), 0, "no quads from a model-only mesher");
+        let mut got: Vec<_> = out.models.iter().map(|m| (m.xyz(), m.state())).collect();
+        got.sort_unstable();
+        assert_eq!(got, [([3, 4, 5], stone()), ([31, 0, 7], glass())]);
+        // The default builder meshes the same chunk into quads only.
+        let cubic = MeshChunkBuilder::new().build(&n, is_transparent);
+        assert_eq!(cubic.len(), 12);
+        assert!(cubic.models.is_empty());
     }
 
     #[test]

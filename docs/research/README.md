@@ -10,6 +10,10 @@ Materials from which the PRD and ADRs grew (November 2026).
 | [job-scheduler-2026-11-15.md](job-scheduler-2026-11-15.md) | T0-02 job scheduler overhead (VM 4 vCPU, ±30%) | English |
 | [net-quic-spike-2026-11-19.md](net-quic-spike-2026-11-19.md) | T0-11 QUIC transport spike: 3×3 columns and delta latency under 2% loss / RTT 100 ms, BBR vs Cubic (VM 4 vCPU, ±30%) | English |
 | [review-budget.py](review-budget.py) | Reviewer calculations: memory, VRAM, traffic, login time | Python |
+| [external-projects-review-2026-11-26.md](external-projects-review-2026-11-26.md) | What to borrow from Horizon, mc.rs, Folia, Paper, FerrumC, Pumpkin, Iris; non-cubic world lessons; where each item went | English |
+| [moving-structures-review-2026-11-27.md](moving-structures-review-2026-11-27.md) | How Create: Aeronautics and Sable do moving structures; what we take (ADR-0019) | English |
+| [stage-0-exit-2026-11-21.md](stage-0-exit-2026-11-21.md) | Stage 0 exit review (T0-17) | English |
+| [stage-1-exit-2026-11-28.md](stage-1-exit-2026-11-28.md) | Stage 1 exit review (T1-20); laptop runs in [stage-1-exit-2026-11-27/](stage-1-exit-2026-11-27/summary.md) | English |
 | [gpu/README.md](gpu/README.md) | T0-06 capability probe and B/C quad benchmark; human hardware run instructions | English |
 
 Rules:

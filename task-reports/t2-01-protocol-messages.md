@@ -1,83 +1,41 @@
-# T2-01: protocol crate — messages, versioning, handshake
+# T2-01: protocol messages
 
 ## What was done
 
-The `protocol` crate (`crates/protocol`) is no longer a skeleton. It defines every message of the five channels in [networking-protocol.md](../docs/architecture/networking-protocol.md), all serialized with `bitcode`:
+The `protocol` crate (was a skeleton) now holds every message of the five channels in `networking-protocol.md`, serialized with `bitcode` 0.6.9 (already in `[workspace.dependencies]`, first use):
 
-- **`codec`:**
-  - `encode` / `decode` for bodies;
-  - stream frames (`u32` LE length + body, at most 4 MiB; the length is checked before allocating) with `encode_frame`, `frame_len` and a `FrameReader` that splits a byte stream;
-  - datagrams of at most 1,200 bytes (`encode_datagram` / `decode_datagram`).
-- **`handshake`:**
-  - `Hello { client_version, identity: ClaimedIdentity::Offline { name }, session_jwt }`; `session_jwt` is reserved, `// OPEN-QUESTION: 4`;
-  - `ServerHello::{Accepted(Welcome), Rejected(Rejection)}`; `Welcome` has the server info, player ID and mod manifest hash;
-  - `Registry { id_table, entity_kinds, component_schemas }` and `Spawn`.
-  - The first frame in each direction starts with a fixed prefix, `VXLH` + `PROTOCOL_VERSION` (`u32` LE). A peer of another version always gets `HandshakeError::VersionMismatch`. Its message tells the user what to do: "update the game" when the peer is newer, or "the other side needs an update" when it is older.
-- **`messages`:**
-  - control: `ClientControl::{Ready, Disconnect}`, `ServerControl::{Registry, Spawn, Kick}`;
-  - input: `InputDatagram { ack_snapshot, frames }` with quantized `InputFrame`s;
-  - entities: `EntityDelta` (spawns / updates / despawns against an acknowledged baseline, plus `ack_input` for reconciliation);
-  - events: `ClientEvent::Chat`, `ServerEvent::{Chat, System}`.
-  - Text lengths and input frame counts are checked on decode.
-- **`quant`:**
-  - `FixedPos` (1/32 block, `i32`) and `PosDelta` (`i16`, with a fallback to absolute);
-  - `Angle8` for entities and `Angle16` for the player's own view;
-  - `i8` analog axes;
-  - NaN and infinity never panic.
-- **`column`:** `ColumnData` holds the T1-02 `Section::encode` output, concatenated and compressed with zstd level 1. It has no light (ADR-0011). Unpacking caps the zstd output at `section_count × 8,193 B` (at most 64 sections) and validates every section.
-- **Dependencies:** `bitcode` and `zstd` (both already in `[workspace.dependencies]`). `proptest`, `criterion` and `worldgen` are dev-only.
-- **CI:** the protocol bench is added to the fast benchmark subset (`bench.yml`).
-- **Docs:**
-  - `networking-protocol.md`: a new "Messages and encoding" section and measured traffic numbers;
-  - `performance-budgets.md`: two new rows;
-  - open question 7: real column sizes.
+- `control.rs`: the fixed 8-byte `HandshakeHeader` (magic `VXEN` + `PROTOCOL_VERSION`), `ClientControl::{Hello, Leave}`, `ServerControl::{Welcome, Registry, Spawn, Kick}`. The session JWT field is reserved (`Option`, `None` until T0-10).
+- `input.rs`: `InputDatagram` (acknowledged snapshot + 1–8 consecutive intents; buttons as bits, 16-bit yaw/pitch, fly-speed steps).
+- `entities.rs`: `EntityDatagram` with optional per-field updates, `RelPos` positions (1/32 block, relative to an origin, ±1,024 blocks) and 8-bit angles.
+- `chunks.rs`: `ChunkStream::Column(ColumnPayload)`: the T1-02 column record (`world::storage::encode_column`) with zstd level 1; bounded incremental decompression (≤ 8 MiB), position check.
+- `events.rs`: chat, dig/place with sequence numbers, block changes, block acks, column unloads.
+- `frame.rs`: `u32` length-prefixed frames for the control and events streams, with the length checked before the body arrives.
+- `wire.rs`: `NetId`, `ColumnXz`, `BlockXyz` (conversions to `world` types), `RelPos`, `Angle8`, `Angle16`.
+- `lib.rs`: `PROTOCOL_VERSION = 1`, `ALPN`, `MAX_DATAGRAM = 1200`, `ProtocolError` (version mismatch with an update hint), and the `Message` trait: size limit → `bitcode` decode → `validate()`. `encode()` runs the same validation, so a sender cannot produce what a receiver rejects.
 
-**Tests** (`cargo test -p protocol`, all pass):
-- 15 unit tests: frames, datagram limit, quantization, including proptests for position, angle and delta error bounds; handshake; column packing.
-- `roundtrip.rs` (7 tests): every message through a frame or datagram, every `Rejection`, plus proptests for random input datagrams, entity deltas and chat.
-- `golden.rs` (8 tests): golden byte files `tests/golden/{hello,welcome,rejected,version_mismatch,registry,spawn,ready}.bin`. They are regenerated only with `UPDATE_GOLDEN=1`, together with a `PROTOCOL_VERSION` bump.
-- `fuzz.rs` (5 tests): every decoder is run on:
-  - 4,096 random byte strings;
-  - 4,096 random strings behind a valid handshake prefix;
-  - 4,096 mutated valid messages (flips, truncations, insertions);
-  - every truncation of every message;
-  - a zstd bomb (4 MiB of zeros in a one-section column).
+Tests (`cargo test -p protocol`): 6 unit tests (quantization, angles, framing, error text), `tests/messages.rs` (round trip of every message, plain and framed; column payload round trip; wrong position; handshake header versions and bad magic; invalid values refused on both sides; golden files for header, Hello, Welcome, Registry, Spawn, Kick), `tests/fuzz.rs` (proptest, 2,000 random byte strings and 2,000 corrupted/truncated valid messages into every decoder, incl. the column decompressor), `tests/sizes.rs` (sizes below; asserts the datagrams fit).
 
-  None panic, and accepted results respect the limits.
-- `sizes.rs` (3 tests): the size measurements below.
+Measured sizes (deterministic, release build, `cargo test -p protocol --release --test sizes -- --nocapture`):
 
-**Sizes.** These are deterministic; run `cargo test --release -p protocol --test sizes -- --nocapture`:
+- input datagram: 14 B (1 intent), 32 B (3), 48 B (8);
+- entity delta of 20 entities with every field changed: 252 B → 40.3 kbit/s at 20 Hz, payload only; 99 such entities fit one datagram;
+- 64 generated overworld columns (seed 7, 24 sections, no light): raw record mean 9.4 KB (6.8–11.0 KB), on the wire mean 1.6 KB (0.87–2.3 KB); login at 12 chunks ≈ 1.0 MB.
 
-| Message | Size |
-| --- | --- |
-| Input datagram, 1 / 3 / 8 ticks | 19 / 47 / 62 B |
-| Entity delta, 20 moving entities + 1 spawn + 1 despawn | 179 B (≈ 36.3 kbit/s at 20 Hz incl. ~48 B packet overhead) |
-| Entity delta, 50 / 100 moving entities | 364 / 669 B |
-| Entity delta, 200 moving entities | 1,279 B — does not fit; split |
-| Column record (frame), real overworld, seed 7, 15 × 15 columns, 24 sections | min 1,004 B, median 1,689 B, mean 1,708 B, p95 2,220 B, max 2,649 B; raw sections mean 9,748 B |
-| Login at 12 chunks (625 columns) | ≈ 1.07 MB (PRD §8 assumed 2.4–9.8 MB) |
+Docs updated: `networking-protocol.md` (implementation section and sizes), `performance-budgets.md` (traffic row), `open-questions.md` (No. 7, column size), task status.
 
-The entity samples move pseudo-randomly, up to ±14/32 block per axis with scattered IDs, so `bitcode`'s packing is not flattered by regular data.
-
-**Benchmark** (`cargo bench -p protocol --bench codec`). Cloud **VM**, 4 vCPU Intel Xeon 2.1 GHz, 3 runs, Criterion with 1 s warm-up and 3 s measurement. The ranges are the medians of the 3 runs:
-
-| Operation | Time |
-| --- | --- |
-| Column pack (section encoding + zstd 1 + frame) | 41.7–48.9 µs |
-| Column unpack (frame decode + zstd + validated sections) | 85.8–110.5 µs |
-| Entity delta of 20, encode / decode | 2.14–2.21 µs / 0.85–1.35 µs |
-| Input datagram of 3, encode / decode | 0.44–0.75 µs / 90–102 ns |
+`cargo fmt --all`, `cargo clippy --workspace --all-targets` with `-D warnings` and `cargo test --workspace` run on the cloud VM (4 vCPU Xeon 2.1 GHz).
 
 ## What went wrong
 
-- The first datagram-limit unit test used 1,300 zero bytes as an "oversized" message. `bitcode` packed it to well under 1,200 bytes, so the test failed. The test now uses non-repeating bytes.
-- The first entity-delta sample was too regular: 127 B for 20 entities. The sample now uses pseudo-random deltas, IDs and yaws, which gives 179 B. The numbers above use the realistic sample.
+- First build failed on `world::BlockPos` (it lives in `world::coords`) and a missing `Default` on `NetId`; fixed.
+- A test compared `Result<ColumnRecord, _>` with `assert_eq!`, but `ColumnRecord` has no `Debug`/`PartialEq`; switched to `matches!`.
+- One clippy `precedence` lint in test data; fixed.
 
 ## Issues encountered
 
-- **Version mismatch on the server side.** When the versions differ, the server answers with the prefix alone (empty body), because the other version's body layout is unknown. The client builds its error from the prefix. The rejection reasons (`Rejection`) are only readable between peers of the same version.
-- **Additions to the spec's handshake.** The spec's `Registry { id_table, component_schemas }` gained `entity_kinds` (entity kind IDs for `EntitySpawn`). `Welcome` gained `player_id`, and `Spawn` gained the world bounds and the player's own entity ID. The spec's table documents these.
-- **Entity snapshots larger than one datagram.** The protocol defines no split format. `EntityDelta::encode` fails above 1,200 B, and splitting a snapshot (e.g. several deltas with the same `snapshot` number) is left to T2-03. About 130 moving entities fit in one datagram.
-- **Decode cost.** Column unpacking takes about 90 µs on the VM and is dominated by `Section::decode` validation, which checks every packed index and builds the reverse map. It runs on worker threads, so this is fine for now. Entity delta encoding allocates a new `Vec` every time; reusing a `bitcode::Buffer` is an easy win if T2-05's network CPU measurement shows it matters.
-- **Not wired up yet.** `net` and the server do not use these messages yet; that is T2-02. The T0-11 spike framing in `net::spike::wire` stays as it is.
-- All numbers are from a cloud VM. Sizes do not depend on the machine; times should be confirmed on the laptop with the other stage 2 numbers.
+- **Protocol version lives in the fixed header, not in `Hello`.** The spec's handshake sketch had `Hello { protocol, … }`. If the version were inside a `bitcode` message, a build with a different `Hello` layout could fail to decode it and never get to the version check. The spec now describes the header.
+- **Block edits on the events stream.** The spec does not say where dig/place go; they are reliable events with sequence numbers, not input datagrams. T2-04 may change this (with a version bump).
+- **The column encoding is tied to the world format.** Reusing `world::storage::encode_column` means a world format bump is also a protocol bump; documented in `chunks.rs` and the spec.
+- **Traffic is at the limit.** 40.3 kbit/s of payload for 20 fully moving entities becomes ≈ 50–53 kbit/s with QUIC/UDP/IP overhead (estimated, not measured). The lower update rate for distant entities (spec) is needed; real numbers come from T2-05/T2-09.
+- Mod component replication (stage 3) and LOD streams (stage 5) are not defined yet; `component_schema_hash` and `mod_manifest_hash` are reserved as zeros.
+- `net` does not use the new messages yet; that is T2-02.

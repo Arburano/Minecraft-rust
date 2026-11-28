@@ -13,7 +13,8 @@ use engine_core::jobs::{CancelToken, JobPool, Priority};
 use noise::{NoiseFn, Perlin};
 use world::{BlockStateId, Column, ColumnPos, Registry, SECTION_VOLUME, Section, WorldBounds};
 
-use crate::config::WorldgenConfig;
+use crate::config::{Climate, Engine, WorldgenConfig};
+#[cfg(feature = "builtin-overworld")]
 use crate::stages;
 
 /// Shared, read-only generation context.
@@ -27,7 +28,40 @@ pub struct GenContext {
     pub(crate) hills: Perlin,
     pub(crate) detail: Perlin,
     pub(crate) temperature: Perlin,
+    #[cfg_attr(not(feature = "builtin-overworld"), allow(dead_code))]
     pub(crate) caves: Perlin,
+    pub(crate) continents: Perlin,
+    pub(crate) erosion: Perlin,
+    pub(crate) ridges: Perlin,
+    pub(crate) humidity: Perlin,
+}
+
+/// The climate at a block column (`climate` engine; the `classic` engine fills
+/// only `temperature`).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ClimateSample {
+    /// Land (> 0) vs ocean (< 0), −1..1.
+    pub continentalness: f64,
+    /// Flat (high) vs mountainous (low), −1..1.
+    pub erosion: f64,
+    /// 0 in valleys, 1 on ridges.
+    pub ridges: f64,
+    /// 0..1, after height cooling.
+    pub temperature: f64,
+    /// 0..1.
+    pub humidity: f64,
+}
+
+/// Fractal (octave) Perlin noise, roughly −1..1.
+fn fbm(noise: &Perlin, x: f64, z: f64, octaves: u32) -> f64 {
+    let (mut sum, mut amp, mut freq, mut norm) = (0.0, 1.0, 1.0, 0.0);
+    for _ in 0..octaves {
+        sum += amp * noise.get([x * freq, z * freq]);
+        norm += amp;
+        amp *= 0.5;
+        freq *= 2.0;
+    }
+    sum / norm
 }
 
 /// Surface data of one block column, computed without generating anything else.
@@ -61,13 +95,98 @@ impl GenContext {
             detail: p(2),
             temperature: p(3),
             caves: p(4),
+            continents: p(5),
+            erosion: p(6),
+            ridges: p(7),
+            humidity: p(8),
         }
+    }
+
+    /// The climate engine's shaping at world `(x, z)`: height and climate.
+    #[must_use]
+    pub fn climate(&self, wx: i32, wz: i32) -> (i32, ClimateSample) {
+        match &self.config.engine {
+            Engine::Climate(c) => self.climate_with(c, wx, wz),
+            Engine::Classic => {
+                let s = self.surface(wx, wz);
+                let t = &self.config.terrain;
+                let (x, z) = (f64::from(wx) * t.scale, f64::from(wz) * t.scale);
+                let temperature =
+                    (self.temperature.get([x * 0.35, z * 0.35]) * 0.5 + 0.5).clamp(0.0, 1.0);
+                (
+                    s.height,
+                    ClimateSample {
+                        continentalness: 0.0,
+                        erosion: 0.0,
+                        ridges: 0.0,
+                        temperature,
+                        humidity: 0.5,
+                    },
+                )
+            }
+        }
+    }
+
+    fn climate_with(&self, c: &Climate, wx: i32, wz: i32) -> (i32, ClimateSample) {
+        let (x, z) = (f64::from(wx), f64::from(wz));
+        let cs = c.continentalness_scale;
+        let continentalness = (fbm(&self.continents, x * cs, z * cs, 4) * 1.6).clamp(-1.0, 1.0);
+        let es = c.erosion_scale;
+        let erosion = (fbm(&self.erosion, x * es, z * es, 3) * 1.6).clamp(-1.0, 1.0);
+        let rs = c.ridge_scale;
+        let ridges = 1.0 - (fbm(&self.ridges, x * rs, z * rs, 3) * 1.6).abs().min(1.0);
+        let ds = c.detail_scale;
+        let detail = fbm(&self.detail, x * ds, z * ds, 2);
+        let [a, b] = c.inland;
+        let land = if b > a {
+            let t = ((continentalness - a) / (b - a)).clamp(0.0, 1.0);
+            t * t * (3.0 - 2.0 * t)
+        } else {
+            1.0
+        };
+        let height = c.continentalness.at(continentalness)
+            + c.ridges.at(ridges) * c.erosion.at(erosion) * land
+            + c.detail * detail;
+        let height =
+            (height.round() as i32).clamp(self.bounds.min_y() + 1, self.bounds.max_y() - 16);
+        let ts = c.temperature_scale;
+        let above_sea = f64::from((height - self.config.sea_level).max(0));
+        let temperature = ((fbm(&self.temperature, x * ts, z * ts, 2) * 0.8 + 0.5)
+            - above_sea * c.height_cooling)
+            .clamp(0.0, 1.0);
+        let hs = c.humidity_scale;
+        let humidity = (fbm(&self.humidity, x * hs, z * hs, 2) * 0.8 + 0.5).clamp(0.0, 1.0);
+        (
+            height,
+            ClimateSample {
+                continentalness,
+                erosion,
+                ridges,
+                temperature,
+                humidity,
+            },
+        )
     }
 
     /// Surface height and biome at world `(x, z)`: the cheap 2D pass, also
     /// used for far LOD and by features in neighboring columns.
     #[must_use]
     pub fn surface(&self, wx: i32, wz: i32) -> Surface {
+        if let Engine::Climate(c) = &self.config.engine {
+            let (height, k) = self.climate_with(c, wx, wz);
+            let last = self.config.biomes.len() - 1;
+            let biome = self
+                .config
+                .biomes
+                .iter()
+                .position(|b| {
+                    b.climate.is_none_or(|r| {
+                        r.contains(k.temperature, k.humidity, k.continentalness, height)
+                    })
+                })
+                .unwrap_or(last) as u8;
+            return Surface { height, biome };
+        }
         let t = &self.config.terrain;
         let (x, z) = (f64::from(wx), f64::from(wz));
         let s = t.scale;
@@ -223,8 +342,15 @@ pub struct Pipeline {
 }
 
 impl Pipeline {
+    /// A pipeline of the given stages, in order.
+    #[must_use]
+    pub fn new(stages: Vec<Box<dyn Stage>>) -> Self {
+        Self { stages }
+    }
+
     /// The built-in overworld pipeline: surface (heightmap + biomes) → terrain →
     /// caves → ores → trees.
+    #[cfg(feature = "builtin-overworld")]
     #[must_use]
     pub fn overworld() -> Self {
         Self {

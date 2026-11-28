@@ -1,0 +1,32 @@
+# The movement profile (ADR-0013, docs/modding/movement-profiles.md): base
+# numbers per 20 TPS tick (blocks, blocks/tick, blocks/tick²), then
+# [[abilities]] built from engine primitives (none in the classic feel).
+# Tuned to the classic feel: walk ≈ 4.3 blocks/s, sprint ≈ 5.6 blocks/s,
+# jump ≈ 1.25 blocks. The engine has no built-in numbers; mods may override.
+width = 0.6
+height = 1.8
+eye_height = 1.62
+step_height = 0.6
+gravity = 0.08
+vertical_drag = 0.98
+jump_velocity = 0.42
+sprint_jump_boost = 0.2
+ground_friction = 0.546
+air_friction = 0.91
+walk_accel = 0.1
+air_accel = 0.02
+sprint_multiplier = 1.3
+fluid_drag = 0.8
+fluid_accel = 0.02
+fluid_gravity = 0.02
+swim_up = 0.04
+reach = 4.5
+swim_blocks = ["core:water"]
+# Flight (double-tap jump; jump = up, descend = down; landing ends it).
+# Fly ≈ 11 blocks/s, sprint flying ≈ 22 blocks/s, vertical ≈ 7.5 blocks/s at speed ×1.
+can_fly = true
+fly_accel = 0.05
+fly_vertical_accel = 0.15
+fly_vertical_drag = 0.6
+fly_sprint_multiplier = 2.0
+fly_speed_range = [0.25, 8.0]   # mouse wheel range of the fly speed multiplier

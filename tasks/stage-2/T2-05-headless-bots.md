@@ -1,6 +1,6 @@
 # T2-05. Headless bot clients and the load harness
 
-- **Status:** todo
+- **Status:** done ([report](../../task-reports/t2-05-headless-bots.md))
 - **Depends on:** T2-03, T2-04
 - **Owner:** agent (cloud) + owner's machine for the 8-core run
 
@@ -10,8 +10,8 @@ A `bots` binary: N protocol-level clients without rendering (scripted walking, f
 
 ## Acceptance criteria
 
-- [ ] 50 bots run in CI-size containers without errors (smoke test).
-- [ ] The harness writes a summary like the T1-15 route (tick percentiles, kbit/s per player, memory).
+- [x] 50 bots run in CI-size containers without errors (smoke test). `crates/client/tests/bots.rs`.
+- [x] The harness writes a summary like the T1-15 route (tick percentiles, kbit/s per player, memory). `bots` summary + CSV; `server --stats-out`.
 
 ## Out of scope
 

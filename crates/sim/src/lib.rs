@@ -13,6 +13,7 @@
 //! networking, no mods, no vertical partitioning yet — see the T0-09 report
 //! for the prototype relaxations.
 
+pub mod abilities;
 pub mod fixture;
 pub mod hash;
 pub mod ids;

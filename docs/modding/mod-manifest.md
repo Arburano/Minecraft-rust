@@ -7,12 +7,16 @@ version = "0.3.1"            # semver
 api = "^0.1"                 # engine:api version (WIT package)
 side = "both"                # server | client | both
 authors = ["Hi"]
+provides = ["movement"]      # gameplay slots this mod fills (ADR-0013): "movement", "worldgen:<dimension>"
 description = "Copper pipes for fluids"
 license = "MIT"
 
 [dependencies]
 core = "^0.1"
 fluids = { version = "^0.5", optional = true }
+
+[requires]
+capabilities = ["zones"]     # engine capabilities the mod needs (ADR-0018); default none
 
 [permissions]                # no entry — no access
 filesystem = "mod_data"      # only the mod's own data folder
@@ -36,6 +40,7 @@ schema = "u16"               # schema description for the handshake hash
 
 - `id` does not coincide with another mod; all IDs in a datapack have the prefix `id:` (except explicit overrides with `override = true`, only for dependencies).
 - `api` is compatible with the engine (current or previous major via an adapter).
-- The dependency graph has no cycles; load order is topological, ties are broken by `id`.
+- The dependency graph has no cycles; load order is topological, ties are broken by `id`. Implemented for datapacks by `world::modset` (T1-24): a build's mods and their dependencies are resolved from the mods folder; requirements are `^a.b.c` (default), `=a.b.c` or `*`; `optional = true` dependencies are checked only when the build has that mod ([builds.md](builds.md)).
+- `[requires] capabilities` lists only known names: `dimensions`, `moving_grids`, `space`, `zones`, `instances`, `progression`; an unknown name is a load error naming the mod (`world::modset`, T4-01). The build's capability set is the union over its mods; a binary compiled without one of them (a cargo feature off) refuses the build with "build X needs capability Y (required by mod Z); this server binary was built without it" ([builds.md](builds.md), "Engine capabilities").
 - A WASM component imports only the interfaces allowed by `[permissions]`; otherwise — a linking error with an explanation.
 - `side = client` cannot have `[wasm].server`, and vice versa.

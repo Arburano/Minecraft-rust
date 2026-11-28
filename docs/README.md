@@ -17,16 +17,21 @@ Reading order for a new developer or agent:
 | Tick, phases, scheduler, budgets | [architecture/engine-core.md](architecture/engine-core.md) | `engine-core` |
 | Sections, palette, IDs, saving | [architecture/world-storage.md](architecture/world-storage.md) | `world` |
 | Meshing and rendering | [architecture/meshing-and-rendering.md](architecture/meshing-and-rendering.md) | `mesh`, `render` |
+| Render graph and shader packs v2 (proposed, ADR-0015) | [architecture/render-graph.md](architecture/render-graph.md) | `render` |
 | LOD | [architecture/lod.md](architecture/lod.md) | `lod` |
 | Lighting | [architecture/lighting.md](architecture/lighting.md) | `light` |
 | World generation | [architecture/worldgen.md](architecture/worldgen.md) | `worldgen` |
 | Simulation, physics, mob AI | [architecture/simulation-and-ai.md](architecture/simulation-and-ai.md) | `sim` |
 | Network protocol | [architecture/networking-protocol.md](architecture/networking-protocol.md) | `protocol`, `net` |
 | Server regions | [architecture/server-regions.md](architecture/server-regions.md) | `sim`, `server` |
+| Moving structures (grids, planned) | [architecture/moving-structures.md](architecture/moving-structures.md) | `sim`, `server`, `render` |
+| Dimensions and space (planned) | [architecture/dimensions.md](architecture/dimensions.md) | `server`, `worldgen`, `protocol` |
 | Sharding | [architecture/sharding.md](architecture/sharding.md) | `server` (+ future `gateway`) |
 | In-game launcher menu and updater | [architecture/client-menu-and-updater.md](architecture/client-menu-and-updater.md) | `client`, `updater` |
 | Login and assets | [architecture/auth-and-assets.md](architecture/auth-and-assets.md) | `auth`, `assets` |
 | Mods: overview | [modding/overview.md](modding/overview.md) | `modhost`, `mod-sdk` |
+| Builds and base-game modules | [modding/builds.md](modding/builds.md) | `world::modset`, `server`, `client` |
+| Movement profiles and abilities | [modding/movement-profiles.md](modding/movement-profiles.md) | `sim` |
 | Mod manifest | [modding/mod-manifest.md](modding/mod-manifest.md) | `modhost` |
 | Datapacks | [modding/datapacks.md](modding/datapacks.md) | `modhost`, `world` |
 | WASM API | [modding/wasm-api.md](modding/wasm-api.md), [`../wit/engine-api.wit`](../wit/engine-api.wit) | `modhost`, `mod-sdk` |

@@ -1,0 +1,20 @@
+# The player's movement (ADR-0017; the `movement` slot of ADR-0013). Owns the
+# movement profile: data/movement/profile.toml today, the ability list of T1-18
+# later. A build with a different feel (parkour, low gravity) ships its own
+# movement mod instead of this one.
+[mod]
+id = "movement"
+version = "0.1.0"
+api = "^0.1"
+side = "both"
+authors = ["project team"]
+description = "Player movement: walk, sprint, jump, swim, fly"
+provides = ["movement"]
+
+[dependencies]
+core = "^0.1"
+
+[permissions]
+
+[budget]
+tick_ms = 0.2

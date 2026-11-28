@@ -35,6 +35,7 @@ pub struct Editor {
     light: LightUpdates,
     props: Box<dyn Fn(BlockStateId) -> LightProps + Send + Sync>,
     dirty: Vec<SectionPos>,
+    headless: bool,
 }
 
 impl Editor {
@@ -47,6 +48,17 @@ impl Editor {
             light: LightUpdates::new(),
             props: Box::new(light::props_from_registry(map.registry())),
             dirty: Vec::new(),
+            headless: false,
+        }
+    }
+
+    /// An editor that only changes blocks: no meshes, no light (headless
+    /// bots, T2-05).
+    #[must_use]
+    pub fn headless(map: &WorldMap) -> Self {
+        Self {
+            headless: true,
+            ..Self::new(map)
         }
     }
 
@@ -68,7 +80,7 @@ impl Editor {
             self.dirty.clear();
             map.take_dirty(kind, &mut self.dirty);
         }
-        if old == id {
+        if old == id || self.headless {
             return Ok(old);
         }
         self.light.record(pos, before);

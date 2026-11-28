@@ -27,8 +27,8 @@ const TICK: Duration = Duration::from_millis(50);
 pub struct Options {
     /// Settings, worlds and caches.
     pub data_dir: PathBuf,
-    /// The `core` mod's data.
-    pub mods_dir: PathBuf,
+    /// The mods of the build being played (ADR-0017).
+    pub mods: world::ModSet,
     /// Offline name from the command line (overrides the saved one).
     pub offline_name: Option<String>,
     /// Print the time to the first menu frame and exit.
@@ -43,8 +43,12 @@ pub struct Options {
     pub safe_mode: bool,
     /// Run the stage 1 exit route for this many seconds, then exit (T1-15).
     pub bench: Option<u32>,
+    /// The bench route (T1-25: `walk` at 12 chunks, `fly` at 16).
+    pub bench_route: crate::bench::Route,
     /// Prefer the GPU whose name contains this text, for this run only.
     pub gpu: Option<String>,
+    /// Join this server right away (T2-02; the multiplayer menu is T2-08).
+    pub connect: Option<std::net::SocketAddr>,
 }
 
 struct Gpu {
@@ -182,6 +186,8 @@ pub struct App {
     textures_line: String,
     bench: Option<crate::bench::Bench>,
     bench_world: Option<PathBuf>,
+    /// Where the current frame's time goes (T1-25 spike attribution).
+    cost: crate::bench::FrameCost,
 }
 
 impl App {
@@ -212,6 +218,7 @@ impl App {
             textures_line: String::new(),
             bench: None,
             bench_world: None,
+            cost: crate::bench::FrameCost::default(),
         }
     }
 
@@ -288,13 +295,35 @@ impl App {
         })
     }
 
-    fn open_world(&mut self, dir: PathBuf) {
-        let Some(gpu) = &self.gpu else { return };
-        let mut config = SessionConfig::new(self.opts.mods_dir.clone());
+    fn session_config(&self) -> SessionConfig {
+        let mut config = SessionConfig::new(self.opts.mods.clone());
         config.radius = self.settings.quality.settings().render_distance as i32;
         config.threads = self.settings.threads();
         config.autosave = Duration::from_secs(u64::from(self.settings.autosave_seconds.max(5)));
-        match Session::open(&dir, config) {
+        if let Some(name) = &self.settings.offline_name {
+            config.player_name = name.clone();
+        }
+        config
+    }
+
+    fn open_world(&mut self, dir: PathBuf) {
+        let config = self.session_config();
+        self.start_session(Session::open(&dir, config));
+    }
+
+    /// Joins a server (offline mode: the name from the command line or settings).
+    fn join_server(&mut self, addr: std::net::SocketAddr) {
+        let Some(name) = self.settings.offline_name.clone() else {
+            self.menu.message = Some("Choose an offline name first".into());
+            return;
+        };
+        let config = self.session_config();
+        self.start_session(Session::connect(addr, &name, config));
+    }
+
+    fn start_session(&mut self, opened: Result<Session, client::session::SessionError>) {
+        let Some(gpu) = &self.gpu else { return };
+        match opened {
             Ok(session) => {
                 let (textures, line) =
                     block_textures(&self.settings, &self.opts, session.registry());
@@ -334,7 +363,7 @@ impl App {
                 self.apply_shader_pack();
                 self.set_grab(true);
             }
-            Err(e) => self.menu.message = Some(format!("Could not open the world: {e}")),
+            Err(e) => self.menu.message = Some(format!("Could not join or open the world: {e}")),
         }
     }
 
@@ -527,6 +556,8 @@ impl App {
         let now = Instant::now();
         let dt = now - self.last_frame;
         self.last_frame = now;
+        // `dt` is the interval that the previous frame's work began.
+        let prev_cost = std::mem::take(&mut self.cost);
         let (Some(window), Some(_)) = (self.window.clone(), self.gpu.as_ref()) else {
             return;
         };
@@ -538,10 +569,12 @@ impl App {
             if let Err(e) = game.session.update() {
                 failed = Some(e.to_string());
             }
+            self.cost.update = *game.session.last_update_cost();
             if game.playing_since.is_none() && game.session.is_playing() {
                 game.playing_since = Some(Instant::now());
             }
             if !game.paused {
+                let t = Instant::now();
                 game.acc = (game.acc + dt).min(TICK * 5);
                 while game.acc >= TICK {
                     // The flight toggle is a one-tick event.
@@ -552,7 +585,9 @@ impl App {
                     game.keys.toggle_fly = false;
                     game.session.fixed_tick(&input);
                     game.acc -= TICK;
+                    self.cost.tick_count += 1;
                 }
+                self.cost.ticks = t.elapsed();
             }
         }
         if let Some(e) = failed {
@@ -564,6 +599,7 @@ impl App {
         let Some(egui_state) = &mut self.egui_state else {
             return;
         };
+        let ui_start = Instant::now();
         let raw = egui_state.take_egui_input(&window);
         let mut menu_action = MenuAction::None;
         let mut pause_action = PauseAction::None;
@@ -581,11 +617,17 @@ impl App {
                     .as_ref()
                     .filter(|(_, t)| t.elapsed() < Duration::from_secs(8))
                     .map(|(n, _)| n.clone());
-                let status = notice.or_else(|| {
-                    g.session.is_flying().then(|| {
-                        format!("Flying — speed ×{:.2} (mouse wheel)", g.session.fly_speed())
+                let status = notice
+                    .or_else(|| {
+                        g.session
+                            .terrain_loading()
+                            .then(|| "Loading terrain…".to_owned())
                     })
-                });
+                    .or_else(|| {
+                        g.session.is_flying().then(|| {
+                            format!("Flying — speed ×{:.2} (mouse wheel)", g.session.fly_speed())
+                        })
+                    });
                 menu::hud(
                     ui,
                     &names,
@@ -604,10 +646,14 @@ impl App {
             }
         });
         egui_state.handle_platform_output(&window, full.platform_output);
+        self.cost.ui = ui_start.elapsed();
 
         // Render.
         let Some(gpu) = &mut self.gpu else { return };
-        let frame = match gpu.surface.get_current_texture() {
+        let acquire_start = Instant::now();
+        let acquired = gpu.surface.get_current_texture();
+        self.cost.acquire = acquire_start.elapsed();
+        let frame = match acquired {
             wgpu::CurrentSurfaceTexture::Success(f)
             | wgpu::CurrentSurfaceTexture::Suboptimal(f) => f,
             _ => {
@@ -628,7 +674,8 @@ impl App {
             if let Some(p) = &game.post {
                 p.set_params(&gpu.queue, &game.pack_options, t);
             }
-            game.view.sync(&gpu.queue, &mut game.session);
+            self.cost.sync = game.view.sync(&gpu.queue, &mut game.session);
+            let prepare_start = Instant::now();
             let alpha = game.acc.as_secs_f64() / TICK.as_secs_f64();
             let rs = self.settings.quality.settings();
             game.view.prepare(
@@ -639,7 +686,9 @@ impl App {
                 aspect,
                 alpha,
             );
+            self.cost.prepare = prepare_start.elapsed();
         }
+        let encode_start = Instant::now();
         let clear = if self.game.is_some() {
             wgpu::Color {
                 r: f64::from(SKY[0]),
@@ -734,17 +783,22 @@ impl App {
         let readback = shot
             .as_ref()
             .map(|_| copy_frame(gpu, &mut encoder, &frame.texture));
+        self.cost.encode = encode_start.elapsed();
+        let submit_start = Instant::now();
         gpu.queue
             .submit(extra.into_iter().chain([encoder.finish()]));
+        self.cost.submit = submit_start.elapsed();
         if let (Some(path), Some(buf)) = (shot, readback) {
             save_frame(gpu, &buf, &path);
             event_loop.exit();
         }
+        let present_start = Instant::now();
         window.pre_present_notify();
         gpu.queue.present(frame);
+        self.cost.present = present_start.elapsed();
 
         let bench_done = match (&mut self.bench, &self.game) {
-            (Some(b), Some(g)) => b.frame(dt, g.playing_since),
+            (Some(b), Some(g)) => b.frame(dt, &prev_cost, g.playing_since),
             _ => false,
         };
         if bench_done {
@@ -767,6 +821,13 @@ impl App {
                 self.menu.message = None;
                 self.open_world(dir);
             }
+            MenuAction::Join(address) => match client::lan::resolve(&address) {
+                Ok(addr) => {
+                    self.menu.message = None;
+                    self.join_server(addr);
+                }
+                Err(e) => self.menu.message = Some(e),
+            },
             MenuAction::SaveSettings(s) => {
                 self.settings = s;
                 self.save_settings();
@@ -804,7 +865,7 @@ fn block_textures(
     opts: &Options,
     registry: &world::Registry,
 ) -> (client::textures::BlockTextures, String) {
-    let faces = client::textures::read_block_faces(&opts.mods_dir.join("blocks"));
+    let faces = client::textures::read_mod_faces(&opts.mods);
     let mut notes = Vec::new();
     // Resource packs in the player's order.
     let mut packs: Vec<(String, client::packs::PackFiles)> = Vec::new();
@@ -883,7 +944,12 @@ fn debug_text(g: &Game, gpu_line: &str) -> String {
         g.session.loader().meshes().len(),
         l.submitted,
         g.view.upload_errors(),
-    )
+    ) + &g.session.net_stats().map_or(String::new(), |n| {
+        format!(
+            "\nserver: {} players in view, {} corrections (max {:.2} blocks)",
+            n.others, n.corrections, n.max_correction
+        )
+    })
 }
 
 /// Copies the frame for a screenshot (the surface allows `COPY_SRC`).
@@ -998,14 +1064,17 @@ impl ApplicationHandler for App {
         self.window = Some(window);
         if let Some(seconds) = self.opts.bench {
             let root = self.opts.data_dir.join("worlds");
+            let route = self.opts.bench_route;
+            // The route sets its own render distance (not saved).
+            self.settings.quality = route.quality();
             let name = format!("stage1-exit-route-{}", client::worlds::now());
             match client::worlds::create(&root, &name, crate::bench::SEED) {
                 Ok(d) => {
                     println!(
-                        "stage 1 exit route: {seconds} s after a {} s warm-up",
+                        "stage 1 exit route ({route:?}): {seconds} s after a {} s warm-up",
                         crate::bench::WARMUP.as_secs()
                     );
-                    self.bench = Some(crate::bench::Bench::new(seconds));
+                    self.bench = Some(crate::bench::Bench::new(seconds, route));
                     self.bench_world = Some(d.clone());
                     self.open_world(d);
                 }
@@ -1014,6 +1083,10 @@ impl ApplicationHandler for App {
                     event_loop.exit();
                 }
             }
+            return;
+        }
+        if let Some(addr) = self.opts.connect {
+            self.join_server(addr);
             return;
         }
         if let Some(name) = self.opts.autoplay.clone() {

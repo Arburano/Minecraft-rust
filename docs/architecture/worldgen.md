@@ -33,17 +33,35 @@ heightmap+biomes (cheap, 2D) ─► terrain ─► caves ─► ores ─► stru
 
 ## Generation modes (owner decision 2026-11-22)
 
-- **Normal** — the T1-03 pipeline below. All current work targets this mode.
-- **Extended** — a richer generator of our own (multi-noise biomes, height splines, smooth blending, more caves and biomes), task [T1-17](../../tasks/stage-1/T1-17-worldgen-modes.md), after the main stage 1 tasks. The world remembers its mode.
+- **Normal** — the T1-03 pipeline below with the `classic` engine.
+- **Extended** — a richer generator of our own (multi-noise biomes, height splines, smooth blending, more caves and biomes), task [T1-17](../../tasks/stage-1/T1-17-worldgen-modes.md). The first part is done: the `climate` engine and the `overworld_plus` module (see "Engines"). The mode is chosen by the build (ADR-0017), and the world remembers its generator.
 - **Reference for "extended": Tectonic** (Apollo, MIT on Modrinth; replaces Terralith, which is not used because its license forbids copying and AI use). Agents may study it and port ideas and parameters with credit in `THIRD_PARTY.md`; verbatim copies wait for a published LICENSE with a copyright line (the GitHub repository has none yet). Vanilla-derived data in it stays out of the repository, and our density-function-style generation is written from public documentation. Details: [T1-17](../../tasks/stage-1/T1-17-worldgen-modes.md).
+
+## Engines (T1-17)
+
+A **landscape engine** decides the shape of the land: height and biome of every block column (`GenContext::surface`, used by every stage, by trees in neighboring columns and by far LOD). Everything after the shape is shared by all engines: surface layers, caves, ores, trees. A world-generation module picks its engine with `engine = "..."` in its `worldgen/<dimension>.toml`, so an advanced module replaces **only the generation** (and adds the blocks it needs), and a build picks the module.
+
+| Engine | Shape | Biomes | Used by |
+| --- | --- | --- | --- |
+| `classic` | one hills noise + detail around `base_height` | by temperature noise (`max_temperature`) | `overworld` (build `classic`) |
+| `climate` | continentalness (oceans → coasts → inland), erosion (flat vs mountainous), ridges (peaks and valleys) through height splines; mountains fade in from the coast (`inland`) | first biome in file order whose climate ranges hold: temperature (cooling with height above the sea, so peaks are snowy), humidity, continentalness, surface height; a biome without ranges catches the rest | `overworld_plus` (build `classic_plus`) |
+
+- Height depends only on the climate noises, never on the biome, so biome borders never make cliffs (a test checks that neighbors differ by ≤ 6 blocks over 12 × 12 km).
+- **Tree kinds:** `[trees]` is the default kind (`"default"`); `[[tree_kinds]]` add named kinds with their own log, leaves, trunk heights and crown `shape` (`round` like oak and birch, `cone` like spruce); a biome lists the kinds that grow in it (`trees = ["spruce"]`), one picked per tree. Crowns stay within a radius of 2, so the cross-border rule below still holds (tested per kind).
+- **Determinism:** both engines are pure functions of `(seed, position)`; the classic engine's output is bit-identical to before engines existed (the server determinism golden hash is unchanged).
+- **A world keeps its generator:** `server.toml` records `<module>:<engine>` (e.g. `overworld:classic`); a build with a different overworld generator refuses to open the world, because new terrain would not fit the saved terrain at the borders.
+- **Speed** (cloud VM, 4 vCPU Xeon 2.1 GHz, one criterion run): a full column with all stages 0.35 ms (`classic`) / 0.37 ms (`climate`); the 2D surface pass for 256 block columns 16 µs / 58 µs; 64 columns on 4 threads 6.5 / 7.5 ms. Both stay under the 1 ms per column budget.
+- **Slot and feature (T1-18):** the overworld generator is the `worldgen:overworld` slot; exactly one mod of a build fills it (`provides`). The built-in stages sit behind the `builtin-overworld` cargo feature of `worldgen` (on by default; CI checks the crate without it), so a build with its own generator can leave them out once mods can register stages (stage 3).
+- **Adding an engine** (until mods can register stages through the WIT API in stage 3): a new `Engine` variant in `worldgen::config` with its data table, a branch in `GenContext::surface`, determinism, continuity and cross-border tests, and a module that selects it. Planned ideas: `flat` for test builds, `islands` (archipelagos), a fantasy engine with tall mountain ranges, an `amplified`-style one. Caves, rivers and structures per engine come as stages.
+- Not yet: biome blending of surface blocks (borders between biome tops are sharp), rivers, more cave types, ground cover (grass, flowers: needs block models), animals per biome (the `mobs` module, stage 4: biomes will get spawn lists).
 
 ## Implementation (T1-03)
 
 - `worldgen::Pipeline` holds ordered `Stage`s (`fn run(&GenContext, &mut ProtoColumn)`); `replace(id, …)` and `insert_after(id, …)` let mods change it (through the mod API from stage 3). Built-in overworld: `core:surface` (2D heightmap + biome pass, also `GenContext::surface` for LOD and neighbors) → `core:terrain` → `core:caves` (3D noise on a 4-block grid, trilinear interpolation) → `core:ores` (random-walk veins) → `core:trees`.
-- All blocks and parameters come from mod data: `mods/core/data/worldgen/overworld.toml` names blocks by id and is resolved through the registry; the engine code contains no block names.
+- All blocks and parameters come from mod data: `mods/overworld/data/worldgen/overworld.toml` (the `overworld` module, ADR-0017) names blocks by id and is resolved through the registry; the engine code contains no block names.
 - **Cross-column features without a dependency graph:** every column places the trees whose origins lie in itself and its 8 neighbors (origins and shapes are pure functions of the seed and the origin), writing only its own cells. Columns are therefore pure functions of `(seed, position)`; a test checks that every crown is complete across borders. The chunk-status dependency graph described above is needed only once a stage must read a neighbor's *generated blocks* (not its pure surface data); none does yet.
 - `Pipeline::generate_parallel` runs columns as `Visible` jobs on the T0-02 pool.
-- Previews: `cargo run --release -p worldgen --example map_preview -- out.bmp [seed] [radius]` (top-down map), `--example stats` (biome shares, sea share, tree count).
+- Previews: `cargo run --release -p worldgen --example map_preview -- out.bmp [seed] [radius] [build]` (top-down map), `--example stats -- [seed] [radius] [build]` (biome shares, sea share, height range, tree count).
 
 ## Test corpus (T0-12)
 

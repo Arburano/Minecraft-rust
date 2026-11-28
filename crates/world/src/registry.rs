@@ -32,6 +32,18 @@ pub enum Collision {
     Model,
 }
 
+/// Which chunk mesher turns a block into render geometry (ADR-0016). Only
+/// the cubic greedy mesher exists today; smooth terrain, block models and
+/// water surfaces add variants when they are decided. Physics never reads
+/// this: collisions come from [`Collision`] only.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum MesherKind {
+    /// Binary greedy meshing into 8-byte quads (`mesh::CubicGreedyMesher`).
+    #[default]
+    Cubic,
+}
+
 /// Engine-relevant properties of a block state (identical for all states of a
 /// block in this version).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -46,6 +58,8 @@ pub struct BlockProps {
     pub light_opacity: u8,
     /// Collision shape.
     pub collision: Collision,
+    /// The mesher that draws this block (default cubic, ADR-0016).
+    pub mesher: MesherKind,
 }
 
 impl BlockProps {
@@ -56,6 +70,7 @@ impl BlockProps {
         light_emission: 0,
         light_opacity: 0,
         collision: Collision::None,
+        mesher: MesherKind::Cubic,
     };
     /// The placeholder for missing states: a visible full block.
     pub const MISSING: Self = Self {
@@ -64,6 +79,7 @@ impl BlockProps {
         light_emission: 0,
         light_opacity: MAX_LIGHT,
         collision: Collision::Full,
+        mesher: MesherKind::Cubic,
     };
 }
 
@@ -91,6 +107,8 @@ struct RawBlockDef {
     light_opacity: Option<u8>,
     #[serde(default)]
     collision: Collision,
+    #[serde(default)]
+    mesher: MesherKind,
     #[serde(default)]
     states: Option<toml::Table>,
     // Fields used by other subsystems (assets, gameplay); accepted and ignored here.
@@ -171,6 +189,7 @@ impl BlockDef {
                 light_emission: raw.light_emission,
                 light_opacity,
                 collision: raw.collision,
+                mesher: raw.mesher,
             },
         })
     }
@@ -540,5 +559,17 @@ mod tests {
         );
         let stone = BlockDef::from_toml("id = \"core:stone\"\nopaque = true").expect("valid");
         assert_eq!(stone.props.light_opacity, 15);
+        assert_eq!(stone.props.mesher, MesherKind::Cubic, "default mesher");
+    }
+
+    #[test]
+    fn mesher_property_parses_and_rejects_unknown() {
+        let def = BlockDef::from_toml("id = \"core:stone\"\nmesher = \"cubic\"").expect("valid");
+        assert_eq!(def.props.mesher, MesherKind::Cubic);
+        // Smooth meshers are not decided yet (ADR-0016): unknown kinds fail.
+        assert!(matches!(
+            BlockDef::from_toml("id = \"core:stone\"\nmesher = \"smooth\""),
+            Err(RegistryError::Parse(_))
+        ));
     }
 }

@@ -12,11 +12,35 @@ auth = { path = "../auth" }
 clap = { workspace = true }
 engine-core = { path = "../engine-core" }
 world = { path = "../world" }
+worldgen = { path = "../worldgen" }
+protocol = { path = "../protocol" }
 net = { path = "../net" }
 sim = { path = "../sim" }
-modhost = { path = "../modhost" }
+crossbeam-channel = { workspace = true }
+bevy_ecs = { workspace = true }
+rayon = { workspace = true }
+glam = { workspace = true }
+quinn = { workspace = true }
+tokio = { workspace = true }
+# Self-signed certificate for offline mode (LAN / loopback only, legal.md rule 7);
+# real certificates come with online play (stage 3).
+rcgen = { workspace = true }
+serde = { workspace = true }
+toml = { workspace = true }
+thiserror = { workspace = true }
+memory-stats = { workspace = true }
+
+[dev-dependencies]
+anyhow = { workspace = true }
+tokio = { workspace = true }
 
 [features]
+# Every capability compiled in for development builds (ADR-0018); a build's
+# release binary keeps only its own.
+default = ["moving_grids"]
+# Moving block structures (ADR-0019). Gates the rigid-body physics dependency
+# once it lands (T4-03); a binary without it refuses builds that require it.
+moving_grids = []
 # Tracy profiler zones: `cargo run -p server --features profiling`.
 profiling = ["engine-core/profiling"]
 

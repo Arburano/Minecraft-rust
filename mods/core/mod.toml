@@ -1,15 +1,19 @@
-# The base game is a mod on the public API (PRD §2). Nothing in `core` may use a
-# private engine API; if something is missing, extend the API (ADR first).
+# The shared base of every build (ADR-0017, docs/modding/builds.md): the common
+# block palette and the default entity limits. Movement, worlds (dimensions),
+# mobs and other features are separate mods on top of it.
+# Nothing in `core` may use a private engine API; if something is missing,
+# extend the API (ADR first).
 [mod]
 id = "core"
-version = "0.0.1"
+version = "0.1.0"
 api = "^0.1"
 side = "both"
 authors = ["project team"]
+description = "Shared base: common blocks and default entity limits"
 
 [dependencies]
 
 [permissions]
 
 [budget]
-tick_ms = 2.0
+tick_ms = 0.5

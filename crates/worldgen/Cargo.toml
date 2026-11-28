@@ -7,6 +7,12 @@ rust-version.workspace = true
 license.workspace = true
 publish = false
 
+[features]
+default = ["builtin-overworld"]
+# The built-in overworld stages (surface, terrain, caves, ores, trees; ADR-0013).
+# A build with its own generator (stage 3: WASM stages) leaves them out.
+builtin-overworld = []
+
 [dependencies]
 engine-core = { path = "../engine-core" }
 serde = { workspace = true }
