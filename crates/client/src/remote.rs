@@ -83,16 +83,20 @@ impl From<StreamError> for RemoteError {
 
 /// Something that arrived from the server.
 pub enum RemoteEvent {
-    /// A column, already mapped to this client's block IDs.
-    Column(Column),
-    /// The server will not keep this column up to date any more.
-    Forget(ColumnPos),
-    /// A column outside the focus, still compressed ([`Remote::unpack`]).
+    /// A column of a dimension, already mapped to this client's block IDs.
+    Column(u8, Column),
+    /// The server will not keep this column of a dimension up to date any more.
+    Forget(u8, ColumnPos),
+    /// A column outside the focus, still compressed ([`Remote::unpack`]);
+    /// the payload names its dimension.
     Packed(ColumnPos, protocol::ColumnPayload),
     /// This tick's server datagram (reconciliation and entity deltas).
     Datagram(EntityDatagram),
-    /// Authoritative block changes, already in this client's block IDs.
-    Blocks(Vec<(BlockPos, BlockStateId)>),
+    /// Authoritative block changes in a dimension, already in this
+    /// client's block IDs.
+    Blocks(u8, Vec<(BlockPos, BlockStateId)>),
+    /// A new spawn: after a travel to another dimension (T4-02).
+    Respawn(Spawn),
     /// The server's answer to one of our edits.
     EditAck {
         /// Our sequence number.
@@ -241,7 +245,6 @@ impl Remote {
             events_tx.clone(),
             Arc::clone(&registry),
             Arc::clone(&remap),
-            spawn.bounds(),
             options.focus.clone(),
         ));
         runtime_ref.spawn(receive_events(
@@ -288,7 +291,7 @@ impl Remote {
     /// Decodes a column kept compressed ([`RemoteEvent::Packed`]).
     #[must_use]
     pub fn unpack(&self, payload: &protocol::ColumnPayload) -> Option<Column> {
-        decode_payload(payload, &self.registry, &self.remap, self.spawn.bounds())
+        decode_payload(payload, &self.registry, &self.remap)
     }
 
     /// Sends a reliable event (an edit, chat).
@@ -412,10 +415,12 @@ fn decode_payload(
     payload: &protocol::ColumnPayload,
     registry: &Registry,
     remap: &Option<Vec<BlockStateId>>,
-    bounds: world::WorldBounds,
 ) -> Option<Column> {
+    // Each dimension has its own height: the record's bounds are used, and
+    // the session drops columns that do not fit its map.
     let mut record = payload.decode().ok()?;
-    if record.bounds != bounds {
+    let bounds = record.bounds;
+    if bounds.section_count == 0 || bounds.section_count > 256 {
         return None;
     }
     if let Some(table) = remap.as_ref() {
@@ -431,7 +436,6 @@ async fn receive_columns(
     events: Sender<RemoteEvent>,
     registry: Arc<Registry>,
     remap: Arc<Option<Vec<BlockStateId>>>,
-    bounds: world::WorldBounds,
     focus: Option<Arc<Focus>>,
 ) {
     while let Ok(mut stream) = conn.accept_uni().await {
@@ -448,7 +452,9 @@ async fn receive_columns(
                     // Not needed now: kept compressed, decoded when needed.
                     return Some(RemoteEvent::Packed(payload.pos.into(), payload));
                 }
-                decode_payload(&payload, &registry, &remap, bounds).map(RemoteEvent::Column)
+                let dimension = payload.dimension;
+                decode_payload(&payload, &registry, &remap)
+                    .map(|c| RemoteEvent::Column(dimension, c))
             })
             .await
             .ok()
@@ -471,8 +477,11 @@ async fn receive_events(
         tokio::spawn(async move {
             while let Ok(Some(e)) = read_message::<ServerEvent>(&mut recv).await {
                 let out = match e {
-                    ServerEvent::ForgetColumn(c) => RemoteEvent::Forget(c.into()),
-                    ServerEvent::BlockChanges(changes) => RemoteEvent::Blocks(
+                    ServerEvent::ForgetColumn { dimension, column } => {
+                        RemoteEvent::Forget(dimension, column.into())
+                    }
+                    ServerEvent::BlockChanges { dimension, changes } => RemoteEvent::Blocks(
+                        dimension,
                         changes
                             .iter()
                             .map(|c| {
@@ -512,6 +521,11 @@ async fn receive_control(mut recv: quinn::RecvStream, events: Sender<RemoteEvent
             Ok(Some(ServerControl::Kick { message, .. })) => {
                 let _ = events.send(RemoteEvent::Ended(message));
                 return;
+            }
+            Ok(Some(ServerControl::Spawn(s))) => {
+                if events.send(RemoteEvent::Respawn(s)).is_err() {
+                    return;
+                }
             }
             Ok(Some(_)) => {}
             Ok(None) => return,

@@ -18,6 +18,7 @@ pub mod conn;
 pub mod entities;
 pub mod game;
 pub mod metrics;
+pub mod node;
 pub mod partition;
 pub mod players;
 pub mod region;
@@ -291,6 +292,10 @@ pub struct Server {
     notices: Vec<String>,
     capabilities: world::Capabilities,
     zones: Option<zones::ZoneControl>,
+    /// To the world thread (travel requests, T4-02).
+    control: crossbeam_channel::Sender<game::ToWorld>,
+    /// The build's dimensions, sorted by id (their indices on the wire).
+    dimensions: Vec<String>,
 }
 
 impl Server {
@@ -315,8 +320,8 @@ impl Server {
         let physics_src = mods
             .read_slot(world::modset::MOVEMENT_SLOT, "movement/profile.toml")
             .map_err(|e| data(&e))?;
-        // The build's dimensions (T4-02): checked at start; the overworld's
-        // physics apply to players (other dimensions run with part 2).
+        // The build's dimensions (T4-02), checked at start. These are the
+        // overworld's physics; other dimensions get theirs below.
         let dimensions = world::dimension::from_mods(mods).map_err(|e| data(&e))?;
         let gravity_scale = dimensions
             .get(world::dimension::OVERWORLD)
@@ -345,8 +350,24 @@ impl Server {
         let bounds = config.bounds;
         let store = WorldStore::open(&config.world_dir, &registry, bounds)
             .map_err(|e| ServerError::World(e.to_string()))?;
-        let storage = Storage::start(store, Arc::clone(&registry))
-            .map_err(|e| ServerError::World(e.to_string()))?;
+        // Dimension indices: the build's dimensions sorted by id (T4-02).
+        let dim_index = |id: &str| dimensions.keys().position(|k| k == id).unwrap_or(0) as u8;
+        if dimensions.len() > 1 && !mods.capabilities().contains(world::Capability::Dimensions) {
+            return Err(data(&format!(
+                "build {} defines {} dimensions ({}); a mod must require the `dimensions` capability",
+                mods.build(),
+                dimensions.len(),
+                dimensions.keys().cloned().collect::<Vec<_>>().join(", ")
+            )));
+        }
+        let storage = Storage::start(
+            store,
+            Arc::clone(&registry),
+            dim_index(world::dimension::OVERWORLD),
+        )
+        .map_err(|e| ServerError::World(e.to_string()))?;
+        let entity_limits =
+            crate::entities::EntityLimits::from_mods(&config.mods).map_err(ServerError::Data)?;
         let mut world = World::new(
             WorldSetup {
                 registry: Arc::clone(&registry),
@@ -357,13 +378,63 @@ impl Server {
                 sim_distance: config.sim_distance,
                 threads: config.threads,
                 region_threads: config.region_threads,
-                entity_limits: crate::entities::EntityLimits::from_mods(&config.mods)
-                    .map_err(ServerError::Data)?,
+                entity_limits: entity_limits.clone(),
                 subsystems,
+                dimension: (
+                    dim_index(world::dimension::OVERWORLD),
+                    world::dimension::OVERWORLD.to_owned(),
+                ),
             },
             storage,
         )
         .map_err(ServerError::World)?;
+        // The other dimensions (T4-02): each with its own store under
+        // `dimensions/<id>/`, generator, bounds and player gravity; fewer
+        // threads than the overworld.
+        let mut others = Vec::new();
+        for (id, def) in dimensions
+            .iter()
+            .filter(|(id, _)| id.as_str() != world::dimension::OVERWORLD)
+        {
+            let src = mods
+                .read_slot(&def.slot(), &def.generator)
+                .map_err(|e| data(&e))?;
+            let dim_gen = WorldgenConfig::from_toml(&src, &registry)
+                .map_err(|e| data(&format!("dimension {id}: {e}")))?;
+            let dir = config.world_dir.join("dimensions").join(id);
+            std::fs::create_dir_all(&dir).map_err(|e| ServerError::World(e.to_string()))?;
+            let dim_bounds = def.bounds();
+            let store = WorldStore::open(&dir, &registry, dim_bounds)
+                .map_err(|e| ServerError::World(e.to_string()))?;
+            let storage = Storage::start(store, Arc::clone(&registry), dim_index(id))
+                .map_err(|e| ServerError::World(e.to_string()))?;
+            // Another seed per dimension, derived from the world's.
+            let dim_seed = id.bytes().fold(seed ^ 0x9e37_79b9_7f4a_7c15, |h, b| {
+                (h ^ u64::from(b)).wrapping_mul(0x0100_0000_01b3)
+            });
+            let dim_physics = PhysicsConfig::from_toml(&physics_src)
+                .map_err(|e| data(&e))?
+                .with_gravity_scale(def.physics.player_gravity_scale);
+            others.push(
+                World::new(
+                    WorldSetup {
+                        registry: Arc::clone(&registry),
+                        context: Arc::new(GenContext::new(dim_seed, dim_gen, dim_bounds)),
+                        physics: dim_physics,
+                        dir: config.world_dir.clone(),
+                        view_distance: config.view_distance.max(2),
+                        sim_distance: config.sim_distance,
+                        threads: (config.threads / 2).max(1),
+                        region_threads: (config.region_threads / 2).max(1),
+                        entity_limits: entity_limits.clone(),
+                        subsystems: capabilities::Subsystems::default(),
+                        dimension: (dim_index(id), id.clone()),
+                    },
+                    storage,
+                )
+                .map_err(ServerError::World)?,
+            );
+        }
         let log = Arc::new(metrics::TickLog::default());
         world.set_log(Arc::clone(&log));
         if config.test_walkers > 0 {
@@ -394,6 +465,8 @@ impl Server {
             .map_err(|e| ServerError::Net(e.to_string()))?;
 
         let (world_tx, world_rx) = crossbeam_channel::unbounded();
+        let control = world_tx.clone();
+        let dimension_ids: Vec<String> = dimensions.keys().cloned().collect();
         let ctx = Arc::new(ConnContext {
             world: world_tx,
             policy: config.policy,
@@ -413,9 +486,19 @@ impl Server {
             start_announcer(addr.port(), config.server_name.clone(), Arc::clone(&stop));
         }
         let world_stop = Arc::clone(&stop);
+        let commands = config.policy.allow_offline;
+        let dir = config.world_dir.clone();
         let world = std::thread::Builder::new()
             .name("world".into())
-            .spawn(move || world.run(world_rx, world_stop))
+            .spawn(move || {
+                if others.is_empty() {
+                    world.run(world_rx, world_stop);
+                } else {
+                    let mut worlds = vec![world];
+                    worlds.extend(others);
+                    node::Node::new(worlds, dir, commands).run(world_rx, world_stop);
+                }
+            })
             .map_err(|e| ServerError::World(e.to_string()))?;
         Ok(Self {
             addr,
@@ -427,7 +510,27 @@ impl Server {
             notices,
             capabilities: active,
             zones: zone_control,
+            control,
+            dimensions: dimension_ids,
         })
+    }
+
+    /// The build's dimensions, sorted by id: a dimension's position here is
+    /// its index on the wire (`Spawn::dimension`).
+    #[must_use]
+    pub fn dimensions(&self) -> &[String] {
+        &self.dimensions
+    }
+
+    /// Asks the world thread to move a player to another dimension (T4-02),
+    /// at `pos` or high above the same x and z. Errors (unknown dimension,
+    /// player not spawned) reach the player as a server chat line.
+    pub fn travel(&self, player_id: &str, dimension: &str, pos: Option<[f64; 3]>) {
+        let _ = self.control.send(game::ToWorld::Travel {
+            id: player_id.to_owned(),
+            dimension: dimension.to_owned(),
+            pos,
+        });
     }
 
     /// Things worth telling the operator about the world at start (a slot

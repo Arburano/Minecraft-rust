@@ -49,6 +49,7 @@ pub fn spawn() -> ServerControl {
         flying: false,
         fly_speed: 1.0,
         view_distance: 12,
+        dimension: 0,
     })
 }
 
@@ -113,6 +114,7 @@ pub fn entities(n: usize) -> EntityDatagram {
             })
             .collect(),
         removed: vec![NetId(5)],
+        dimension: 0,
     }
 }
 
@@ -148,6 +150,7 @@ pub fn moving(n: usize) -> EntityDatagram {
             })
             .collect(),
         removed: Vec::new(),
+        dimension: 0,
     }
 }
 
@@ -173,10 +176,12 @@ pub fn client_events() -> Vec<ClientEvent> {
         },
         ClientEvent::Dig {
             seq: 1,
+            dimension: 0,
             pos: BlockXyz { x: 1, y: -5, z: 3 },
         },
         ClientEvent::Place {
             seq: 2,
+            dimension: 1,
             pos: BlockXyz { x: 1, y: 70, z: 3 },
             state: 2,
         },
@@ -189,21 +194,27 @@ pub fn server_events() -> Vec<ServerEvent> {
             from: "Alex_42".into(),
             text: "hi all".into(),
         },
-        ServerEvent::BlockChanges(vec![
-            BlockChange {
-                pos: BlockXyz { x: 1, y: -5, z: 3 },
-                state: 0,
-            },
-            BlockChange {
-                pos: BlockXyz { x: 2, y: 70, z: 3 },
-                state: 4,
-            },
-        ]),
+        ServerEvent::BlockChanges {
+            dimension: 0,
+            changes: vec![
+                BlockChange {
+                    pos: BlockXyz { x: 1, y: -5, z: 3 },
+                    state: 0,
+                },
+                BlockChange {
+                    pos: BlockXyz { x: 2, y: 70, z: 3 },
+                    state: 4,
+                },
+            ],
+        },
         ServerEvent::BlockAck {
             seq: 2,
             accepted: false,
         },
-        ServerEvent::ForgetColumn(ColumnXz { x: -7, z: 9 }),
+        ServerEvent::ForgetColumn {
+            dimension: 2,
+            column: ColumnXz { x: -7, z: 9 },
+        },
     ]
 }
 

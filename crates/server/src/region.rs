@@ -85,6 +85,7 @@ impl Player {
             pitch: self.pitch,
             flying: self.body.flying,
             fly_speed: self.fly_speed,
+            dimension: None,
         }
     }
 }
@@ -129,6 +130,8 @@ pub struct Shared<'a> {
     pub tick: u64,
     /// Zones, when the build runs the `zones` capability (T4-08).
     pub zones: Option<&'a world::zones::ZoneIndex>,
+    /// This world's dimension index (T4-02), tagged on what is sent.
+    pub dimension: u8,
 }
 
 /// A player as replicated, with its region.
@@ -352,7 +355,7 @@ impl Region {
     }
 
     /// Sends a player its spawn.
-    pub(crate) fn send_spawn(p: &mut Player, bounds: world::WorldBounds, view: i32) {
+    pub(crate) fn send_spawn(p: &mut Player, bounds: world::WorldBounds, view: i32, dimension: u8) {
         p.spawned = true;
         let _ = p.out.send(ToConn::Spawn(Spawn {
             tick: 0,
@@ -364,6 +367,7 @@ impl Region {
             flying: p.body.flying,
             fly_speed: p.fly_speed,
             view_distance: view.clamp(2, 255) as u8,
+            dimension,
         }));
     }
 
@@ -476,7 +480,7 @@ impl Region {
                 && !p.spawned
             {
                 p.body.pos.y = f64::from(h);
-                Self::send_spawn(&mut p, bounds, sh.view);
+                Self::send_spawn(&mut p, bounds, sh.view, sh.dimension);
             }
         }
     }
@@ -622,9 +626,10 @@ impl Region {
                 .map(|(_, b)| *b)
                 .collect();
             for chunk in mine.chunks(MAX_BLOCK_CHANGES) {
-                let _ = p
-                    .out
-                    .send(ToConn::Event(ServerEvent::BlockChanges(chunk.to_vec())));
+                let _ = p.out.send(ToConn::Event(ServerEvent::BlockChanges {
+                    dimension: sh.dimension,
+                    changes: chunk.to_vec(),
+                }));
             }
             for a in acks.remove(id).unwrap_or_default() {
                 let _ = p.out.send(ToConn::Event(a));
@@ -718,9 +723,10 @@ impl Region {
                 .collect();
             for c in far {
                 p.sent.remove(&c);
-                let _ = p
-                    .out
-                    .send(ToConn::Event(ServerEvent::ForgetColumn(c.into())));
+                let _ = p.out.send(ToConn::Event(ServerEvent::ForgetColumn {
+                    dimension: sh.dimension,
+                    column: c.into(),
+                }));
             }
             let mut all_sent = true;
             for &(dx, dz) in sh.offsets {
@@ -817,9 +823,10 @@ impl Region {
                 z: me.z.floor() as i32,
             };
             let p = &mut *p;
-            let d = p
-                .replicator
-                .build(sh.snapshot, origin, p.last_tick, p.correction, candidates);
+            let mut d =
+                p.replicator
+                    .build(sh.snapshot, origin, p.last_tick, p.correction, candidates);
+            d.dimension = sh.dimension;
             if let Ok(bytes) = d.encode() {
                 let _ = p.out.send(ToConn::Datagram(bytes));
             }

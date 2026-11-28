@@ -60,6 +60,14 @@ pub struct SubsystemContext<'a> {
 pub type SubsystemFactory =
     Arc<dyn Fn(&SubsystemContext<'_>) -> Result<Box<dyn Subsystem>, String> + Send + Sync>;
 
+/// The `dimensions` capability's subsystem: the node of worlds does the
+/// work; nothing ticks here.
+struct DimensionsMarker;
+
+impl Subsystem for DimensionsMarker {
+    fn tick(&mut self, _tick: u64) {}
+}
+
 /// Which subsystem starts for which capability.
 #[derive(Clone, Default)]
 pub struct SubsystemRegistry {
@@ -72,6 +80,12 @@ impl SubsystemRegistry {
     pub fn builtin() -> Self {
         let mut r = Self::default();
         crate::zones::Zones::register(&mut r);
+        // Several dimensions (T4-02) are structural (the node of worlds),
+        // not a per-tick subsystem: a marker makes the capability known.
+        r.register(
+            Capability::Dimensions,
+            Arc::new(|_| Ok(Box::new(DimensionsMarker) as Box<dyn Subsystem>)),
+        );
         r
     }
 

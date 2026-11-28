@@ -41,7 +41,7 @@ fn world(tag: &str, view: i32, sim: i32, region_threads: usize) -> (World, PathB
     let physics = PhysicsConfig::from_toml(&mods.read("movement/profile.toml").expect("physics"))
         .expect("physics");
     let store = WorldStore::open(&dir, &registry, WorldBounds::default()).expect("store");
-    let storage = Storage::start(store, Arc::clone(&registry)).expect("storage");
+    let storage = Storage::start(store, Arc::clone(&registry), 0).expect("storage");
     let w = World::new(
         WorldSetup {
             registry,
@@ -54,6 +54,7 @@ fn world(tag: &str, view: i32, sim: i32, region_threads: usize) -> (World, PathB
             region_threads,
             entity_limits: Default::default(),
             subsystems: Default::default(),
+            dimension: (0, world::dimension::OVERWORLD.to_owned()),
         },
         storage,
     )

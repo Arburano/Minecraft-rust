@@ -30,14 +30,16 @@ pub const MAX_COLUMN_RAW: usize = 8 << 20;
 pub struct ColumnPayload {
     /// The column; must match the position inside the record.
     pub pos: ColumnXz,
+    /// The dimension it belongs to ([`crate::Spawn::dimension`]).
+    pub dimension: u8,
     /// zstd-compressed `world::storage` column record. Block states are the
     /// numbers of the connection's [`crate::RegistrySync`].
     pub zstd: Vec<u8>,
 }
 
 impl ColumnPayload {
-    /// Encodes and compresses a column record.
-    pub fn encode(record: &ColumnRecord) -> Result<Self, ProtocolError> {
+    /// Encodes and compresses a column record of `dimension`.
+    pub fn encode(record: &ColumnRecord, dimension: u8) -> Result<Self, ProtocolError> {
         let raw = encode_column(record, 0);
         if raw.len() > MAX_COLUMN_RAW {
             return Err(ProtocolError::TooLarge {
@@ -49,6 +51,7 @@ impl ColumnPayload {
             .map_err(|e| ProtocolError::Malformed(e.to_string()))?;
         let payload = Self {
             pos: record.pos.into(),
+            dimension,
             zstd,
         };
         payload.validate()?;

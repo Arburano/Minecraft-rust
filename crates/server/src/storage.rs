@@ -38,7 +38,12 @@ pub struct Storage {
 
 impl Storage {
     /// Starts the thread.
-    pub fn start(mut store: WorldStore, registry: Arc<Registry>) -> std::io::Result<Self> {
+    /// Starts the thread; columns are encoded for `dimension` (T4-02).
+    pub fn start(
+        mut store: WorldStore,
+        registry: Arc<Registry>,
+        dimension: u8,
+    ) -> std::io::Result<Self> {
         let (tx, requests) = unbounded::<Request>();
         let (replies, rx) = unbounded::<Reply>();
         let thread = std::thread::Builder::new()
@@ -49,7 +54,9 @@ impl Storage {
                         Request::Load(pos) => {
                             let column = match store.load_column(pos, &registry) {
                                 Ok(c) => c.and_then(|(col, _)| {
-                                    crate::columns::encode(&col).ok().map(|b| (col, b))
+                                    crate::columns::encode(&col, dimension)
+                                        .ok()
+                                        .map(|b| (col, b))
                                 }),
                                 Err(e) => {
                                     // A corrupt column is regenerated rather

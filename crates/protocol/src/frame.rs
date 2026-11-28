@@ -79,7 +79,10 @@ mod tests {
         // A frame of the right type but with a body that is not that type.
         let mut out = Vec::new();
         encode_frame(
-            &ServerEvent::ForgetColumn(crate::ColumnXz { x: 1, z: 2 }),
+            &ServerEvent::ForgetColumn {
+                dimension: 0,
+                column: crate::ColumnXz { x: 1, z: 2 },
+            },
             &mut out,
         )
         .expect("encode");

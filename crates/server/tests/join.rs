@@ -201,7 +201,7 @@ fn streaming_follows_the_player_and_forgets_behind() {
         let counter = std::sync::Arc::clone(&forgot);
         tokio::spawn(async move {
             let (_, mut recv) = conn.accept_bi().await?;
-            while let Some(ServerEvent::ForgetColumn(_)) = read_message(&mut recv).await? {
+            while let Some(ServerEvent::ForgetColumn { .. }) = read_message(&mut recv).await? {
                 counter.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             }
             anyhow::Ok(())

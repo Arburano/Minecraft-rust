@@ -142,7 +142,7 @@ Engine work behind [ADR-0018](../docs/adr/0018-engine-capabilities-per-build.md)
 | Task | Name | Depends on | Owner | Status |
 | --- | --- | --- | --- | --- |
 | [T4-01](stage-4/T4-01-capabilities.md) | Engine capabilities per build | T1-24 | agent (cloud) | done |
-| [T4-02](stage-4/T4-02-dimensions.md) | Dimensions | T4-01, T2-06, T2-08 | agent (cloud) | todo |
+| [T4-02](stage-4/T4-02-dimensions.md) | Dimensions | T4-01, T2-06, T2-08 | agent (cloud) | done |
 | [T4-03](stage-4/T4-03-moving-grids-physics.md) | Moving grids: storage and physics | T4-01, T4-02 | agent (cloud) | todo |
 | [T4-04](stage-4/T4-04-grid-assembly-and-api.md) | Grid assembly, disassembly, splitting and the grids mod API | T4-03 (WIT part: stage 3 mod API) | agent (cloud) | todo |
 | [T4-05](stage-4/T4-05-riding-grids-and-network.md) | Riding grids and grid replication | T4-03, T2-03, T2-07 | agent (cloud) + owner feel review | todo |
