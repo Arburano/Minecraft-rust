@@ -1203,7 +1203,14 @@ impl ModData {
         let physics_src = mods
             .read_slot(world::modset::MOVEMENT_SLOT, "movement/profile.toml")
             .map_err(|e| data_err(&e))?;
-        let physics = PhysicsConfig::from_toml(&physics_src).map_err(|e| data_err(&e))?;
+        // The same dimension scaling as the server, so predictions agree.
+        let gravity_scale = world::dimension::from_mods(mods)
+            .map_err(|e| data_err(&e))?
+            .get(world::dimension::OVERWORLD)
+            .map_or(1.0, |d| d.physics.player_gravity_scale);
+        let physics = PhysicsConfig::from_toml(&physics_src)
+            .map_err(|e| data_err(&e))?
+            .with_gravity_scale(gravity_scale);
         let swim = physics.swim_ids(&registry).map_err(|e| data_err(&e))?;
         Ok(Self {
             registry,

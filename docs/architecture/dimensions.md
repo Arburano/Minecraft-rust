@@ -1,6 +1,6 @@
 # Dimensions and space
 
-Capabilities: `dimensions`, `space` ([ADR-0018](../adr/0018-engine-capabilities-per-build.md), accepted 2026-11-27). Status: design; today a server has one world, the overworld.
+Capabilities: `dimensions`, `space` ([ADR-0018](../adr/0018-engine-capabilities-per-build.md), accepted 2026-11-27). Status: part 1 implemented (T4-02): dimension definitions in module data, checked at start, the overworld's player gravity scale applied. A server still runs one dimension, the overworld; several at once, travel and the protocol changes are part 2.
 
 ## Dimensions
 
@@ -27,6 +27,24 @@ A **dimension** is a world of its own: its own columns, its own generator (a wor
 - Travel: a mod moves an entity (or a grid, with `moving_grids`) to another dimension at a position; the engine saves it in the source dimension's Exchange phase and inserts it in the target's.
 - Protocol: `Spawn` and every column, entity and grid message carry a dimension id (one byte); the client keeps one map per dimension it has seen recently and drops others.
 - Players: the movement profile (the `movement` module) is tuned for feel, not in m/s²; a dimension scales its gravity with `player_gravity_scale`. Breathing and pressure effects are gameplay.
+
+## Implementation (T4-02 part 1)
+
+- `world::dimension`: `DimensionDef` (the format above, `deny_unknown_fields`) with checks:
+  - the id is `[a-z0-9_]`;
+  - the height is multiples of 16, low below high, at most 4096 blocks;
+  - physics values are in range and pressure heights increase;
+  - the generator is a `.toml` inside the module.
+
+  It also provides `pressure_at(y)` (piecewise linear), `bounds()` and `slot()`.
+- `dimension::from_mods(&ModSet)` collects every `data/dimensions/*.toml` of the build. An id defined by two mods is an error naming both. Each dimension needs a provider for its `worldgen:<id>` slot that has the generator file.
+- `mods/overworld` and `mods/overworld_plus` define `overworld`.
+- **Server and client** read the build's dimensions at start (an invalid one stops the start with its message). Players use the overworld's `player_gravity_scale` (`PhysicsConfig::with_gravity_scale`; ×1 changes nothing, so the classic movement stays bit-identical).
+- **Storage:** the overworld stays at the world root (no migration). Other dimensions will live under `<world>/dimensions/<id>/`. `server.toml` already records the provider of every `worldgen:<id>` slot.
+- **Part 2:**
+  - several dimensions running at once (one region set each, on the shared pool);
+  - travel in the Exchange phase;
+  - the protocol's dimension id on `Spawn`, columns, entities and edits, with per-dimension maps on the client.
 
 ## Space
 

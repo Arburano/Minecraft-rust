@@ -315,7 +315,15 @@ impl Server {
         let physics_src = mods
             .read_slot(world::modset::MOVEMENT_SLOT, "movement/profile.toml")
             .map_err(|e| data(&e))?;
-        let physics = PhysicsConfig::from_toml(&physics_src).map_err(|e| data(&e))?;
+        // The build's dimensions (T4-02): checked at start; the overworld's
+        // physics apply to players (other dimensions run with part 2).
+        let dimensions = world::dimension::from_mods(mods).map_err(|e| data(&e))?;
+        let gravity_scale = dimensions
+            .get(world::dimension::OVERWORLD)
+            .map_or(1.0, |d| d.physics.player_gravity_scale);
+        let physics = PhysicsConfig::from_toml(&physics_src)
+            .map_err(|e| data(&e))?
+            .with_gravity_scale(gravity_scale);
 
         std::fs::create_dir_all(&config.world_dir)
             .map_err(|e| ServerError::World(e.to_string()))?;
