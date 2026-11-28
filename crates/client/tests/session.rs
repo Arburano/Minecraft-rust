@@ -281,3 +281,36 @@ fn stage_1_saves_open_on_the_embedded_server() {
     assert!(text.contains("seed = 11"), "{text}");
     let _ = std::fs::remove_dir_all(root);
 }
+
+/// T1-25: `update` reports where its time went (adapted to the
+/// server-backed session: `source` is receiving from the server and
+/// `source_calls` the columns handed to the loader).
+#[test]
+fn update_reports_where_its_time_went() {
+    let root = std::env::temp_dir().join(format!("client-session-cost-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    let dir = worlds::create(&root, "Cost world", 7).expect("create");
+    let mut s = Session::open(
+        &dir,
+        SessionConfig {
+            autosave: Duration::ZERO,
+            ..config()
+        },
+    )
+    .expect("open");
+    let mut reads = 0;
+    run(&mut s, PlayerInput::default(), |s, _| {
+        let c = s.last_update_cost();
+        // The parts are measured inside the total, in order.
+        assert!(c.source <= c.loader);
+        assert!(c.loader + c.light + c.saves + c.autosave <= c.total);
+        reads += c.source_calls;
+        s.is_playing()
+    });
+    // Columns arrive from the embedded server and go to the loader.
+    assert!(reads > 0);
+    // Autosave every update (interval 0) shows up in the cost.
+    assert!(s.last_update_cost().autosave > Duration::ZERO);
+    s.close().expect("close");
+    let _ = std::fs::remove_dir_all(&root);
+}

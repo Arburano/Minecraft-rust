@@ -2,6 +2,7 @@
 //! block textures (own installation or fallback), cave culling and the camera.
 
 use std::collections::{HashMap, HashSet};
+use std::time::{Duration, Instant};
 
 use client::session::Session;
 use client::textures::BlockTextures;
@@ -27,6 +28,23 @@ pub struct WorldView {
     box_list: Vec<BoxInstance>,
     visible: HashSet<IVec3>,
     upload_errors: u32,
+}
+
+/// What one [`WorldView::sync`] uploaded and how long it took.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct SyncCost {
+    /// Collecting re-packed batches and writing them to the GPU.
+    pub batch_time: Duration,
+    /// Light atlas removals and writes.
+    pub light_time: Duration,
+    /// Batches written (an empty one removes a batch).
+    pub batches: u32,
+    /// Quads in those batches.
+    pub quads: u32,
+    /// Sections whose light was written.
+    pub light_sections: u32,
+    /// Sections whose light was dropped (their column unloaded).
+    pub removed_sections: u32,
 }
 
 impl WorldView {
@@ -69,20 +87,30 @@ impl WorldView {
         }
     }
 
-    /// Uploads what changed in the session since the last frame.
-    pub fn sync(&mut self, queue: &wgpu::Queue, session: &mut Session) {
+    /// Uploads what changed in the session since the last frame and reports
+    /// how much it was (T1-25 spike attribution).
+    pub fn sync(&mut self, queue: &wgpu::Queue, session: &mut Session) -> SyncCost {
+        let t0 = Instant::now();
+        let mut cost = SyncCost::default();
         let (terrain, errors) = (&mut self.terrain, &mut self.upload_errors);
         let mut pending_light = Vec::new();
         let mut removed = Vec::new();
+        let (batches, quads) = (&mut cost.batches, &mut cost.quads);
         session.render_updates(
             |sp| removed.push(IVec3::new(sp.x, sp.y, sp.z)),
             |pos, packed| {
+                *batches += 1;
+                *quads += packed.len() as u32;
                 if terrain.upload_batch(queue, pos, packed).is_err() {
                     *errors += 1;
                 }
             },
             |sp, l| pending_light.push((IVec3::new(sp.x, sp.y, sp.z), l.clone())),
         );
+        let t1 = Instant::now();
+        cost.batch_time = t1 - t0;
+        cost.removed_sections = removed.len() as u32;
+        cost.light_sections = pending_light.len() as u32;
         // Free unloaded sections' bricks before new light takes slots.
         for sp in removed {
             self.terrain.remove_section_light(queue, sp);
@@ -92,6 +120,8 @@ impl WorldView {
                 self.upload_errors += 1;
             }
         }
+        cost.light_time = t1.elapsed();
+        cost
     }
 
     /// Replaces the block textures (resource packs changed).
