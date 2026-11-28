@@ -1,0 +1,10 @@
+stage 1 exit route: 93399 frames over 300 s, GPU: AMD Radeon(TM) RX Vega 10 Graphics (Dx12), path PullingIndexed, profile Default (12 chunks)
+average FPS 311.3 (target 60)
+1% low FPS 115.9 (target >= 45)
+frame time p50 3.02 ms, p99 6.33 ms, max 56.23 ms
+frames > 33 ms: 3 (target 0)
+process memory peak 300 MiB, average 287 MiB (target <= 1536 MiB; internal budget 1024 MiB)
+route: walk, 1100 blocks walked (sprinting) on the ground at ≈ 5.6 blocks/s; 300 memory samples
+spikes attributed: 3
+spike causes (longest phase): ui 1 (avg 56.2 ms); encode 1 (avg 37.5 ms); outside 1 (avg 39.7 ms);
+mean phase over spikes, ms: generation 0.51; saved_reads 0.00; relight 0.00; saves 0.00; autosave 0.00; ticks 0.01; ui 14.56; upload_batches 0.00; upload_light 0.00; prepare 0.54; acquire 5.47; encode 9.68; submit 0.87; present 1.91; outside 10.91;

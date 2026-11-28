@@ -28,8 +28,9 @@ The stage 1 exit runs (T1-15, [review](../../docs/research/stage-1-exit-2026-11-
 ## Progress (2026-11-28)
 
 - Done (cloud): per-frame attribution (`FrameCost`, `UpdateCost`, `SyncCost`), `spikes-<time>.csv`, the "spike causes" lines in the summary, `--bench-mode walk|fly`, `scripts/stage1_exit.ps1 -Mode`. Report: [t1-25](../../task-reports/t1-25-frame-spike-attribution.md).
-- Next (owner's laptop): `powershell -File scripts\stage1_exit.ps1` (walk, 3 × 30 min Vega 10 + 1 × 1660 Ti) and `-Mode fly -Runs 1`; commit the summaries and `spikes-*.csv`.
-- Then (cloud): fixes for the phases the CSVs name, each with a before/after run.
+- Done (laptop quick check, 300 s × 1): `walk` + `fly` attribution recorded in [t1-25-2026-11-28/summary.md](../../docs/research/t1-25-2026-11-28/summary.md) (`upload_light` identified as main internal spike cause; GTX 1660 Ti hit ~33 ms `present` pacing).
+- Next (owner's laptop, optional full run): `powershell -File scripts\stage1_exit.ps1` (walk, 3 × 30 min Vega 10 + 1 × 1660 Ti) and `-Mode fly -Runs 1`.
+- Then (cloud): fixes for the phases the CSVs name (`upload_light`, etc.), each with a before/after run.
 
 ## Acceptance criteria
 

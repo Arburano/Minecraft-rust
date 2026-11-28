@@ -1,0 +1,10 @@
+stage 1 exit route: 9239 frames over 300 s, GPU: NVIDIA GeForce GTX 1660 Ti (Dx12), path PullingIndexed, profile High (16 chunks)
+average FPS 30.8 (target 60)
+1% low FPS 17.1 (target >= 45)
+frame time p50 33.32 ms, p99 48.34 ms, max 127.09 ms
+frames > 33 ms: 7863 (target 0)
+process memory peak 333 MiB, average 319 MiB (target <= 1536 MiB; internal budget 1024 MiB)
+route: fly, 1665 blocks flown 12 blocks above the ground at ≈ 5.5 blocks/s; 295 memory samples
+spikes attributed: 7863
+spike causes (longest phase): present 7757 (avg 33.4 ms); upload_light 103 (avg 55.1 ms); prepare 1 (avg 127.1 ms); encode 1 (avg 33.6 ms); outside 1 (avg 108.8 ms);
+mean phase over spikes, ms: generation 0.99; saved_reads 0.00; relight 0.00; saves 0.01; autosave 0.00; ticks 0.02; ui 0.24; upload_batches 0.07; upload_light 0.97; prepare 0.89; acquire 0.11; encode 0.33; submit 1.39; present 27.84; outside 0.88;
