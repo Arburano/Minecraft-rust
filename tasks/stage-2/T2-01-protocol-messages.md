@@ -1,6 +1,6 @@
 # T2-01. Protocol crate: messages, versioning, handshake
 
-- **Status:** todo
+- **Status:** done (report: [task-reports/t2-01-protocol-messages.md](../../task-reports/t2-01-protocol-messages.md))
 - **Depends on:** T0-11 (QUIC spike), T1-08 (offline identity)
 - **Owner:** agent (cloud)
 
@@ -18,9 +18,9 @@ The `protocol` crate from [networking-protocol.md](../../docs/architecture/netwo
 
 ## Acceptance criteria
 
-- [ ] Round-trip tests for every message; golden byte files for the handshake (format changes are deliberate).
-- [ ] A fuzz test (proptest or cargo-fuzz corpus in CI) shows decoding garbage never panics.
-- [ ] Sizes measured: a typical column record, an entity delta of 20 entities, an input datagram (≤ 1,200 bytes).
+- [x] Round-trip tests for every message; golden byte files for the handshake (format changes are deliberate). — `tests/roundtrip.rs`, `tests/golden.rs` + `tests/golden/*.bin`
+- [x] A fuzz test (proptest or cargo-fuzz corpus in CI) shows decoding garbage never panics. — `tests/fuzz.rs` (proptest, runs in CI)
+- [x] Sizes measured: a typical column record, an entity delta of 20 entities, an input datagram (≤ 1,200 bytes). — column median 1.69 KB, delta 179 B, input 47 B (`tests/sizes.rs`)
 
 ## Out of scope
 

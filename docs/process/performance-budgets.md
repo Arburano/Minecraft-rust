@@ -68,6 +68,8 @@ stage 1 carry-over in `tasks/README.md`.
 | Nearest 3×3 columns at 2% loss, RTT 100 ms | ≤ 1 s | Measured (VM, T0-11 spike, 8 KB random columns, BBR: 0.46–0.77 s over 6 seeds; quinn's default Cubic misses it — 1.13 s worst; [details](../research/net-quic-spike-2026-11-19.md)) |
 | Entity-delta latency while columns stream (2% loss, RTT 100 ms) | not blocked by chunk streams | Measured (VM, T0-11 spike, BBR: p95 52–58 ms ≈ the 50 ms one-way path delay; [details](../research/net-quic-spike-2026-11-19.md)) |
 | Traffic per player, steady state | ≤ 50 kbit/s (≤ 20 moving entities nearby) | Target |
+| Wire sizes (T2-01, `protocol`) | datagram ≤ 1,200 B; column record within the PRD §8 assumption of 4–16 KB | Measured (VM 4 vCPU Xeon 2.1 GHz; sizes are deterministic): input datagram of 3 ticks **47 B**; entity delta of 20 moving entities **179 B** (≈ 36 kbit/s at 20 Hz incl. ~48 B packet overhead), 100 entities 669 B, 200 do not fit one datagram (1,279 B); real overworld column (24 sections, zstd 1, no light) median **1.69 KB**, p95 2.22 KB, max 2.65 KB over 225 columns ➔ 625 columns ≈ 1.07 MB at login; `protocol` test `sizes`, [T2-01 report](../../task-reports/t2-01-protocol-messages.md) |
+| Protocol encode / decode (T2-01) | — (worker threads; no frame budget yet) | Measured (VM 4 vCPU Xeon 2.1 GHz, 3 runs, Criterion): column pack 42–49 µs, unpack incl. full section validation 86–110 µs; entity delta of 20 encode 2.1–2.2 µs, decode 0.85–1.35 µs; input datagram encode 0.44–0.75 µs, decode 90–102 ns; `protocol` bench `codec` |
 | Node RAM, 500 scattered players | ≤ 16 GB | Hypothesis |
 
 ### T0-09 measurements (2026-11-20)

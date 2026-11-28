@@ -52,6 +52,7 @@ jobs:
           cargo bench -p mesh --bench mesh_chunk -- $CRITERION_ARGS
           cargo bench -p light --bench light -- $CRITERION_ARGS
           cargo bench -p assets --bench assets -- $CRITERION_ARGS
+          cargo bench -p protocol --bench codec -- $CRITERION_ARGS
       - name: Collect results
         run: python3 scripts/bench_collect.py target/criterion bench-results.json
       - uses: actions/upload-artifact@v4
