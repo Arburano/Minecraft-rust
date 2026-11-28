@@ -73,6 +73,28 @@ pub enum SessionError {
     World(#[from] WorldsError),
 }
 
+/// Where the last [`Session::update`] spent its time (T1-25 spike
+/// attribution). Filled on every call; reading it costs nothing.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct UpdateCost {
+    /// The whole call.
+    pub total: Duration,
+    /// The loader tick, including the saved-column reads below.
+    pub loader: Duration,
+    /// Saved-column reads on the main thread (part of `loader`).
+    pub source: Duration,
+    /// Saved-column reads made.
+    pub source_calls: u32,
+    /// Relighting edited sections.
+    pub light: Duration,
+    /// Edited-column bookkeeping and writes of unloaded edited columns.
+    pub saves: Duration,
+    /// Columns that left the map.
+    pub unloaded: u32,
+    /// The autosave, if it ran in this call (zero otherwise).
+    pub autosave: Duration,
+}
+
 /// A running single-player world.
 pub struct Session {
     registry: Arc<Registry>,
@@ -101,6 +123,7 @@ pub struct Session {
     light_changed: Vec<SectionPos>,
     last_save: Instant,
     config: SessionConfig,
+    cost: UpdateCost,
 }
 
 impl Session {
@@ -188,6 +211,7 @@ impl Session {
             light_changed: Vec::new(),
             last_save: Instant::now(),
             config,
+            cost: UpdateCost::default(),
         })
     }
 
@@ -255,18 +279,25 @@ impl Session {
     /// the ground once the spawn column exists, relight a capped number of
     /// sections, keep edited columns that leave the map, autosave.
     pub fn update(&mut self) -> Result<(), SessionError> {
+        let t0 = Instant::now();
+        let mut cost = UpdateCost::default();
         let viewer = Viewer {
             pos: self.body.pos.to_array(),
             velocity: (self.body.vel * 20.0).to_array(),
         };
         {
             let (store, registry) = (&mut self.store, &self.registry);
+            let (source_time, source_calls) = (&mut cost.source, &mut cost.source_calls);
             let mut source = |c: ColumnPos| {
-                store
+                let t = Instant::now();
+                let col = store
                     .load_column(c, registry)
                     .ok()
                     .flatten()
-                    .map(|(col, _)| col)
+                    .map(|(col, _)| col);
+                *source_time += t.elapsed();
+                *source_calls += 1;
+                col
             };
             self.loader.tick_with_source(
                 &viewer,
@@ -276,6 +307,8 @@ impl Session {
                 Some(&mut source),
             );
         }
+        let t1 = Instant::now();
+        cost.loader = t1 - t0;
         if !self.spawned
             && let Some(h) = self
                 .map
@@ -292,11 +325,29 @@ impl Session {
                 self.config.light_sections_per_frame,
             )
             .ok();
-        self.track_saves()?;
-        if self.last_save.elapsed() >= self.config.autosave {
-            self.save()?;
-        }
-        Ok(())
+        let t2 = Instant::now();
+        cost.light = t2 - t1;
+        let gone = self.gone.len();
+        let result = self.track_saves();
+        cost.unloaded = (self.gone.len() - gone) as u32;
+        let t3 = Instant::now();
+        cost.saves = t3 - t2;
+        let result = result.and_then(|()| {
+            if self.last_save.elapsed() >= self.config.autosave {
+                self.save()?;
+                cost.autosave = t3.elapsed();
+            }
+            Ok(())
+        });
+        cost.total = t0.elapsed();
+        self.cost = cost;
+        result
+    }
+
+    /// Where the last [`Session::update`] spent its time.
+    #[must_use]
+    pub fn last_update_cost(&self) -> &UpdateCost {
+        &self.cost
     }
 
     /// Notes edited columns and writes the ones that were unloaded.

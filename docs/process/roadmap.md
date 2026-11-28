@@ -2,7 +2,7 @@
 
 The full description of stages and risks is PRD §9–10. Here is the working view: what is included, the exit criterion, tasks.
 
-**Current stage: 1 → 2** (stage 0 closed 2026-11-21, [exit review](../research/stage-0-exit-2026-11-21.md)). On 2026-11-23 the owner decided to start stage 2 ([`../../tasks/stage-2/`](../../tasks/stage-2/)) while the stage 1 exit runs (T1-15) were pending on the laptop. The runs were taken on 2026-11-27; the [stage 1 exit review](../research/stage-1-exit-2026-11-28.md) (T1-20) recommends exiting with the frame-spike deviation followed up in T1-21, and waits for the owner's decision. Stage 1 tasks: [`../../tasks/stage-1/`](../../tasks/stage-1/).
+**Current stage: 1 → 2** (stage 0 closed 2026-11-21, [exit review](../research/stage-0-exit-2026-11-21.md)). On 2026-11-23 the owner decided to start stage 2 ([`../../tasks/stage-2/`](../../tasks/stage-2/)) while the stage 1 exit runs (T1-15) were pending on the laptop. The runs were taken on 2026-11-27; the [stage 1 exit review](../research/stage-1-exit-2026-11-28.md) (T1-20) recommends exiting with the frame-spike deviation followed up in T1-25, and waits for the owner's decision. Stage 1 tasks: [`../../tasks/stage-1/`](../../tasks/stage-1/).
 
 | Stage | Duration (estimate) | Result | Exit criterion |
 | --- | --- | --- | --- |

@@ -34,7 +34,7 @@ A voxel game that can be fully reworked through mods, holds a steady 60 FPS on a
 | Time to join a server with a warm asset cache (until the character is controllable) | ≤ 5 s |
 | WASM mod overhead per hook call | ≤ 1 µs |
 
-The stage 1 exit runs (T1-15, bare-metal Vega 10 at 16 chunks) meet the iGPU FPS and 1% low targets and use ≤ 346 MiB of client RAM; frame spikes > 33 ms are still present and followed up in T1-21 ([stage 1 exit review](research/stage-1-exit-2026-11-28.md)). The T0-07 prototype exceeds the hook and typed-event performance targets; the targets above are unchanged. Its measurements, documented deviations and unresolved interruption jitter are recorded in [performance budgets](process/performance-budgets.md#t0-07-measurements-2026-11-19).
+The stage 1 exit runs (T1-15, bare-metal Vega 10 at 16 chunks) meet the iGPU FPS and 1% low targets and use ≤ 346 MiB of client RAM; frame spikes > 33 ms are still present and followed up in T1-25 ([stage 1 exit review](research/stage-1-exit-2026-11-28.md)). The T0-07 prototype exceeds the hook and typed-event performance targets; the targets above are unchanged. Its measurements, documented deviations and unresolved interruption jitter are recorded in [performance budgets](process/performance-budgets.md#t0-07-measurements-2026-11-19).
 
 ## 2. Key decisions and stack
 

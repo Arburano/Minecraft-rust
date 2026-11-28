@@ -16,5 +16,5 @@ The same as T0-17 for stage 0: compare every stage 1 exit number with the [roadm
   - the Client RAM row in performance-budgets moved to Measured;
   - what was missed and why;
   - open questions carried over (1, 7, 12, 15);
-  - follow-up for the frame-spike deviation: [T1-21](T1-21-frame-spike-attribution.md).
+  - follow-up for the frame-spike deviation: [T1-25](T1-25-frame-spike-attribution.md).
 - [ ] **Owner's exit decision** recorded in the roadmap.

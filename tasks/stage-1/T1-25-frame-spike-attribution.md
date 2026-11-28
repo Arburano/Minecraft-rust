@@ -1,6 +1,8 @@
-# T1-21. Frame spike attribution and fix
+# T1-25. Frame spike attribution and fix
 
-- **Status:** todo
+Numbered T1-25 because T1-21 … T1-24 are taken on the unmerged branch `ccr-1493f683-03fpg7` (render reference scene, render graph, mesher trait, modular base game).
+
+- **Status:** in-progress (cloud part 1 done: attribution and walking route; owner: laptop runs; then fixes)
 - **Depends on:** T1-15
 - **Owner:** agent (cloud) writes the instrumentation and fixes; owner's laptop runs the route
 
@@ -22,6 +24,12 @@ The stage 1 exit runs (T1-15, [review](../../docs/research/stage-1-exit-2026-11-
 - **Fixes** for the main-thread causes the attribution finds (for example moving saved-column reads to a worker, spreading uploads over frames, an upload byte budget per frame). Each fix with a before/after run.
 - A Tracy capture of one spike on the laptop, if the attribution is not conclusive.
 - `scripts/stage1_exit.ps1` gains the walking mode.
+
+## Progress (2026-11-28)
+
+- Done (cloud): per-frame attribution (`FrameCost`, `UpdateCost`, `SyncCost`), `spikes-<time>.csv`, the "spike causes" lines in the summary, `--bench-mode walk|fly`, `scripts/stage1_exit.ps1 -Mode`. Report: [t1-25](../../task-reports/t1-25-frame-spike-attribution.md).
+- Next (owner's laptop): `powershell -File scripts\stage1_exit.ps1` (walk, 3 × 30 min Vega 10 + 1 × 1660 Ti) and `-Mode fly -Runs 1`; commit the summaries and `spikes-*.csv`.
+- Then (cloud): fixes for the phases the CSVs name, each with a before/after run.
 
 ## Acceptance criteria
 
