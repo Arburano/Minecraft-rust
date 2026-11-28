@@ -20,7 +20,7 @@ pub use column::{Column, ColumnPos, ColumnState, WorldBounds};
 pub use map::{DirtyKind, WorldError, WorldMap};
 pub use modset::{ModSet, ModSetError};
 pub use registry::{
-    BlockDef, BlockProps, Collision, IdTable, Registry, RegistryBuilder, RegistryError,
+    BlockDef, BlockProps, Collision, IdTable, MesherKind, Registry, RegistryBuilder, RegistryError,
 };
 pub use section::{Section, SectionDecodeError};
 

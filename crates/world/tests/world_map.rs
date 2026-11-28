@@ -18,6 +18,7 @@ fn registry() -> Arc<Registry> {
         light_emission: 0,
         light_opacity: 0,
         collision: world::Collision::Full,
+        mesher: world::MesherKind::Cubic,
     };
     let water = BlockProps {
         light_opacity: 1,

@@ -28,7 +28,8 @@ opaque = false
 transparent = true                      # goes into the transparent mask
 light_emission = 0
 light_opacity = 1                       # 0..=15, attenuation of light entering the block; default 15 if opaque, else 0
-collision = "model"                     # full | none | model
+collision = "model"                     # full | none | model (physics reads only this, never the mesh)
+mesher = "cubic"                        # chunk mesher, ADR-0016; only "cubic" exists (the default)
 states = { facing = ["north", "south", "east", "west", "up", "down"], waterlogged = [false, true] }
 components = ["copper_pipes:flow"]      # behavior from WASM
 tick = "none"                           # none | random | scheduled
