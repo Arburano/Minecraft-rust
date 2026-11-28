@@ -18,9 +18,9 @@ pub fn record(col: &Column) -> ColumnRecord {
     }
 }
 
-/// The encoded `ChunkStream` message of a column.
-pub fn encode(col: &Column) -> Result<Arc<[u8]>, ProtocolError> {
-    let payload = ColumnPayload::encode(&record(col))?;
+/// The encoded `ChunkStream` message of a column of `dimension`.
+pub fn encode(col: &Column, dimension: u8) -> Result<Arc<[u8]>, ProtocolError> {
+    let payload = ColumnPayload::encode(&record(col), dimension)?;
     Ok(ChunkStream::Column(payload).encode()?.into())
 }
 

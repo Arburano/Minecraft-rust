@@ -24,6 +24,7 @@ fn decode_everything(bytes: &[u8]) {
     // The column body straight from garbage, as a peer could send it.
     let _ = ColumnPayload {
         pos: ColumnXz { x: -3, z: 12 },
+        dimension: 0,
         zstd: bytes.to_vec(),
     }
     .decode();
@@ -40,10 +41,10 @@ fn valid_samples() -> Vec<Vec<u8>> {
         entities(20).encode().expect("e"),
         moving(20).encode().expect("e"),
         corrected().encode().expect("e"),
-        ChunkStream::Column(ColumnPayload::encode(&small_record()).expect("e"))
+        ChunkStream::Column(ColumnPayload::encode(&small_record(), 0).expect("e"))
             .encode()
             .expect("e"),
-        ColumnPayload::encode(&small_record()).expect("e").zstd,
+        ColumnPayload::encode(&small_record(), 0).expect("e").zstd,
     ];
     v.extend(client_events().iter().map(|e| e.encode().expect("e")));
     v.extend(server_events().iter().map(|e| e.encode().expect("e")));

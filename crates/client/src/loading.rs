@@ -230,6 +230,33 @@ impl Loader {
         }
     }
 
+    /// Drops the whole world (a travel to another dimension, T4-02): every
+    /// job is cancelled (late results are ignored), every column leaves the
+    /// map and the light, every mesh is reported as removed, and finished
+    /// results not applied yet are discarded.
+    pub fn clear(&mut self, map: &mut WorldMap, light: &mut WorldLight) {
+        for token in self.in_flight.values() {
+            token.cancel();
+        }
+        self.in_flight.clear();
+        self.finished.clear();
+        self.lit.clear();
+        let all: Vec<ColumnPos> = map.column_positions().collect();
+        for c in all {
+            if let Some(col) = map.remove_column(c)
+                && let Some(out) = &mut self.unloaded
+            {
+                out.push(col);
+            }
+            light.remove_column(c);
+        }
+        if let Some(changed) = &mut self.changed_meshes {
+            changed.extend(self.meshes.keys().copied());
+        }
+        self.meshes.clear();
+        self.visibility.clear();
+    }
+
     /// Starts keeping columns that leave the map (see [`Self::take_unloaded`]).
     pub fn track_unloads(&mut self) {
         self.unloaded.get_or_insert_with(Vec::new);

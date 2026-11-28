@@ -44,14 +44,14 @@ fn every_message_round_trips() {
     for e in server_events() {
         round_trip(&e);
     }
-    let payload = ColumnPayload::encode(&small_record()).expect("column");
+    let payload = ColumnPayload::encode(&small_record(), 0).expect("column");
     round_trip(&ChunkStream::Column(payload));
 }
 
 #[test]
 fn column_payload_round_trips_blocks() {
     let record = small_record();
-    let payload = ColumnPayload::encode(&record).expect("encode");
+    let payload = ColumnPayload::encode(&record, 0).expect("encode");
     let back = payload.decode().expect("decode");
     assert_eq!(back.pos, record.pos);
     assert_eq!(back.bounds, record.bounds);
@@ -64,7 +64,7 @@ fn column_payload_round_trips_blocks() {
 
 #[test]
 fn column_payload_with_wrong_position_is_rejected() {
-    let mut payload = ColumnPayload::encode(&small_record()).expect("encode");
+    let mut payload = ColumnPayload::encode(&small_record(), 0).expect("encode");
     payload.pos.x += 1;
     assert!(matches!(
         payload.decode(),
@@ -159,7 +159,7 @@ fn golden(name: &str, bytes: &[u8]) {
 
 #[test]
 fn handshake_bytes_match_golden_files() {
-    assert_eq!(PROTOCOL_VERSION, 5, "a version bump needs new golden files");
+    assert_eq!(PROTOCOL_VERSION, 6, "a version bump needs new golden files");
     golden("header.bin", &HandshakeHeader::current().encode());
     golden("hello.bin", &hello().encode().expect("hello"));
     golden("welcome.bin", &welcome().encode().expect("welcome"));

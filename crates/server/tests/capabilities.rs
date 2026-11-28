@@ -45,6 +45,7 @@ fn mods_root(tag: &str) -> PathBuf {
         ("zones_test", "\"zones\""),
         ("grids_test", "\"moving_grids\""),
         ("dims_test", "\"dimensions\""),
+        ("inst_test", "\"instances\""),
     ] {
         let dir = root.join(id);
         std::fs::create_dir_all(dir.join("data")).expect("mkdir");
@@ -265,19 +266,19 @@ fn a_required_capability_starts_its_subsystem() {
 #[test]
 fn an_unimplemented_capability_is_a_clear_error() {
     let root = mods_root("missing");
-    // `dimensions` has no subsystem in this engine version (T4-02).
+    // `instances` has no subsystem in this engine version (T4-09).
     let Err(e) = Server::start(config(
-        build(&root, "space_test", &["dims_test"]),
+        build(&root, "space_test", &["inst_test"]),
         temp("missing-world"),
         SubsystemRegistry::builtin(),
     )) else {
-        panic!("dimensions has no subsystem in this engine version");
+        panic!("instances has no subsystem in this engine version");
     };
     let e = e.to_string();
     assert!(
         e.contains("build space_test")
-            && e.contains("capability dimensions")
-            && e.contains("mod dims_test")
+            && e.contains("capability instances")
+            && e.contains("mod inst_test")
             && e.contains("does not implement"),
         "{e}"
     );

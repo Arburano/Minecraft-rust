@@ -33,6 +33,9 @@ pub enum ClientEvent {
     Dig {
         /// Client sequence number, echoed in [`ServerEvent::BlockAck`].
         seq: u32,
+        /// The dimension the client saw the block in (edits made just
+        /// before a travel are refused, T4-02).
+        dimension: u8,
         /// The block.
         pos: BlockXyz,
     },
@@ -40,6 +43,8 @@ pub enum ClientEvent {
     Place {
         /// Client sequence number.
         seq: u32,
+        /// The dimension the client saw the cell in.
+        dimension: u8,
         /// The cell that receives the block.
         pos: BlockXyz,
         /// The placed state.
@@ -57,8 +62,13 @@ pub enum ServerEvent {
         /// Text.
         text: String,
     },
-    /// Authoritative block changes in loaded columns.
-    BlockChanges(Vec<BlockChange>),
+    /// Authoritative block changes in loaded columns of `dimension`.
+    BlockChanges {
+        /// The dimension ([`crate::Spawn::dimension`]).
+        dimension: u8,
+        /// The changes.
+        changes: Vec<BlockChange>,
+    },
     /// The result of a client edit: rejected edits are rolled back.
     BlockAck {
         /// The client's sequence number.
@@ -66,8 +76,13 @@ pub enum ServerEvent {
         /// Whether the server applied it.
         accepted: bool,
     },
-    /// The client may drop this column (out of view).
-    ForgetColumn(ColumnXz),
+    /// The client may drop this column of `dimension` (out of view).
+    ForgetColumn {
+        /// The dimension.
+        dimension: u8,
+        /// The column.
+        column: ColumnXz,
+    },
 }
 
 impl Message for ClientEvent {
@@ -90,8 +105,10 @@ impl Message for ServerEvent {
                 check_text(from, crate::MAX_NAME_LEN, "chat sender")?;
                 check_text(text, MAX_CHAT_LEN, "chat text")
             }
-            Self::BlockChanges(c) => check(c.len() <= MAX_BLOCK_CHANGES, "too many block changes"),
-            Self::BlockAck { .. } | Self::ForgetColumn(_) => Ok(()),
+            Self::BlockChanges { changes, .. } => {
+                check(changes.len() <= MAX_BLOCK_CHANGES, "too many block changes")
+            }
+            Self::BlockAck { .. } | Self::ForgetColumn { .. } => Ok(()),
         }
     }
 }

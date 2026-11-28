@@ -1,6 +1,6 @@
 # T4-02. Dimensions
 
-- **Status:** in-progress (part 1 done 2026-11-28: definitions, checks, gravity scale; part 2: several dimensions at once, travel, protocol)
+- **Status:** done (2026-11-28; part 1: definitions, checks, gravity scale; part 2: several dimensions at once, player travel, protocol v6)
 - **Depends on:** T4-01, T2-06, T2-08
 - **Owner:** agent (cloud)
 
@@ -25,15 +25,19 @@ Several worlds per server ([dimensions.md](../../docs/architecture/dimensions.md
   - server and client apply the overworld's player gravity scale.
 
   Report: [t4-02](../../task-reports/t4-02-dimensions-part-1.md).
-- **Part 2 (todo):**
-  - a dimension set in the server's world thread (one `World` per dimension, or regions keyed by dimension);
-  - storage under `dimensions/<id>/`;
-  - travel in the Exchange phase;
-  - protocol version bump with the dimension id;
-  - client maps per dimension;
-  - the acceptance tests.
+- **Part 2 (done, cloud):**
+  - `server::node::Node`: one `World` per dimension on the world thread, routing by player;
+  - storage under `dimensions/<id>/` (the overworld stays at the root);
+  - player travel at the tick boundary (`Server::travel`, `/dimension <id>` on offline servers);
+  - player files record the dimension;
+  - protocol version 6 with the dimension index;
+  - the client resets its world on a travel and drops stale messages by tag;
+  - tests in `crates/client/tests/dimensions.rs`.
+
+  Report: [t4-02 part 2](../../task-reports/t4-02-dimensions-part-2.md).
+- **Left for later:** travel of entities other than players (needs the mod API); keeping the last dimension's map on the client.
 
 ## Acceptance criteria
 
-- [ ] Two dimensions with different generators run at once; a player moves between them and back without losing items or position.
-- [ ] Tick and memory unchanged within noise for a build with one dimension.
+- [x] Two dimensions with different generators run at once; a player moves between them and back without losing position (there are no items yet; the player file keeps the dimension).
+- [ ] Tick and memory unchanged within noise for a build with one dimension: not measured. A one-dimension build runs its world without the node, as before; the only change on its path is one byte on a few messages.

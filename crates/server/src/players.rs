@@ -18,6 +18,9 @@ pub struct SavedPlayer {
     /// Fly speed multiplier (0 = ×1; older files have none).
     #[serde(default)]
     pub fly_speed: f64,
+    /// The dimension the player is in (T4-02; absent: the overworld).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dimension: Option<String>,
 }
 
 fn path(world: &Path, id: &str) -> PathBuf {
@@ -57,9 +60,19 @@ mod tests {
             pitch: -0.1,
             flying: true,
             fly_speed: 2.0,
+            dimension: Some("moon".into()),
         };
         save(&dir, "abc", &p).expect("save");
-        assert_eq!(load(&dir, "abc"), Some(p));
+        assert_eq!(load(&dir, "abc"), Some(p.clone()));
+        // The overworld is not written, and files from before T4-02 load.
+        let old = SavedPlayer {
+            dimension: None,
+            ..p
+        };
+        save(&dir, "old", &old).expect("save");
+        let text = std::fs::read_to_string(dir.join("players/old.toml")).unwrap_or_default();
+        assert!(!text.contains("dimension"), "{text}");
+        assert_eq!(load(&dir, "old"), Some(old));
         assert_eq!(load(&dir, "missing"), None);
         let _ = std::fs::remove_dir_all(dir);
     }

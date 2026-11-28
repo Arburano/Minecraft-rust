@@ -216,6 +216,14 @@ pub struct Session {
     sync: BatchSync,
     pool: Option<JobPool>,
     physics: PhysicsConfig,
+    /// The movement profile before a dimension's gravity scale.
+    base_physics: PhysicsConfig,
+    /// Player gravity scale of each dimension, by protocol index.
+    gravity_scales: Vec<f64>,
+    /// The dimension the player is in (index in the build's sorted list).
+    dimension: u8,
+    /// Dimension changes so far.
+    travels: u32,
     swim: Vec<BlockStateId>,
     body: PlayerBody,
     prev: PlayerBody,
@@ -337,9 +345,17 @@ impl Session {
         let ModData {
             registry,
             gen_config,
-            physics,
+            base_physics,
+            gravity_scales,
             swim,
         } = data;
+        let dimension = link.remote.spawn.dimension;
+        let physics = base_physics.clone().with_gravity_scale(
+            gravity_scales
+                .get(usize::from(dimension))
+                .copied()
+                .unwrap_or(1.0),
+        );
         let ctx = Arc::new(GenContext::new(info.seed, gen_config, bounds));
         let mut loader = Loader::new(
             LoadConfig {
@@ -406,6 +422,10 @@ impl Session {
             sync: BatchSync::new(),
             pool,
             physics,
+            base_physics,
+            gravity_scales,
+            dimension,
+            travels: 0,
             swim,
             body,
             prev: body,
@@ -449,6 +469,30 @@ impl Session {
     #[must_use]
     pub fn physics(&self) -> &PhysicsConfig {
         &self.physics
+    }
+
+    /// The dimension the player is in: its index in the build's dimensions
+    /// sorted by id (T4-02).
+    #[must_use]
+    pub fn dimension(&self) -> u8 {
+        self.dimension
+    }
+
+    /// How many times the player changed dimension in this session.
+    #[must_use]
+    pub fn travels(&self) -> u32 {
+        self.travels
+    }
+
+    /// Sends a chat line (on offline servers `/dimension <id>` travels).
+    pub fn send_chat(&self, text: &str) {
+        let mut end = text.len().min(protocol::MAX_CHAT_LEN);
+        while !text.is_char_boundary(end) {
+            end -= 1;
+        }
+        self.link.remote.send_event(protocol::ClientEvent::Chat {
+            text: text[..end].to_owned(),
+        });
     }
 
     /// The player's body after the last tick.
@@ -541,6 +585,9 @@ impl Session {
             for e in link.remote.poll() {
                 match e {
                     RemoteEvent::Datagram(d) => {
+                        if d.dimension != self.dimension {
+                            continue;
+                        }
                         if let Some(t) = d.ack_tick {
                             link.acked_tick = Some(link.acked_tick.map_or(t, |a| a.max(t)));
                         }
@@ -549,7 +596,10 @@ impl Session {
                             corrections.push(c);
                         }
                     }
-                    RemoteEvent::Column(mut c) => {
+                    RemoteEvent::Column(dim, mut c) => {
+                        if dim != self.dimension || c.bounds() != self.map.bounds() {
+                            continue;
+                        }
                         link.stats.columns += 1;
                         // Changes that arrived before their column.
                         for (pos, id) in link.late.remove(&c.pos()).unwrap_or_default() {
@@ -565,11 +615,17 @@ impl Session {
                         link.incoming.insert(c.pos(), c);
                     }
                     RemoteEvent::Packed(pos, payload) => {
+                        if payload.dimension != self.dimension {
+                            continue;
+                        }
                         link.stats.columns += 1;
                         link.forgotten.remove(&pos);
                         link.packed.insert(pos, payload);
                     }
-                    RemoteEvent::Blocks(changes) => {
+                    RemoteEvent::Blocks(dim, changes) => {
+                        if dim != self.dimension {
+                            continue;
+                        }
                         for (pos, id) in changes {
                             if let Some(truth) = link.shadow.get_mut(&pos) {
                                 // Our own edit is pending here: remember the
@@ -631,13 +687,67 @@ impl Session {
                             }
                         }
                     }
-                    RemoteEvent::Forget(c) => {
+                    RemoteEvent::Forget(dim, c) => {
+                        if dim != self.dimension {
+                            continue;
+                        }
                         link.packed.remove(&c);
                         link.late.remove(&c);
                         link.incoming.remove(&c);
                         if self.map.column(c).is_some() {
                             link.forgotten.insert(c);
                         }
+                    }
+                    RemoteEvent::Respawn(spawn) => {
+                        if spawn.dimension == self.dimension {
+                            continue;
+                        }
+                        // A travel (T4-02): everything of the old dimension
+                        // goes, the new one streams in from the server.
+                        corrections.clear();
+                        // (Field by field: `poll` still borrows the remote.)
+                        link.incoming.clear();
+                        link.forgotten.clear();
+                        link.packed.clear();
+                        link.late.clear();
+                        link.pending.clear();
+                        link.shadow.clear();
+                        link.history.clear();
+                        link.recent.clear();
+                        link.last_correction = None;
+                        link.offset = DVec3::ZERO;
+                        link.others = Others::default();
+                        self.loader.clear(&mut self.map, &mut self.light);
+                        let mut old = Vec::new();
+                        self.loader.take_unloaded(&mut old);
+                        self.gone.extend(old.iter().map(Column::pos));
+                        self.unsaved.clear();
+                        self.map = WorldMap::new(Arc::clone(&self.registry), spawn.bounds());
+                        self.editor = if self.config.headless {
+                            Editor::headless(&self.map)
+                        } else {
+                            Editor::new(&self.map)
+                        };
+                        self.dimension = spawn.dimension;
+                        self.travels += 1;
+                        let scale = self
+                            .gravity_scales
+                            .get(usize::from(spawn.dimension))
+                            .copied()
+                            .unwrap_or(1.0);
+                        self.physics = self.base_physics.clone().with_gravity_scale(scale);
+                        self.body = PlayerBody {
+                            pos: DVec3::from_array(spawn.position),
+                            flying: spawn.flying,
+                            ..PlayerBody::default()
+                        };
+                        self.prev = self.body;
+                        self.yaw = f64::from(spawn.yaw);
+                        self.pitch = f64::from(spawn.pitch);
+                        if spawn.fly_speed > 0.0 {
+                            self.fly_speed = spawn.fly_speed;
+                        }
+                        self.spawned = true;
                     }
                     RemoteEvent::Ended(m) => link.ended = Some(m),
                 }
@@ -961,6 +1071,7 @@ impl Session {
         let event = match state {
             None => Some(protocol::ClientEvent::Dig {
                 seq: link.next_seq,
+                dimension: self.dimension,
                 pos: pos.into(),
             }),
             Some(id) => link
@@ -968,6 +1079,7 @@ impl Session {
                 .server_state(id)
                 .map(|state| protocol::ClientEvent::Place {
                     seq: link.next_seq,
+                    dimension: self.dimension,
                     pos: pos.into(),
                     state,
                 }),
@@ -1184,7 +1296,8 @@ fn reconcile(
 struct ModData {
     registry: Arc<Registry>,
     gen_config: WorldgenConfig,
-    physics: PhysicsConfig,
+    base_physics: PhysicsConfig,
+    gravity_scales: Vec<f64>,
     swim: Vec<BlockStateId>,
 }
 
@@ -1203,19 +1316,20 @@ impl ModData {
         let physics_src = mods
             .read_slot(world::modset::MOVEMENT_SLOT, "movement/profile.toml")
             .map_err(|e| data_err(&e))?;
-        // The same dimension scaling as the server, so predictions agree.
-        let gravity_scale = world::dimension::from_mods(mods)
+        // The same dimension scaling as the server, so predictions agree;
+        // the protocol numbers dimensions by their sorted ids, as here.
+        let gravity_scales = world::dimension::from_mods(mods)
             .map_err(|e| data_err(&e))?
-            .get(world::dimension::OVERWORLD)
-            .map_or(1.0, |d| d.physics.player_gravity_scale);
-        let physics = PhysicsConfig::from_toml(&physics_src)
-            .map_err(|e| data_err(&e))?
-            .with_gravity_scale(gravity_scale);
-        let swim = physics.swim_ids(&registry).map_err(|e| data_err(&e))?;
+            .values()
+            .map(|d| d.physics.player_gravity_scale)
+            .collect();
+        let base_physics = PhysicsConfig::from_toml(&physics_src).map_err(|e| data_err(&e))?;
+        let swim = base_physics.swim_ids(&registry).map_err(|e| data_err(&e))?;
         Ok(Self {
             registry,
             gen_config,
-            physics,
+            base_physics,
+            gravity_scales,
             swim,
         })
     }

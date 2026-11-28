@@ -104,7 +104,7 @@ fn world(tag: &str, mods: &ModSet, dir: &Path) -> World {
         .unwrap_or_else(|e| panic!("{tag}: {e}"));
     assert!(subsystems.capabilities().contains(Capability::Zones));
     let store = WorldStore::open(dir, &registry, WorldBounds::default()).expect("store");
-    let storage = Storage::start(store, Arc::clone(&registry)).expect("storage");
+    let storage = Storage::start(store, Arc::clone(&registry), 0).expect("storage");
     World::new(
         WorldSetup {
             registry,
@@ -117,6 +117,7 @@ fn world(tag: &str, mods: &ModSet, dir: &Path) -> World {
             region_threads: 2,
             entity_limits: Default::default(),
             subsystems,
+            dimension: (0, world::dimension::OVERWORLD.to_owned()),
         },
         storage,
     )
@@ -185,10 +186,16 @@ impl Game {
 
     /// Digs `pos` as `id`; whether the server accepted it.
     fn dig(&mut self, id: &str, seq: u32, pos: BlockPos) -> bool {
+        self.dig_in(0, id, seq, pos)
+    }
+
+    /// Digs as if the client were in dimension `dimension` (T4-02).
+    fn dig_in(&mut self, dimension: u8, id: &str, seq: u32, pos: BlockPos) -> bool {
         self.tx
             .send(ToWorld::Edit {
                 id: id.into(),
                 seq,
+                dimension,
                 pos,
                 edit: Edit::Dig,
                 allowed: true,
@@ -239,6 +246,12 @@ fn build_rights_are_enforced_and_the_zone_api_changes_them() {
         "spawn is in the town: {ground:?}"
     );
     assert!(!g.dig("bob", 1, ground), "bob may not build in the town");
+    // An edit made in another dimension (sent just before a travel) is
+    // refused even where the player may build (T4-02).
+    assert!(
+        !g.dig_in(1, "alice", 9, ground),
+        "an edit of another dimension"
+    );
     // A member may.
     assert!(g.dig("alice", 1, ground), "alice is a member");
 

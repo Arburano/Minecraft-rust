@@ -154,6 +154,11 @@ pub struct Spawn {
     pub fly_speed: f64,
     /// Column radius the server streams (≥ 8, PRD §14).
     pub view_distance: u8,
+    /// The dimension the player is in (T4-02): its index in the build's
+    /// dimension list (sorted by id). A new `Spawn` with another dimension
+    /// is a travel: the client drops its world and starts again; columns,
+    /// datagrams and events carry the index so stale ones are dropped.
+    pub dimension: u8,
 }
 
 impl Spawn {

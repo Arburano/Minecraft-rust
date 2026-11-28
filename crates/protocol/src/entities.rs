@@ -133,6 +133,8 @@ pub struct EntityDatagram {
     pub updates: Vec<EntityUpdate>,
     /// Entities that left this client's view or were removed.
     pub removed: Vec<NetId>,
+    /// The dimension these entities are in ([`crate::Spawn::dimension`]).
+    pub dimension: u8,
 }
 
 impl Message for EntityDatagram {

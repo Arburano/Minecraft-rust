@@ -85,6 +85,7 @@ mod imp {
                     pitch: info.player.pitch,
                     flying: info.player.flying,
                     fly_speed: info.player.fly_speed,
+                    dimension: None,
                 },
             )
             .map_err(|e| SessionError::Data(format!("player file: {e}")))?;

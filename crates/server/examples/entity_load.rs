@@ -49,7 +49,7 @@ fn main() {
     let physics = PhysicsConfig::from_toml(&mods.read("movement/profile.toml").expect("physics"))
         .expect("physics");
     let store = WorldStore::open(&dir, &registry, WorldBounds::default()).expect("store");
-    let storage = Storage::start(store, Arc::clone(&registry)).expect("storage");
+    let storage = Storage::start(store, Arc::clone(&registry), 0).expect("storage");
     let mut w = World::new(
         WorldSetup {
             registry,
@@ -62,6 +62,7 @@ fn main() {
             region_threads: (cores * 4 / 5).max(1),
             entity_limits: server::entities::EntityLimits::from_mods(&data).expect("limits"),
             subsystems: Default::default(),
+            dimension: (0, world::dimension::OVERWORLD.to_owned()),
         },
         storage,
     )

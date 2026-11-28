@@ -175,6 +175,8 @@ impl Replicator {
             origin,
             updates,
             removed,
+            // The caller sets its dimension (T4-02); one byte either way.
+            dimension: 0,
         };
         // Keep the nearest updates that fit one datagram; the rest follow.
         // Binary search on the number of updates (each try is an encode),

@@ -1,6 +1,6 @@
 # Dimensions and space
 
-Capabilities: `dimensions`, `space` ([ADR-0018](../adr/0018-engine-capabilities-per-build.md), accepted 2026-11-27). Status: part 1 implemented (T4-02): dimension definitions in module data, checked at start, the overworld's player gravity scale applied. A server still runs one dimension, the overworld; several at once, travel and the protocol changes are part 2.
+Capabilities: `dimensions`, `space` ([ADR-0018](../adr/0018-engine-capabilities-per-build.md), accepted 2026-11-27). Status: implemented (T4-02): dimension definitions in module data, several dimensions on one server, player travel, the dimension id in the protocol (version 6). Entities other than players do not travel yet (that needs the mod API, stage 3).
 
 ## Dimensions
 
@@ -41,10 +41,17 @@ A **dimension** is a world of its own: its own columns, its own generator (a wor
 - `mods/overworld` and `mods/overworld_plus` define `overworld`.
 - **Server and client** read the build's dimensions at start (an invalid one stops the start with its message). Players use the overworld's `player_gravity_scale` (`PhysicsConfig::with_gravity_scale`; ×1 changes nothing, so the classic movement stays bit-identical).
 - **Storage:** the overworld stays at the world root (no migration). Other dimensions will live under `<world>/dimensions/<id>/`. `server.toml` already records the provider of every `worldgen:<id>` slot.
-- **Part 2:**
-  - several dimensions running at once (one region set each, on the shared pool);
-  - travel in the Exchange phase;
-  - the protocol's dimension id on `Spawn`, columns, entities and edits, with per-dimension maps on the client.
+
+## Implementation (T4-02 part 2)
+
+- **Server:** one `game::World` per dimension, each with its own regions, column store, generator (its `worldgen:<id>` module's file, a seed derived from the world seed and the id), bounds, cache and player physics (the movement profile × `player_gravity_scale`). Region threads are shared out between the worlds. A build with one dimension runs its world directly, as before; with more, `server::node::Node` owns the worlds on the world thread: it routes every message from the connections to the world the player is in and steps each world in turn at 20 TPS.
+- **Capability:** a build with more than one dimension must have a mod requiring `dimensions`, or the server does not start (the message names the build and its dimensions).
+- **Storage:** the overworld stays at the world root; every other dimension has its store in `<world>/dimensions/<id>/`.
+- **Travel:** between two ticks the node takes the player out of its world (its queued intents applied, as when leaving) and inserts it into the target world, at the given position or flying 32 blocks under the top at the same x and z. That is the tick boundary the Exchange phase stands for: no region of either world runs meanwhile. The target world gives the player a new network id and sends a new `Spawn`. Ways to travel: `Server::travel(player, dimension, pos)` (what a portal or a mod will call) and, on offline servers only (development and tests), the chat command `/dimension <id>` (without an id it lists the dimensions).
+- **Players:** the player file records the dimension (`dimension = "<id>"`, left out for the overworld, so older files still load); a returning player joins the dimension it left in.
+- **Protocol (version 6):** a dimension's index is its position in the build's dimensions sorted by id (both sides read the same build). `Spawn`, column payloads, entity datagrams, `BlockChanges`, `ForgetColumn` and the client's `Dig` and `Place` carry it. The server refuses an edit tagged with another dimension than the player's. A new `Spawn` with another dimension means the player travelled.
+- **Client:** on a travel the session drops the whole old world: columns, light, meshes, pending columns and edits, other entities, prediction history. It then starts a map with the new dimension's bounds and the new gravity scale. Anything still in flight from the old dimension is dropped by its tag (and a column with other bounds than the map's is dropped too). The client keeps one map, not one per recently seen dimension: coming back streams the columns again. Keeping the last dimension's map is a possible later optimisation, if going back and forth through a portal shows a wait.
+- **Tests:** `crates/client/tests/dimensions.rs`. A test module adds a `moon` with another height and half the gravity. A player starts in the overworld and goes to the moon with the chat command: there it holds only moon columns and has half the gravity. It leaves, the file says `moon`, and it rejoins on the moon. The server API brings it back to the overworld. A second test checks that a build with two dimensions and no capability is refused.
 
 ## Space
 

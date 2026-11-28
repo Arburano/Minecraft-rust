@@ -83,7 +83,7 @@ fn generated_columns_compress_as_expected() {
                 entities: Vec::new(),
             };
             raw.push(world::storage::encode_column(&record, 0).len());
-            let msg = ChunkStream::Column(ColumnPayload::encode(&record).expect("payload"));
+            let msg = ChunkStream::Column(ColumnPayload::encode(&record, 0).expect("payload"));
             let bytes = msg.encode().expect("encode");
             wire.push(bytes.len());
             let ChunkStream::Column(back) = ChunkStream::decode(&bytes).expect("decode");

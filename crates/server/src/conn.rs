@@ -297,11 +297,27 @@ async fn read_client_events(conn: Connection, world: Sender<ToWorld>, id: String
         match read_message::<ClientEvent>(&mut recv).await {
             Ok(Some(e)) => {
                 let edit = match e {
-                    ClientEvent::Dig { seq, pos } => Some((seq, pos, Edit::Dig)),
-                    ClientEvent::Place { seq, pos, state } => Some((seq, pos, Edit::Place(state))),
-                    ClientEvent::Chat { .. } => None, // chat arrives with stage 4 UI
+                    ClientEvent::Dig {
+                        seq,
+                        pos,
+                        dimension,
+                    } => Some((seq, pos, Edit::Dig, dimension)),
+                    ClientEvent::Place {
+                        seq,
+                        pos,
+                        state,
+                        dimension,
+                    } => Some((seq, pos, Edit::Place(state), dimension)),
+                    ClientEvent::Chat { text } => {
+                        // Chat UI comes with stage 4; the world sees commands.
+                        let _ = world.send(ToWorld::Chat {
+                            id: id.clone(),
+                            text,
+                        });
+                        None
+                    }
                 };
-                if let Some((seq, pos, edit)) = edit {
+                if let Some((seq, pos, edit, dimension)) = edit {
                     let now = Instant::now();
                     tokens = (tokens + now.duration_since(last).as_secs_f64() * EDITS_PER_SECOND)
                         .min(EDIT_BURST);
@@ -316,6 +332,7 @@ async fn read_client_events(conn: Connection, world: Sender<ToWorld>, id: String
                         pos: pos.into(),
                         edit,
                         allowed,
+                        dimension,
                     });
                 }
             }

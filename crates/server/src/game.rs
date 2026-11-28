@@ -120,11 +120,30 @@ pub enum ToWorld {
         edit: Edit,
         /// `false` if the connection's rate limit refused it.
         allowed: bool,
+        /// The dimension the client made it in (T4-02).
+        dimension: u8,
     },
     /// The connection ended.
     Leave {
         /// The player.
         id: String,
+    },
+    /// Move a player to another dimension (T4-02; mods and the
+    /// `/dimension` command of offline servers). Handled by the node.
+    Travel {
+        /// The player.
+        id: String,
+        /// The target dimension's id.
+        dimension: String,
+        /// Where to arrive; `None`: the same x and z, high above the ground.
+        pos: Option<[f64; 3]>,
+    },
+    /// A chat line from a player (commands of offline servers).
+    Chat {
+        /// The player.
+        id: String,
+        /// The text.
+        text: String,
     },
 }
 
@@ -180,6 +199,9 @@ pub struct WorldSetup {
     pub entity_limits: crate::entities::EntityLimits,
     /// The optional subsystems of the build's capabilities (ADR-0018).
     pub subsystems: crate::capabilities::Subsystems,
+    /// This world's dimension: its index (tagged on what is sent) and id
+    /// (saved in player files) (T4-02).
+    pub dimension: (u8, String),
 }
 
 /// A column with its encoded message.
@@ -265,6 +287,17 @@ pub struct World {
     subsystems: crate::capabilities::Subsystems,
     /// The zone index of the `zones` capability; `None` without it.
     zones: Option<Arc<world::zones::ZoneIndex>>,
+    /// Dimension index and id (T4-02).
+    dimension: (u8, String),
+}
+
+/// A player's saved state in dimension `dim` (T4-02).
+fn saved_in(p: &Player, dim: &str) -> players::SavedPlayer {
+    let mut s = p.saved();
+    if dim != world::dimension::OVERWORLD {
+        s.dimension = Some(dim.to_owned());
+    }
+    s
 }
 
 /// Entity simulation counters since the last [`World::entity_stats`].
@@ -356,6 +389,7 @@ impl World {
             over_limit: 0,
             zones: setup.subsystems.zones(),
             subsystems: setup.subsystems,
+            dimension: setup.dimension,
         })
     }
 
@@ -385,6 +419,21 @@ impl World {
         self.shutdown();
     }
 
+    /// Saves everything and kicks the players (the node stops its worlds).
+    pub(crate) fn stop(&mut self) {
+        self.shutdown();
+    }
+
+    /// Sends a message to a player's connection, if the player is here.
+    pub(crate) fn send_to(&self, id: &str, msg: ToConn) {
+        if let Some(&rid) = self.owner.get(id)
+            && let Some(r) = self.regions.iter().find(|r| r.id == rid)
+            && let Some(p) = r.player(id)
+        {
+            let _ = p.out.send(msg);
+        }
+    }
+
     /// One tick. Returns `false` once no connection can reach the world.
     pub fn tick(&mut self, inbox: &Receiver<ToWorld>) -> bool {
         let start = Instant::now();
@@ -396,6 +445,13 @@ impl World {
                 Err(crossbeam_channel::TryRecvError::Disconnected) => return false,
             }
         }
+        self.step(start);
+        true
+    }
+
+    /// One tick after the messages were handled (the node of several
+    /// dimensions routes messages itself, T4-02).
+    pub(crate) fn step(&mut self, start: Instant) {
         self.receive_columns();
         let pre = start.elapsed();
         // Restructure between ticks.
@@ -419,6 +475,7 @@ impl World {
                 players: &self.snapshot_players,
                 tick: self.ticks,
                 zones: self.zones.as_deref(),
+                dimension: self.dimension.0,
             };
             let regions = &mut self.regions;
             self.pool
@@ -459,7 +516,61 @@ impl World {
                 self.regions.iter().filter(|r| !r.index.is_empty()).count(),
             );
         }
-        true
+    }
+
+    /// This world's dimension id.
+    #[must_use]
+    pub fn dimension(&self) -> &str {
+        &self.dimension.1
+    }
+
+    /// Whether a player is in this world.
+    #[must_use]
+    pub fn has_player(&self, id: &str) -> bool {
+        self.owner.contains_key(id)
+    }
+
+    /// Takes a player out for a travel: its queued intents are applied
+    /// first (as when leaving). `None` if it is not here or not spawned.
+    pub(crate) fn take_player(&mut self, id: &str) -> Option<Player> {
+        let rid = *self.owner.get(id)?;
+        let (physics, swim) = (self.physics.clone(), self.swim.clone());
+        let p = self.region_mut(rid)?.take_leaving(id, &physics, &swim)?;
+        self.owner.remove(id);
+        Some(p)
+    }
+
+    /// Takes in a player arriving from another dimension at `pos` (`None`:
+    /// its x and z, high above this world's ground once it exists). It gets
+    /// a new network id here, its stream and replication state start over,
+    /// and its client gets a new `Spawn` with this dimension.
+    pub(crate) fn insert_traveler(&mut self, mut p: Player, pos: Option<[f64; 3]>) {
+        p.net_id = NetId(self.next_net_id);
+        self.next_net_id += 1;
+        p.replicator = Replicator::default();
+        p.correction = None;
+        p.sent.clear();
+        p.in_flight = 0;
+        p.complete_at = None;
+        p.body.vel = DVec3::ZERO;
+        match pos {
+            Some(pos) => {
+                p.body.pos = DVec3::from_array(pos);
+                Region::send_spawn(&mut p, self.bounds, self.view, self.dimension.0);
+            }
+            None => {
+                // Flying near the top until the ground is known: the region
+                // holds the player until its columns are live.
+                p.body.pos.y = f64::from(self.bounds.max_y() - 32);
+                p.body.flying = true;
+                Region::send_spawn(&mut p, self.bounds, self.view, self.dimension.0);
+            }
+        }
+        let anchor = self.anchor_region;
+        self.owner.insert(p.id.clone(), anchor);
+        if let Some(r) = self.region_mut(anchor) {
+            r.insert(p);
+        }
     }
 
     fn region_mut(&mut self, id: RegionId) -> Option<&mut Region> {
@@ -471,7 +582,7 @@ impl World {
         self.region_mut(id)
     }
 
-    fn handle(&mut self, msg: ToWorld) {
+    pub(crate) fn handle(&mut self, msg: ToWorld) {
         match msg {
             ToWorld::Join { id, name, out } => {
                 if self.owner.contains_key(&id) {
@@ -512,7 +623,7 @@ impl World {
                     if s.fly_speed > 0.0 {
                         p.fly_speed = s.fly_speed;
                     }
-                    Region::send_spawn(&mut p, self.bounds, self.view);
+                    Region::send_spawn(&mut p, self.bounds, self.view, self.dimension.0);
                 }
                 // A new player waits in the spawn region (its region's tick
                 // spawns it on the ground); the restructure moves a returning
@@ -562,7 +673,11 @@ impl World {
                 pos,
                 edit,
                 allowed,
+                dimension,
             } => {
+                // An edit made in another dimension (just before a travel)
+                // is refused: the client rolls it back.
+                let allowed = allowed && dimension == self.dimension.0;
                 if let Some(r) = self.player_region(&id) {
                     r.edits.push(EditRequest {
                         id,
@@ -573,15 +688,18 @@ impl World {
                     });
                 }
             }
+            // Routed by the node; a world on its own ignores them.
+            ToWorld::Travel { .. } | ToWorld::Chat { .. } => {}
             ToWorld::Leave { id } => {
                 let Some(rid) = self.owner.remove(&id) else {
                     return;
                 };
+                let dim = self.dimension.1.clone();
                 let (physics, swim) = (self.physics.clone(), self.swim.clone());
                 if let Some(r) = self.region_mut(rid)
                     && let Some(p) = r.take_leaving(&id, &physics, &swim)
                     && p.spawned
-                    && let Err(e) = players::save(&self.dir, &id, &p.saved())
+                    && let Err(e) = players::save(&self.dir, &id, &saved_in(&p, &dim))
                 {
                     eprintln!("server: saving player {}: {e}", p.name);
                 }
@@ -602,10 +720,14 @@ impl World {
                         Arc::clone(&self.context),
                         Arc::clone(&self.registry),
                     );
+                    let dim = self.dimension.0;
                     self.jobs
                         .submit(Priority::Visible, CancelToken::new(), move |_| {
                             let col = pipeline.generate(&ctx, pos).into_column(&registry);
-                            Job::Generated(pos, col.and_then(|c| encode(&c).ok().map(|b| (c, b))))
+                            Job::Generated(
+                                pos,
+                                col.and_then(|c| encode(&c, dim).ok().map(|b| (c, b))),
+                            )
                         });
                 }
                 Reply::Error(e) => eprintln!("server: {e}"),
@@ -1098,7 +1220,7 @@ impl World {
         for (&c, &rid) in &edited {
             if let Some(r) = self.regions.iter().find(|r| r.id == rid)
                 && let Some(col) = r.map.column(c)
-                && let Ok(bytes) = encode(col)
+                && let Ok(bytes) = encode(col, self.dimension.0)
             {
                 self.cache.insert(c, bytes);
             }
@@ -1113,9 +1235,10 @@ impl World {
                         .map(|(_, _, b)| *b)
                         .collect();
                     for chunk in mine.chunks(MAX_BLOCK_CHANGES) {
-                        let _ = p
-                            .out
-                            .send(ToConn::Event(ServerEvent::BlockChanges(chunk.to_vec())));
+                        let _ = p.out.send(ToConn::Event(ServerEvent::BlockChanges {
+                            dimension: self.dimension.0,
+                            changes: chunk.to_vec(),
+                        }));
                     }
                 }
             }
@@ -1206,6 +1329,7 @@ impl World {
     /// Writes edited live columns and every player (they stay loaded).
     fn autosave(&mut self) {
         let mut records = Vec::new();
+        let dim = self.dimension.1.clone();
         for r in &mut self.regions {
             for c in r.unsaved.drain() {
                 if let Some(col) = r.map.column(c) {
@@ -1214,7 +1338,7 @@ impl World {
             }
             for id in r.player_ids() {
                 if let Some(p) = r.player(id).filter(|p| p.spawned)
-                    && let Err(e) = players::save(&self.dir, id, &p.saved())
+                    && let Err(e) = players::save(&self.dir, id, &saved_in(p, &dim))
                 {
                     eprintln!("server: saving player {}: {e}", p.name);
                 }
@@ -1229,6 +1353,7 @@ impl World {
         self.subsystems.shutdown();
         let mut records = Vec::new();
         let (physics, swim) = (self.physics.clone(), self.swim.clone());
+        let dim = self.dimension.1.clone();
         for r in &mut self.regions {
             let ids: Vec<String> = r.player_ids().map(str::to_owned).collect();
             for id in ids {
@@ -1238,7 +1363,7 @@ impl World {
                         "The server is shutting down".into(),
                     ));
                     if p.spawned
-                        && let Err(e) = players::save(&self.dir, &id, &p.saved())
+                        && let Err(e) = players::save(&self.dir, &id, &saved_in(&p, &dim))
                     {
                         eprintln!("server: saving player {}: {e}", p.name);
                     }
