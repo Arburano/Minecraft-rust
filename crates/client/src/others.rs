@@ -10,8 +10,8 @@ use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
 use glam::DVec3;
+use netcode::replication::{EntityState, Reconstructor, dequantize};
 use protocol::{EntityDatagram, EntityUpdate, NetId};
-use server::replication::{EntityState, Reconstructor, dequantize};
 
 /// Shortest and longest glide between two updates.
 const MIN_GLIDE: Duration = Duration::from_millis(50);

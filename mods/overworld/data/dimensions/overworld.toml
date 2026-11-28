@@ -1,0 +1,14 @@
+# The overworld dimension (T4-02, docs/architecture/dimensions.md). Its
+# generation comes from the module that fills the `worldgen:overworld` slot.
+id = "overworld"
+generator = "worldgen/overworld.toml"
+height = [-64, 320]
+sky = "day_night"
+
+[physics]
+gravity = [0.0, -9.8, 0.0]
+player_gravity_scale = 1.0
+pressure = 1.0
+pressure_by_altitude = [[62, 1.0], [200, 0.6], [320, 0.3]]
+drag = 0.09
+fluid_density = 1.0

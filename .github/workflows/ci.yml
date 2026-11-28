@@ -73,6 +73,12 @@ jobs:
           if-no-files-found: ignore
       - name: Worldgen without the built-in overworld (T1-18)
         run: cargo check -p worldgen --no-default-features
+      - name: Client without the server (T2-11)
+        run: |
+          cargo check -p client --no-default-features
+          if cargo tree -p client --no-default-features -e normal --prefix none | grep -q '^server v'; then
+            echo "the client without the singleplayer feature must not depend on the server crate"; exit 1
+          fi
       - name: Server without optional capability features (T4-01)
         run: cargo test -p server --no-default-features --lib --test capabilities
       - name: Benches compile

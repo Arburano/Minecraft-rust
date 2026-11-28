@@ -11,6 +11,7 @@
 pub mod capability;
 pub mod column;
 pub mod coords;
+pub mod dimension;
 pub mod map;
 pub mod modset;
 pub mod registry;

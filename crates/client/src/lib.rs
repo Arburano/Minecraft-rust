@@ -5,6 +5,7 @@
 
 pub mod bots;
 pub mod edit;
+pub mod embedded;
 pub mod lan;
 pub mod loading;
 pub mod others;
@@ -16,11 +17,16 @@ pub mod textures;
 pub mod worlds;
 
 /// The capabilities this client binary was compiled with (ADR-0018). The
-/// client and its embedded server share the cargo features, so this is the
-/// embedded server's set.
+/// client and its embedded server share the cargo features, so this is also
+/// the embedded server's set (checked by a test when both are built).
 #[must_use]
 pub const fn capabilities() -> world::Capabilities {
-    server::capabilities::compiled()
+    let all = world::Capabilities::all();
+    if cfg!(feature = "moving_grids") {
+        all
+    } else {
+        all.without(world::Capability::MovingGrids)
+    }
 }
 
 #[cfg(test)]

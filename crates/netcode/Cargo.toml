@@ -1,0 +1,16 @@
+[package]
+name = "netcode"
+description = "Game logic both ends of a connection share: intents ↔ physics input, state hashes, corrections, entity replication deltas."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+protocol = { path = "../protocol" }
+sim = { path = "../sim" }
+glam = { workspace = true }
+
+[lints]
+workspace = true

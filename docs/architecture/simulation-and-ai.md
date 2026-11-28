@@ -31,12 +31,12 @@ Implementation (T1-12, `sim::physics`, `sim::raycast`):
 - Divergence → the client rolls back to the server state and replays unacknowledged intents. A correction threshold makes small divergences smooth out rather than "teleport".
 - Digging and placing blocks are also predicted; a server rejection rolls the block back.
 
-Implementation (T2-03, `client::session`, `server::game`, `server::input`):
+Implementation (T2-03, `client::session`, `server::game`, `netcode::input`):
 
 - **Hash, not state:** each intent carries a 32-bit hash (FNV-1a over the exact `f64` position, velocity, flags and fly speed) of the client's state after it. The server applies the intent with the same `sim::physics::step` and compares. Agreeing states cost nothing; on a mismatch the server sends a `Correction` (exact state after that tick) in every datagram until a later intent's hash agrees.
 - **Rollback and replay:** the client keeps the last 128 predicted ticks. On a correction it restores the server's state at that tick and replays its later intents; a repeated correction it already agrees with is ignored.
 - **Smoothing:** the change of the drawn position becomes an offset that decays with a 100 ms time constant; a correction of more than 2 blocks is applied at once (a teleport).
-- **Determinism:** both sides convert intents through `server::input` (quantized yaw, wheel steps at the tick). A golden hash of a 600-tick route (walk, sprint, jump, strafe, fly, wheel, descend) pins the result; debug and release builds agree (`crates/server/tests/determinism.rs`).
+- **Determinism:** both sides convert intents through `netcode::input` (quantized yaw, wheel steps at the tick). A golden hash of a 600-tick route (walk, sprint, jump, strafe, fly, wheel, descend) pins the result; debug and release builds agree (`crates/server/tests/determinism.rs`).
 - **Other players** arrive as entity deltas (networking-protocol.md); the client glides each one from its drawn position to its newest one over the time between its last two updates (50–300 ms; > 8 blocks is a teleport), and draws them as boxes (`render::entities`) until models exist (stage 4).
 
 ## Entities and ECS

@@ -1,0 +1,60 @@
+# Example shader pack for hook version 2 (our own code, render-graph.md,
+# ADR-0015): a G-buffer pass, sun lighting from normals in a deferred pass,
+# fog from depth, and a tone-mapping composite with a vignette.
+# Copy this folder into <data>/shaderpacks/ and choose it under Settings → Shader pack.
+name = "Sunlit (deferred)"
+description = "Hook version 2 example: sun lighting from normals, fog from depth, soft tone mapping."
+hook_version = 2
+max_displacement = 0.0
+
+[targets]
+colortex0 = { format = "rgba16f" }   # lit color
+colortex1 = { format = "rgba8" }     # albedo
+colortex2 = { format = "rgba16f" }   # normal (xyz) and sky light (w, 0..1)
+colortex3 = { format = "rgba8" }     # block light (r, 0..1)
+
+[[pass]]
+stage = "gbuffer_opaque"
+file = "gbuffer.wgsl"
+buckets = ["voxel_quads"]
+writes = ["colortex1", "colortex2", "colortex3"]
+
+[[pass]]
+stage = "deferred"
+file = "lighting.wgsl"
+reads = ["colortex1", "colortex2", "colortex3", "depth0"]
+writes = ["colortex0"]
+
+[[pass]]
+stage = "composite"
+file = "tonemap.wgsl"
+reads = ["colortex0"]
+writes = ["colortex0"]
+
+[[option]]
+id = "sun"
+label = "Sun strength"
+min = 0.0
+max = 2.0
+default = 1.0
+
+[[option]]
+id = "ambient"
+label = "Ambient light"
+min = 0.0
+max = 1.0
+default = 0.35
+
+[[option]]
+id = "vignette"
+label = "Vignette"
+min = 0.0
+max = 1.5
+default = 0.6
+
+[[option]]
+id = "warmth"
+label = "Warmth"
+min = 0.0
+max = 1.0
+default = 0.4

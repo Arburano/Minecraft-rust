@@ -133,6 +133,17 @@ impl PhysicsConfig {
         Ok(cfg)
     }
 
+    /// The profile in a dimension whose `player_gravity_scale` is `scale`
+    /// (T4-02): gravity in air and in fluids scales; ×1 changes nothing.
+    #[must_use]
+    pub fn with_gravity_scale(mut self, scale: f64) -> Self {
+        if scale != 1.0 {
+            self.gravity *= scale;
+            self.fluid_gravity *= scale;
+        }
+        self
+    }
+
     /// Box height and eye height for an ability state.
     fn box_size(&self, state: &AbilityState) -> (f64, f64) {
         let i = usize::from(state.box_from);
@@ -1211,5 +1222,28 @@ effects = [{ kind = "gravity_scale", scale = 0.1 }]
             .map(|i| format!("[[abilities]]\nid = \"m{i}\"\ntrigger = \"jump_held\"\neffects = [{{ kind = \"gravity_scale\", scale = 1.0 }}]\n"))
             .collect();
         assert!(bad(&many), "more than 8 abilities");
+    }
+
+    #[test]
+    fn dimension_gravity_scales_the_fall() {
+        let earth = PhysicsConfig::default();
+        assert_eq!(earth.clone().with_gravity_scale(1.0), earth);
+        let mars = earth.clone().with_gravity_scale(0.38);
+        let w = flat();
+        let start = PlayerBody {
+            pos: DVec3::new(0.5, 80.0, 0.5),
+            ..Default::default()
+        };
+        let (mut a, mut b) = (start, start);
+        for _ in 0..10 {
+            step(&mut a, &PlayerInput::default(), &earth, &w);
+            step(&mut b, &PlayerInput::default(), &mars, &w);
+        }
+        assert!(
+            b.pos.y > a.pos.y + 1.0,
+            "slower fall: earth {} mars {}",
+            a.pos.y,
+            b.pos.y
+        );
     }
 }

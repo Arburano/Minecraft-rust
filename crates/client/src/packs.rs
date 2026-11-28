@@ -209,6 +209,8 @@ pub struct ShaderPack {
     pub shade: Option<String>,
     /// Post pass (`post.wgsl`).
     pub post: Option<String>,
+    /// A hook version 2 pack: its render graph and pass files (T1-22).
+    pub graph: Option<render::graph::exec::GraphPack>,
 }
 
 /// Loads a shader pack's files (validation happens when it is applied).
@@ -218,6 +220,9 @@ pub fn load_shader_pack(info: &PackInfo) -> Result<ShaderPack, String> {
         .read_text("shaderpack.toml")
         .ok_or_else(|| format!("{}: no shaderpack.toml", info.id))?;
     let t: ShaderPackToml = toml::from_str(&text).map_err(|e| format!("{}: {e}", info.id))?;
+    if t.hook_version == Some(render::graph::GRAPH_HOOK_VERSION) {
+        return load_graph_pack(info, &mut files, &text);
+    }
     if let Some(v) = t.hook_version
         && v != render::terrain::hooks::HOOK_VERSION
     {
@@ -249,6 +254,56 @@ pub fn load_shader_pack(info: &PackInfo) -> Result<ShaderPack, String> {
         options: t.options,
         shade,
         post,
+        graph: None,
+    })
+}
+
+/// A hook version 2 pack: the manifest's graph and every pass file. The
+/// graph is validated when it is built for the GPU.
+fn load_graph_pack(
+    info: &PackInfo,
+    files: &mut PackFiles,
+    text: &str,
+) -> Result<ShaderPack, String> {
+    let manifest =
+        render::graph::GraphManifest::from_toml(text).map_err(|e| format!("{}: {e}", info.id))?;
+    let mut sources = std::collections::BTreeMap::new();
+    for p in &manifest.passes {
+        let code = files.read_text(&p.file).ok_or_else(|| {
+            format!(
+                "{}: pass {} needs {}, which is not in the pack",
+                info.id,
+                p.label(),
+                p.file
+            )
+        })?;
+        sources.insert(p.file.clone(), code);
+    }
+    let options = manifest
+        .options
+        .iter()
+        .map(|o| PackOption {
+            id: o.id.clone(),
+            label: o.label.clone(),
+            min: o.min,
+            max: o.max,
+            default: o.default,
+        })
+        .collect();
+    Ok(ShaderPack {
+        name: if manifest.name.is_empty() {
+            info.name.clone()
+        } else {
+            manifest.name.clone()
+        },
+        description: manifest.description.clone(),
+        options,
+        shade: None,
+        post: None,
+        graph: Some(render::graph::exec::GraphPack {
+            manifest,
+            files: sources,
+        }),
     })
 }
 
@@ -316,5 +371,28 @@ mod tests {
         std::fs::write(p.join("shaderpack.toml"), "hook_version = 9").expect("toml");
         assert!(load_shader_pack(info).is_err(), "wrong hook version");
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn hook_version_2_packs_load_their_graph() {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../docs/examples/shaderpacks");
+        let packs = list_shader_packs(&dir);
+        let info = packs
+            .iter()
+            .find(|p| p.id.contains("sunlit-deferred"))
+            .expect("the example version 2 pack is listed");
+        let pack = load_shader_pack(info).expect("loads");
+        let graph = pack.graph.expect("a render graph");
+        assert_eq!(graph.manifest.hook_version, 2);
+        assert_eq!(graph.files.len(), 3);
+        assert_eq!(pack.options.len(), 4);
+        assert!(pack.shade.is_none() && pack.post.is_none());
+        // The version 1 example still loads as before.
+        let v1 = packs
+            .iter()
+            .find(|p| p.id.contains("warm-glow"))
+            .expect("v1 pack");
+        assert!(load_shader_pack(v1).expect("loads").graph.is_none());
     }
 }

@@ -158,9 +158,12 @@ impl Menu {
         }
         ui.add_space(12.0);
         let mut action = MenuAction::None;
-        if ui
-            .add_enabled_ui(valid, |ui| button(ui, "Single-player"))
-            .inner
+        // A client built without the embedded server (no `singleplayer`
+        // feature, T2-11) only joins servers.
+        if client::embedded::AVAILABLE
+            && ui
+                .add_enabled_ui(valid, |ui| button(ui, "Single-player"))
+                .inner
         {
             self.refresh();
             self.message = None;

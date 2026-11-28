@@ -40,14 +40,15 @@ The engine is a "voxel OS": the core (world, rendering, networking, scheduling, 
 | `lod` | lib | world | LOD sections, dirty nodes, disk cache |
 | `render` | lib | mesh | wgpu: capability probe, vertex pulling, culling, texture arrays, render graph |
 | `protocol` | lib | world | versioned client↔server↔gateway messages |
+| `netcode` | lib | protocol, sim | what both ends of a connection compute the same way: intents ↔ physics input, state hash, corrections, entity deltas (T2-11) |
 | `net` | lib | protocol | QUIC (quinn): prioritized streams, datagrams |
 | `sim` | lib | engine-core, world | regions, region ECS world, player physics, AI, prediction |
 | `modhost` | lib | engine-core, world | wasmtime, mod loading, batched hooks, epoch, permissions |
 | `mod-sdk` | lib | — | API for mod authors on top of generated WIT bindings |
 | `assets` | lib | — | Mojang asset download, conversion, fallback assets, cache |
 | `auth` | lib | — | Microsoft token chain, session JWT client, secret storage |
-| `client` | bin | many | window, in-game launcher menu, render loop, embedded server |
-| `server` | bin | many | dedicated server |
+| `client` | bin | many (`server` only with the `singleplayer` feature) | window, in-game launcher menu, render loop; with `singleplayer` (default) the embedded server for single-player |
+| `server` | bin + lib | many | dedicated server; the library is also the client's embedded server |
 | `updater` | bin | — | binary update and game launch |
 | `engine-cli` | bin | — | tools for mods and development |
 
