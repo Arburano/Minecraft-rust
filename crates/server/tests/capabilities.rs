@@ -44,6 +44,7 @@ fn mods_root(tag: &str) -> PathBuf {
     for (id, caps) in [
         ("zones_test", "\"zones\""),
         ("grids_test", "\"moving_grids\""),
+        ("dims_test", "\"dimensions\""),
     ] {
         let dir = root.join(id);
         std::fs::create_dir_all(dir.join("data")).expect("mkdir");
@@ -264,19 +265,19 @@ fn a_required_capability_starts_its_subsystem() {
 #[test]
 fn an_unimplemented_capability_is_a_clear_error() {
     let root = mods_root("missing");
-    // The built-in registry implements no capability yet.
+    // `dimensions` has no subsystem in this engine version (T4-02).
     let Err(e) = Server::start(config(
-        build(&root, "rpg_test", &["zones_test"]),
+        build(&root, "space_test", &["dims_test"]),
         temp("missing-world"),
         SubsystemRegistry::builtin(),
     )) else {
-        panic!("zones has no subsystem in this engine version");
+        panic!("dimensions has no subsystem in this engine version");
     };
     let e = e.to_string();
     assert!(
-        e.contains("build rpg_test")
-            && e.contains("capability zones")
-            && e.contains("mod zones_test")
+        e.contains("build space_test")
+            && e.contains("capability dimensions")
+            && e.contains("mod dims_test")
             && e.contains("does not implement"),
         "{e}"
     );

@@ -8,7 +8,7 @@ A level 1 mod: everything that can be described by data is described by data. Th
 <mod>/data/
   blocks/*.toml      items/*.toml      entities/*.toml
   recipes/*.toml     loot/*.toml       tags/*.toml
-  worldgen/biomes/*.toml   worldgen/structures/*.toml   worldgen/zones/*.toml
+  worldgen/biomes/*.toml   worldgen/structures/*.toml   zones/*.toml
   physics/player.toml      # movement parameters (core)
 <mod>/assets/
   textures/   models/   sounds/   lang/<locale>.json   shaders/*.wgsl
@@ -39,17 +39,21 @@ Every combination of `states` is a separate `BlockStateId`. Keep the number of s
 
 ## Zone (PRD §14, no. 11)
 
+Needs the engine capability `zones`. Full format, rule resolution and the world's own zones: [zones.md](zones.md).
+
 ```toml
 id = "core:frozen_peaks"
-biomes = ["core:snowy_slopes", "core:frozen_peaks"]
+priority = 0
 difficulty = 3
+areas = [{ x = [-2048, 2047], z = [4096, 6143] }]
+rules = { pvp = true }
 spawns = [
   { entity = "core:stray", weight = 80, group = [2, 4], light = [0, 7] },
   { entity = "core:goat",  weight = 20, group = [1, 3] },
 ]
-structures = ["core:igloo"]
-dungeons = []
 ```
+
+Zones by biome and zone structure or dungeon tables come later.
 
 ## Overrides
 

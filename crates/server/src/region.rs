@@ -127,6 +127,8 @@ pub struct Shared<'a> {
     pub players: &'a [PlayerSnapshot],
     /// The node's tick counter.
     pub tick: u64,
+    /// Zones, when the build runs the `zones` capability (T4-08).
+    pub zones: Option<&'a world::zones::ZoneIndex>,
 }
 
 /// A player as replicated, with its region.
@@ -208,6 +210,8 @@ pub struct RegionOutput {
     pub simulated: u64,
     /// Time the tick took.
     pub time: std::time::Duration,
+    /// Player steps undone because they entered a zone that denies entry.
+    pub zone_refusals: u64,
 }
 
 /// One region.
@@ -530,12 +534,24 @@ impl Region {
                 };
                 p.fly_speed =
                     apply_fly_steps(p.fly_speed, i.fly_speed_steps, sh.physics.fly_speed_range);
+                let before = p.body;
                 step(
                     &mut p.body,
                     &physics_input(&i, p.fly_speed),
                     sh.physics,
                     &world,
                 );
+                // Zone entry (T4-08): a step from an allowed cell into a
+                // denied one is undone; the hash check below corrects the
+                // client. A player already inside may move and leave.
+                if let Some(z) = sh.zones
+                    && !z.may_enter(feet_cell(p.body.pos), &p.name)
+                    && z.may_enter(feet_cell(before.pos), &p.name)
+                {
+                    p.body = before;
+                    p.body.vel = DVec3::ZERO;
+                    self.out.zone_refusals += 1;
+                }
                 // Reconciliation: a correction only when the prediction differs.
                 if state_hash(&p.body, p.fly_speed) == i.state_hash {
                     if p.correction.is_some_and(|c| i.tick > c.tick) {
@@ -627,6 +643,12 @@ impl Region {
         let Some(current) = self.map.get_block(pos) else {
             return false; // not loaded or outside the world height
         };
+        // Build rights of zones (T4-08).
+        if let Some(z) = sh.zones
+            && !z.may_build(pos, &p.name)
+        {
+            return false;
+        }
         let eye = p.body.eye(sh.physics);
         let center = DVec3::new(
             f64::from(pos.x) + 0.5,
@@ -802,6 +824,15 @@ impl Region {
                 let _ = p.out.send(ToConn::Datagram(bytes));
             }
         }
+    }
+}
+
+/// The block holding a feet position.
+fn feet_cell(p: DVec3) -> BlockPos {
+    BlockPos {
+        x: p.x.floor() as i32,
+        y: p.y.floor() as i32,
+        z: p.z.floor() as i32,
     }
 }
 

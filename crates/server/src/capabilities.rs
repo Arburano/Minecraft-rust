@@ -37,6 +37,14 @@ pub trait Subsystem: Send {
     fn tick(&mut self, tick: u64);
     /// Called once when the world stops (save, join threads).
     fn shutdown(&mut self) {}
+    /// The zone index regions read, for the `zones` subsystem (T4-08).
+    fn zones(&self) -> Option<Arc<world::zones::ZoneIndex>> {
+        None
+    }
+    /// The handle that changes the world's zones, for the `zones` subsystem.
+    fn zone_control(&self) -> Option<crate::zones::ZoneControl> {
+        None
+    }
 }
 
 /// What a factory gets to start its subsystem.
@@ -59,11 +67,12 @@ pub struct SubsystemRegistry {
 }
 
 impl SubsystemRegistry {
-    /// The subsystems this engine version implements. None yet: the first
-    /// (`moving_grids`) comes with T4-03.
+    /// The subsystems this engine version implements: `zones` (T4-08).
     #[must_use]
     pub fn builtin() -> Self {
-        Self::default()
+        let mut r = Self::default();
+        crate::zones::Zones::register(&mut r);
+        r
     }
 
     /// Registers (or replaces) the factory of a capability.
@@ -151,6 +160,18 @@ impl Subsystems {
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.active.is_empty()
+    }
+
+    /// The current zone index, when `zones` runs.
+    #[must_use]
+    pub fn zones(&self) -> Option<Arc<world::zones::ZoneIndex>> {
+        self.active.iter().find_map(|(_, s)| s.zones())
+    }
+
+    /// The zone API handle, when `zones` runs.
+    #[must_use]
+    pub fn zone_control(&self) -> Option<crate::zones::ZoneControl> {
+        self.active.iter().find_map(|(_, s)| s.zone_control())
     }
 
     /// One world tick for every subsystem.

@@ -15,8 +15,8 @@ heightmap+biomes (cheap, 2D) ─► terrain ─► caves ─► ores ─► stru
 
 ## Game zones (PRD §14, No. 11)
 
-- Static map layout: zone = (biomes, difficulty, spawn tables, dungeon and structure tables).
-- Zone tables are compiled into fast lists when the world loads. The spawn system takes the list of the zone under a position and does not check others.
+- Static map layout: zone = (areas, difficulty, rules, spawn tables; later biomes and dungeon and structure tables). Implemented as the `zones` capability (T4-08): [modding/zones.md](../modding/zones.md).
+- Zone tables are compiled into fast lists when the world loads (`world::zones::ZoneIndex`). The spawn system takes the list of the zone under a position and does not check others.
 - Zone assets (mob models, sounds) are loaded by the client on approaching the zone.
 - Zone ≠ threading region. A mob can cross a zone border, so its behavior works everywhere; only spawning is restricted.
 

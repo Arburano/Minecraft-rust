@@ -21,6 +21,7 @@ pub mod players;
 pub mod region;
 pub mod replication;
 pub mod storage;
+pub mod zones;
 
 use std::net::SocketAddr;
 use std::path::PathBuf;
@@ -288,6 +289,7 @@ pub struct Server {
     runtime: Option<tokio::runtime::Runtime>,
     notices: Vec<String>,
     capabilities: world::Capabilities,
+    zones: Option<zones::ZoneControl>,
 }
 
 impl Server {
@@ -330,6 +332,7 @@ impl Server {
             })
             .map_err(ServerError::Data)?;
         let active = subsystems.capabilities();
+        let zone_control = subsystems.zone_control();
         let bounds = config.bounds;
         let store = WorldStore::open(&config.world_dir, &registry, bounds)
             .map_err(|e| ServerError::World(e.to_string()))?;
@@ -414,6 +417,7 @@ impl Server {
             runtime: Some(runtime),
             notices,
             capabilities: active,
+            zones: zone_control,
         })
     }
 
@@ -428,6 +432,12 @@ impl Server {
     #[must_use]
     pub fn capabilities(&self) -> world::Capabilities {
         self.capabilities
+    }
+
+    /// The zone API (T4-08), when the build runs the `zones` capability.
+    #[must_use]
+    pub fn zones(&self) -> Option<&zones::ZoneControl> {
+        self.zones.as_ref()
     }
 
     /// Tick records of the world thread (metrics).

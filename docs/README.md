@@ -34,6 +34,7 @@ Reading order for a new developer or agent:
 | Movement profiles and abilities | [modding/movement-profiles.md](modding/movement-profiles.md) | `sim` |
 | Mod manifest | [modding/mod-manifest.md](modding/mod-manifest.md) | `modhost` |
 | Datapacks | [modding/datapacks.md](modding/datapacks.md) | `modhost`, `world` |
+| Zones (capability `zones`) | [modding/zones.md](modding/zones.md) | `world::zones`, `server::zones` |
 | WASM API | [modding/wasm-api.md](modding/wasm-api.md), [`../wit/engine-api.wit`](../wit/engine-api.wit) | `modhost`, `mod-sdk` |
 | How to write mods | [modding/writing-mods.md](modding/writing-mods.md) | `mod-sdk`, `engine-cli` |
 | Rules for fast mods | [modding/performance-rules.md](modding/performance-rules.md) | — |

@@ -147,7 +147,7 @@ Engine work behind [ADR-0018](../docs/adr/0018-engine-capabilities-per-build.md)
 | [T4-05](stage-4/T4-05-riding-grids-and-network.md) | Riding grids and grid replication | T4-03, T2-03, T2-07 | agent (cloud) + owner feel review | todo |
 | [T4-06](stage-4/T4-06-grid-rendering.md) | Grid rendering | T4-03, T1-22 | agent (cloud) + laptop | todo |
 | [T4-07](stage-4/T4-07-space.md) | Space and planets | T4-02, T4-03 | agent (cloud) | todo |
-| [T4-08](stage-4/T4-08-zones.md) | Zones | T4-01 | agent (cloud) | todo |
+| [T4-08](stage-4/T4-08-zones.md) | Zones | T4-01 | agent (cloud) | done |
 | [T4-09](stage-4/T4-09-instances.md) | Instances | T4-02, T4-08 | agent (cloud) | todo |
 | [T4-10](stage-4/T4-10-progression.md) | Progression | T4-01, stage 3 mod API | agent (cloud) | todo |
 

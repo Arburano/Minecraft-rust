@@ -1,6 +1,6 @@
 # T4-08. Zones
 
-- **Status:** todo
+- **Status:** done (cloud; report: [t4-08-zones](../../task-reports/t4-08-zones.md))
 - **Depends on:** T4-01
 - **Owner:** agent (cloud)
 
@@ -14,4 +14,4 @@ The `zones` capability: named world areas with rules (PRD §14 No. 11), for the 
 
 ## Acceptance criteria
 
-- [ ] Zone lookup cost per entity per tick measured; rules enforced server-side (tests).
+- [x] Zone lookup cost per entity per tick measured (VM: 20 ns at 1,000 zones, [zones.md](../../docs/modding/zones.md#cost)); rules enforced server-side (tests): build and entry on the real world (`server/tests/zones.rs`); PvP and spawn tables as server-side queries, tested in `world::zones`, waiting for the combat and spawn systems.
